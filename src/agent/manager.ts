@@ -1,6 +1,7 @@
 import { query, Query } from "@anthropic-ai/claude-agent-sdk";
 import { SessionDatabase } from "../storage/database.js";
 import { randomUUID } from "crypto";
+import { MCPServerConfig } from "../mcp/integration.js";
 
 export interface SessionData {
   sessionId: string;
@@ -20,8 +21,15 @@ interface PendingCronSession {
 
 export class SessionManager {
   private pendingCronSessions = new Map<string, PendingCronSession>();
+  public mcpServers: Record<string, MCPServerConfig>;
 
-  constructor(private db: SessionDatabase, private sessionsDir: string) {}
+  constructor(
+    private db: SessionDatabase,
+    private sessionsDir: string,
+    mcpServers: Record<string, MCPServerConfig> = {}
+  ) {
+    this.mcpServers = mcpServers;
+  }
 
   /**
    * Get or create a session for a Discord thread
@@ -95,8 +103,11 @@ export class SessionManager {
   createQuery(
     userMessage: string,
     sessionId: string | null,
-    workingDir: string
+    workingDir: string,
+    mcpServers?: Record<string, MCPServerConfig>
   ): Query {
+    const servers = mcpServers || this.mcpServers;
+
     return query({
       prompt: userMessage,
       options: {
@@ -107,6 +118,7 @@ export class SessionManager {
         allowDangerouslySkipPermissions: true,
         permissionMode: "bypassPermissions",
         tools: { type: "preset", preset: "claude_code" }, // Enable all Claude Code tools
+        mcpServers: Object.keys(servers).length > 0 ? servers : undefined, // Add MCP servers if available
       },
     });
   }

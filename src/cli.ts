@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 import { startBot } from './index.js';
+import { MCPConfigManager } from './mcp/config.js';
 
 interface EnvConfig {
   DISCORD_BOT_TOKEN: string;
@@ -69,6 +70,12 @@ export async function run(): Promise<void> {
   }
 
   spinner.succeed(chalk.green('Configuration valid'));
+
+  // Show MCP configuration menu and validate tokens
+  const claudeDir = path.join(cwd, '.claude');
+  const mcpConfig = new MCPConfigManager(claudeDir);
+  await mcpConfig.validateAndRefreshTokens(envPath);
+  await mcpConfig.showStartupMenu();
 
   // Start the bot
   console.log(chalk.cyan('\n🚀 Starting ClaudeBot...\n'));

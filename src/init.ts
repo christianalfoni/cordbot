@@ -53,6 +53,9 @@ export function initializeClaudeFolder(cwd: string): InitResult {
   // Initialize SQLite database
   initializeDatabase(dbPath);
 
+  // Initialize MCP configuration files
+  initializeMCPConfig(claudeDir);
+
   // Create root CLAUDE.md if it doesn't exist
   ensureRootClaudeMd(cwd);
 
@@ -88,6 +91,27 @@ function initializeDatabase(dbPath: string): void {
   db.close();
 
   console.log('🗄️  Initialized database');
+}
+
+function initializeMCPConfig(claudeDir: string): void {
+  const mcpConfigPath = path.join(claudeDir, 'mcp-config.json');
+  const oauthTokensPath = path.join(claudeDir, 'oauth-tokens.json');
+
+  // Initialize mcp-config.json if it doesn't exist
+  if (!fs.existsSync(mcpConfigPath)) {
+    const defaultMcpConfig = {
+      version: '1.0.0',
+      servers: {},
+    };
+    fs.writeFileSync(mcpConfigPath, JSON.stringify(defaultMcpConfig, null, 2), 'utf-8');
+    console.log('🔌 Created mcp-config.json');
+  }
+
+  // Initialize oauth-tokens.json if it doesn't exist (with secure permissions)
+  if (!fs.existsSync(oauthTokensPath)) {
+    fs.writeFileSync(oauthTokensPath, '{}', { mode: 0o600 });
+    console.log('🔐 Created oauth-tokens.json');
+  }
 }
 
 function ensureRootClaudeMd(cwd: string): void {

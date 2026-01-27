@@ -5,16 +5,20 @@ import { setupEventHandlers } from "./discord/events.js";
 import { SessionDatabase } from "./storage/database.js";
 import { SessionManager } from "./agent/manager.js";
 import { CronRunner } from "./scheduler/runner.js";
+import { loadMCPServers } from "./mcp/integration.js";
 
 export async function startBot(cwd: string): Promise<void> {
   console.log("🚀 Initializing ClaudeBot...\n");
 
   // Initialize .claude folder and database
-  const { dbPath, sessionsDir, isFirstRun } = initializeClaudeFolder(cwd);
+  const { dbPath, sessionsDir, claudeDir, isFirstRun } = initializeClaudeFolder(cwd);
 
   if (isFirstRun) {
     console.log("\n✨ First run detected - initialized project structure\n");
   }
+
+  // Load MCP servers
+  const mcpServers = await loadMCPServers(claudeDir);
 
   // Validate environment variables
   const token = process.env.DISCORD_BOT_TOKEN;
@@ -30,7 +34,7 @@ export async function startBot(cwd: string): Promise<void> {
   console.log(`📊 Active sessions: ${db.getActiveCount()}\n`);
 
   // Initialize session manager
-  const sessionManager = new SessionManager(db, sessionsDir);
+  const sessionManager = new SessionManager(db, sessionsDir, mcpServers);
 
   // Connect to Discord
   console.log("🔌 Connecting to Discord...\n");

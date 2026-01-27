@@ -140,6 +140,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # ClaudeBot specific
-.claude/
+.claude/  # Contains oauth-tokens.json and other sensitive runtime data
 *.test.db
 .vitest/
