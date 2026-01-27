@@ -1,0 +1,6 @@
+{
+  "name": "@claudebot/functions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Firebase functions for Claude bot"
+}

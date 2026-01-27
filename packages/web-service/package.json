@@ -1,0 +1,6 @@
+{
+  "name": "@claudebot/web-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web service for Claude bot authentication and management"
+}
