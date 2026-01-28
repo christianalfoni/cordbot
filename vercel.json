@@ -1,6 +1,4 @@
 {
-  "buildCommand": "pnpm install && pnpm --filter @cordbot/web-service build",
-  "outputDirectory": "packages/web-service/dist",
   "rewrites": [
     {
       "source": "/(.*)",
