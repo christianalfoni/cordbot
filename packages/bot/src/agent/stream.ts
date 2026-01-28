@@ -298,6 +298,11 @@ function shouldShowToolMessage(toolName: string, input: string): boolean {
       }
     }
 
+    // Filter out cron tool usage messages - keep them silent/internal
+    if (toolName.startsWith('cron_')) {
+      return false;
+    }
+
     return true;
   } catch (e) {
     // If we can't parse, show the message
@@ -316,6 +321,12 @@ function getToolEmoji(toolName: string): string {
     WebFetch: '🌐',
     WebSearch: '🔎',
     Task: '🤖',
+    cron_list_jobs: '⏰',
+    cron_add_job: '➕',
+    cron_remove_job: '🗑️',
+    cron_update_job: '✏️',
+    gmail_send_email: '📧',
+    gmail_list_messages: '📬',
   };
 
   return emojiMap[toolName] || '🔧';
@@ -367,6 +378,24 @@ function getToolDescription(toolName: string, input: string): string {
 
       case 'EnterPlanMode':
         return 'Entering plan mode';
+
+      case 'cron_list_jobs':
+        return 'Listing scheduled jobs';
+
+      case 'cron_add_job':
+        return `Adding job: ${params.name}`;
+
+      case 'cron_remove_job':
+        return `Removing job: ${params.name}`;
+
+      case 'cron_update_job':
+        return `Updating job: ${params.name}`;
+
+      case 'gmail_send_email':
+        return `Sending email to ${params.to}`;
+
+      case 'gmail_list_messages':
+        return params.query ? `Listing emails: ${params.query}` : 'Listing recent emails';
 
       default:
         // For unknown tools, try to extract first parameter value

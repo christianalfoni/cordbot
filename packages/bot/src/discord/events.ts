@@ -1,9 +1,13 @@
-import { Client, Message, TextChannel, ThreadChannel, GuildChannel } from 'discord.js';
+import { Client, Message, TextChannel, ThreadChannel, GuildChannel, Interaction } from 'discord.js';
 import fs from 'fs';
 import { SessionManager } from '../agent/manager.js';
 import { streamToDiscord } from '../agent/stream.js';
 import { ChannelMapping, getChannelMapping, syncNewChannel, updateChannelClaudeMdTopic } from './sync.js';
 import { CronRunner } from '../scheduler/runner.js';
+import { DiscordPermissionManager } from '../permissions/discord.js';
+
+// Global permission manager instance
+export const permissionManager = new DiscordPermissionManager();
 
 // Queue to prevent concurrent processing of messages in the same thread
 const threadLocks = new Map<string, Promise<void>>();
@@ -115,6 +119,38 @@ export function setupEventHandlers(
   // Handle warnings
   client.on('warn', (warning) => {
     console.warn('Discord client warning:', warning);
+  });
+
+  // Handle button interactions for permissions
+  client.on('interactionCreate', async (interaction: Interaction) => {
+    if (!interaction.isButton()) return;
+
+    const customId = interaction.customId;
+
+    if (customId.startsWith('permission_')) {
+      // Parse customId - handle underscores in requestId
+      const parts = customId.split('_');
+      const [, action, ...requestIdParts] = parts;
+      const requestId = requestIdParts.join('_'); // Rejoin in case requestId has underscores
+      const approved = action === 'approve';
+
+      // Try to handle the permission response
+      const handled = permissionManager.handlePermissionResponse(requestId, approved);
+
+      if (handled) {
+        // Successfully handled - update the message
+        await interaction.update({
+          content: `${interaction.message.content}\n\n${approved ? '✅ Approved' : '❌ Denied'}`,
+          components: [], // Remove buttons
+        });
+      } else {
+        // Not found or already handled - respond ephemerally
+        await interaction.reply({
+          content: '⚠️ This permission request has already been handled or expired.',
+          ephemeral: true,
+        });
+      }
+    }
   });
 }
 
@@ -246,17 +282,29 @@ async function handleMessage(
       }
     }
 
-    // Create query for Claude
-    // For new sessions, pass null to let SDK create a fresh session
-    // For existing sessions, pass the real SDK session ID to resume
-    const queryResult = sessionManager.createQuery(
-      message.content,
-      isNew ? null : sessionId,
-      workingDir
-    );
+    // Set channel context for permission requests
+    sessionManager.setChannelContext(sessionId, threadChannel);
 
-    // Stream response from Claude agent to Discord
-    await streamToDiscord(queryResult, threadChannel, sessionManager, sessionId);
+    // Set working directory context for built-in tools (cron, etc.)
+    sessionManager.setWorkingDirContext(sessionId, workingDir);
+
+    try {
+      // Create query for Claude
+      // For new sessions, pass null to let SDK create a fresh session
+      // For existing sessions, pass the real SDK session ID to resume
+      const queryResult = sessionManager.createQuery(
+        message.content,
+        isNew ? null : sessionId,
+        workingDir
+      );
+
+      // Stream response from Claude agent to Discord
+      await streamToDiscord(queryResult, threadChannel, sessionManager, sessionId);
+    } finally {
+      // Clear contexts after execution
+      sessionManager.clearChannelContext(sessionId);
+      sessionManager.clearWorkingDirContext(sessionId);
+    }
   } catch (error) {
     console.error('Error handling message:', error);
 

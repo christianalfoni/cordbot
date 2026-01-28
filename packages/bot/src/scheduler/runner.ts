@@ -167,30 +167,40 @@ export class CronRunner {
       // Create a session for this job
       const sessionId = `cron_${Date.now()}_${job.name}`;
 
-      // Create query for Claude
-      const queryResult = this.sessionManager.createQuery(
-        job.task,
-        null, // New session for each cron job
-        folderPath
-      );
+      // Set channel and working directory context for tools
+      this.sessionManager.setChannelContext(sessionId, channel);
+      this.sessionManager.setWorkingDirContext(sessionId, folderPath);
 
-      // Stream response with trigger message as prefix
-      await streamToDiscord(
-        queryResult,
-        channel,
-        this.sessionManager,
-        sessionId,
-        `⏰ **Scheduled task:** ${job.task}`
-      );
+      try {
+        // Create query for Claude
+        const queryResult = this.sessionManager.createQuery(
+          job.task,
+          null, // New session for each cron job
+          folderPath
+        );
 
-      console.log(`✅ Completed scheduled job: ${job.name}`);
+        // Stream response with trigger message as prefix
+        await streamToDiscord(
+          queryResult,
+          channel,
+          this.sessionManager,
+          sessionId,
+          `⏰ **Scheduled task:** ${job.task}`
+        );
 
-      // Store the session so the next message in this channel can continue it
-      this.sessionManager.setPendingCronSession(channelId, sessionId, folderPath);
+        console.log(`✅ Completed scheduled job: ${job.name}`);
 
-      // If this is a one-time job, remove it from the cron file
-      if (job.oneTime) {
-        await this.removeOneTimeJob(channelId, job.name, folderPath);
+        // Store the session so the next message in this channel can continue it
+        this.sessionManager.setPendingCronSession(channelId, sessionId, folderPath);
+
+        // If this is a one-time job, remove it from the cron file
+        if (job.oneTime) {
+          await this.removeOneTimeJob(channelId, job.name, folderPath);
+        }
+      } finally {
+        // Clear contexts after execution
+        this.sessionManager.clearChannelContext(sessionId);
+        this.sessionManager.clearWorkingDirContext(sessionId);
       }
     } catch (error) {
       console.error(`Failed to execute job "${job.name}":`, error);

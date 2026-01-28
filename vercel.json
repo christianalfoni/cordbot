@@ -1,0 +1,5 @@
+{
+  "buildCommand": "pnpm --filter @cordbot/web-service build",
+  "outputDirectory": "packages/web-service/dist",
+  "framework": "vite"
+}

@@ -1,11 +1,13 @@
 {
-  "name": "claudebot-monorepo",
+  "name": "cordbot-monorepo",
   "version": "1.0.0",
   "private": true,
   "description": "Discord bot powered by Claude Code SDK - monorepo",
   "scripts": {
     "dev:bot": "pnpm --filter bot dev",
+    "dev:web": "pnpm --filter @cordbot/web-service dev",
     "build": "pnpm -r build",
+    "build:functions": "pnpm --filter @cordbot/functions build",
     "test": "pnpm -r test"
   },
   "engines": {

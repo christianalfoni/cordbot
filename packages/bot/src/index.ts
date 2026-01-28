@@ -5,10 +5,9 @@ import { setupEventHandlers } from "./discord/events.js";
 import { SessionDatabase } from "./storage/database.js";
 import { SessionManager } from "./agent/manager.js";
 import { CronRunner } from "./scheduler/runner.js";
-import { loadMCPServers } from "./mcp/integration.js";
 
 export async function startBot(cwd: string): Promise<void> {
-  console.log("🚀 Initializing ClaudeBot...\n");
+  console.log("🚀 Initializing Cordbot...\n");
 
   // Initialize .claude folder and database
   const { dbPath, sessionsDir, claudeDir, isFirstRun } = initializeClaudeFolder(cwd);
@@ -16,9 +15,6 @@ export async function startBot(cwd: string): Promise<void> {
   if (isFirstRun) {
     console.log("\n✨ First run detected - initialized project structure\n");
   }
-
-  // Load MCP servers
-  const mcpServers = await loadMCPServers(claudeDir);
 
   // Validate environment variables
   const token = process.env.DISCORD_BOT_TOKEN;
@@ -34,7 +30,9 @@ export async function startBot(cwd: string): Promise<void> {
   console.log(`📊 Active sessions: ${db.getActiveCount()}\n`);
 
   // Initialize session manager
-  const sessionManager = new SessionManager(db, sessionsDir, mcpServers);
+  const sessionManager = new SessionManager(db, sessionsDir);
+  await sessionManager.initialize(token);
+  console.log("");
 
   // Connect to Discord
   console.log("🔌 Connecting to Discord...\n");
@@ -55,10 +53,13 @@ export async function startBot(cwd: string): Promise<void> {
 
   // Setup graceful shutdown
   const shutdown = async () => {
-    console.log("\n⏸️  Shutting down ClaudeBot...");
+    console.log("\n⏸️  Shutting down Cordbot...");
 
     // Stop cron scheduler
     cronRunner.stop();
+
+    // Stop token refresh
+    sessionManager.shutdown();
 
     // Close database
     db.close();
@@ -68,7 +69,7 @@ export async function startBot(cwd: string): Promise<void> {
     client.destroy();
     console.log("🔌 Discord client disconnected");
 
-    console.log("\n👋 ClaudeBot stopped");
+    console.log("\n👋 Cordbot stopped");
     process.exit(0);
   };
 
@@ -84,7 +85,7 @@ export async function startBot(cwd: string): Promise<void> {
     }
   }, 24 * 60 * 60 * 1000);
 
-  console.log("✅ ClaudeBot is now running!\n");
+  console.log("✅ Cordbot is now running!\n");
   console.log(`📊 Watching ${channelMappings.length} channels`);
   console.log(`💬 Bot is ready to receive messages\n`);
   console.log("Press Ctrl+C to stop\n");
