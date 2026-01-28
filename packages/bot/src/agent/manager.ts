@@ -30,6 +30,7 @@ export class SessionManager {
   private tokenManager: TokenManager | null = null;
   private currentChannels = new Map<string, ThreadChannel | TextChannel>();
   private currentWorkingDirs = new Map<string, string>();
+  private filesToShare = new Map<string, string[]>(); // sessionId -> file paths
 
   constructor(
     private db: SessionDatabase,
@@ -38,11 +39,21 @@ export class SessionManager {
 
   async initialize(botToken: string): Promise<void> {
     // Load built-in tools (always available, no auth needed)
-    const builtinTools = loadBuiltinTools(() => {
-      // Get the working directory for the currently executing session
-      const entries = Array.from(this.currentWorkingDirs.entries());
-      return entries.length > 0 ? entries[0][1] : process.cwd();
-    });
+    const builtinTools = loadBuiltinTools(
+      () => {
+        // Get the working directory for the currently executing session
+        const entries = Array.from(this.currentWorkingDirs.entries());
+        return entries.length > 0 ? entries[0][1] : process.cwd();
+      },
+      (filePath: string) => {
+        // Queue file for sharing - get current session
+        const entries = Array.from(this.currentWorkingDirs.entries());
+        if (entries.length > 0) {
+          const sessionId = entries[0][0];
+          this.queueFileForSharing(sessionId, filePath);
+        }
+      }
+    );
 
     // Fetch manifest from service for authenticated tools
     const manifest = await fetchManifest(botToken, SERVICE_URL);
@@ -298,6 +309,24 @@ export class SessionManager {
     // Valid, remove it (one-time use)
     this.pendingCronSessions.delete(channelId);
     return pending;
+  }
+
+  /**
+   * Queue a file to be shared with the user (attached to Discord)
+   */
+  queueFileForSharing(sessionId: string, filePath: string): void {
+    const existing = this.filesToShare.get(sessionId) || [];
+    existing.push(filePath);
+    this.filesToShare.set(sessionId, existing);
+  }
+
+  /**
+   * Get and clear files queued for sharing
+   */
+  getFilesToShare(sessionId: string): string[] {
+    const files = this.filesToShare.get(sessionId) || [];
+    this.filesToShare.delete(sessionId);
+    return files;
   }
 
   /**

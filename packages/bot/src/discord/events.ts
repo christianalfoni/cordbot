@@ -1,5 +1,6 @@
 import { Client, Message, TextChannel, ThreadChannel, GuildChannel, Interaction } from 'discord.js';
 import fs from 'fs';
+import path from 'path';
 import { SessionManager } from '../agent/manager.js';
 import { streamToDiscord } from '../agent/stream.js';
 import { ChannelMapping, getChannelMapping, syncNewChannel, updateChannelClaudeMdTopic } from './sync.js';
@@ -289,17 +290,26 @@ async function handleMessage(
     sessionManager.setWorkingDirContext(sessionId, workingDir);
 
     try {
+      // Handle attachments if present
+      let userMessage = message.content;
+      if (message.attachments.size > 0) {
+        const attachmentInfo = await downloadAttachments(message, workingDir);
+        if (attachmentInfo.length > 0) {
+          userMessage = `${message.content}\n\n[Files attached and saved to working directory: ${attachmentInfo.join(', ')}]`;
+        }
+      }
+
       // Create query for Claude
       // For new sessions, pass null to let SDK create a fresh session
       // For existing sessions, pass the real SDK session ID to resume
       const queryResult = sessionManager.createQuery(
-        message.content,
+        userMessage,
         isNew ? null : sessionId,
         workingDir
       );
 
       // Stream response from Claude agent to Discord
-      await streamToDiscord(queryResult, threadChannel, sessionManager, sessionId);
+      await streamToDiscord(queryResult, threadChannel, sessionManager, sessionId, workingDir);
     } finally {
       // Clear contexts after execution
       sessionManager.clearChannelContext(sessionId);
@@ -319,4 +329,33 @@ async function handleMessage(
       console.error('Failed to send error message to user:', replyError);
     }
   }
+}
+
+async function downloadAttachments(message: Message, workingDir: string): Promise<string[]> {
+  const attachmentNames: string[] = [];
+
+  for (const attachment of message.attachments.values()) {
+    try {
+      // Fetch the attachment
+      const response = await fetch(attachment.url);
+      if (!response.ok) {
+        console.error(`Failed to download attachment ${attachment.name}: ${response.statusText}`);
+        continue;
+      }
+
+      // Get the file content
+      const buffer = Buffer.from(await response.arrayBuffer());
+
+      // Save to channel folder (overwrite if exists)
+      const filePath = path.join(workingDir, attachment.name);
+      fs.writeFileSync(filePath, buffer);
+
+      attachmentNames.push(attachment.name);
+      console.log(`📎 Downloaded attachment: ${attachment.name} (${buffer.length} bytes)`);
+    } catch (error) {
+      console.error(`Failed to download attachment ${attachment.name}:`, error);
+    }
+  }
+
+  return attachmentNames;
 }

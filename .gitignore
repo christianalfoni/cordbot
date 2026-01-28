@@ -143,3 +143,4 @@ vite.config.ts.timestamp-*
 .claude/  # Contains oauth-tokens.json and other sensitive runtime data
 *.test.db
 .vitest/
+packages/bot/README.md  # Generated from root README.md before publishing

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { DebugAuth } from './DebugAuth';
 
 interface LoginProps {
   onSignIn: () => Promise<void>;
@@ -23,7 +22,6 @@ export function Login({ onSignIn }: LoginProps) {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
-      <DebugAuth />
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="mx-auto h-16 w-16 bg-indigo-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg">

@@ -185,6 +185,7 @@ export class CronRunner {
           channel,
           this.sessionManager,
           sessionId,
+          folderPath,
           `⏰ **Scheduled task:** ${job.task}`
         );
 

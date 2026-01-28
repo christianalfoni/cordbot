@@ -1,16 +1,23 @@
 {
-  "name": "@cordbot/bot",
+  "name": "@cordbot/agent",
   "version": "1.0.0",
-  "description": "Discord bot powered by Claude Code SDK for autonomous coding assistance",
+  "description": "Discord bot powered by Claude Agent SDK",
   "type": "module",
   "bin": {
     "cordbot": "./bin/cordbot.js"
   },
+  "files": [
+    "dist",
+    "bin",
+    "templates",
+    "README.md"
+  ],
   "scripts": {
     "dev": "tsx watch src/cli.ts",
     "build": "tsc && chmod +x bin/cordbot.js",
     "start": "node dist/cli.js",
-    "prepublishOnly": "npm run build",
+    "copy-readme": "node scripts/copy-readme.js",
+    "prepublishOnly": "npm run copy-readme && npm run build",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run"
