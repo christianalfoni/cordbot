@@ -1,5 +1,10 @@
 {
-  "buildCommand": "pnpm --filter @cordbot/web-service build",
+  "buildCommand": "pnpm install && pnpm --filter @cordbot/web-service build",
   "outputDirectory": "packages/web-service/dist",
-  "framework": "vite"
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }
