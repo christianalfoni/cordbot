@@ -12,6 +12,7 @@ interface StreamState {
   progressMessages: Message[];
   planContent: string | null;
   messagePrefix: string | null;
+  workingDir: string;
 }
 
 export async function streamToDiscord(
@@ -19,6 +20,7 @@ export async function streamToDiscord(
   threadChannel: TextChannel | ThreadChannel,
   sessionManager: SessionManager,
   sessionId: string,
+  workingDir: string,
   messagePrefix?: string
 ): Promise<void> {
   const state: StreamState = {
@@ -27,6 +29,7 @@ export async function streamToDiscord(
     progressMessages: [],
     planContent: null,
     messagePrefix: messagePrefix || null,
+    workingDir,
   };
 
   try {
@@ -37,6 +40,9 @@ export async function streamToDiscord(
 
     // Save session ID for resumption
     await sessionManager.updateSession(sessionId, threadChannel.id);
+
+    // Attach any files queued for sharing
+    await attachSharedFiles(threadChannel, sessionManager, sessionId);
   } catch (error) {
     console.error('Stream error:', error);
     await threadChannel.send(
@@ -161,9 +167,11 @@ async function handleStreamEvent(
           const shouldShow = shouldShowToolMessage(state.currentToolUse.name, state.currentToolUse.input);
           if (shouldShow) {
             const emoji = getToolEmoji(state.currentToolUse.name);
-            const description = getToolDescription(state.currentToolUse.name, state.currentToolUse.input);
+            const description = getToolDescription(state.currentToolUse.name, state.currentToolUse.input, state.workingDir);
+            // Strip MCP server prefix from tool name for cleaner display
+            const displayName = stripMcpPrefix(state.currentToolUse.name);
             const msg = await channel.send(
-              `\`\`\`\n${emoji} ${state.currentToolUse.name}: ${description}\n\`\`\``
+              `\`\`\`\n${emoji} ${displayName}: ${description}\n\`\`\``
             );
             state.toolMessages.push(msg);
           }
@@ -310,7 +318,26 @@ function shouldShowToolMessage(toolName: string, input: string): boolean {
   }
 }
 
+function stripMcpPrefix(toolName: string): string {
+  // Remove MCP server prefix like "mcp__cordbot-dynamic-tools__"
+  const mcpPrefixRegex = /^mcp__[^_]+__/;
+  return toolName.replace(mcpPrefixRegex, '');
+}
+
+function stripWorkingDirPrefix(filePath: string, workingDir: string): string {
+  // If the file path starts with the working directory, strip it to show relative path
+  if (filePath.startsWith(workingDir)) {
+    const relative = filePath.slice(workingDir.length);
+    // Remove leading slash if present
+    return relative.startsWith('/') ? relative.slice(1) : relative;
+  }
+  return filePath;
+}
+
 function getToolEmoji(toolName: string): string {
+  // Strip MCP prefix for emoji lookup
+  const cleanName = stripMcpPrefix(toolName);
+
   const emojiMap: Record<string, string> = {
     Bash: '⚙️',
     Read: '📄',
@@ -321,6 +348,7 @@ function getToolEmoji(toolName: string): string {
     WebFetch: '🌐',
     WebSearch: '🔎',
     Task: '🤖',
+    shareFile: '📎',
     cron_list_jobs: '⏰',
     cron_add_job: '➕',
     cron_remove_job: '🗑️',
@@ -329,10 +357,10 @@ function getToolEmoji(toolName: string): string {
     gmail_list_messages: '📬',
   };
 
-  return emojiMap[toolName] || '🔧';
+  return emojiMap[cleanName] || '🔧';
 }
 
-function getToolDescription(toolName: string, input: string): string {
+function getToolDescription(toolName: string, input: string, workingDir: string): string {
   try {
     const params = JSON.parse(input);
 
@@ -341,13 +369,13 @@ function getToolDescription(toolName: string, input: string): string {
         return params.description || params.command || 'Running command';
 
       case 'Read':
-        return params.file_path || 'Reading file';
+        return stripWorkingDirPrefix(params.file_path || 'Reading file', workingDir);
 
       case 'Write':
-        return params.file_path || 'Writing file';
+        return stripWorkingDirPrefix(params.file_path || 'Writing file', workingDir);
 
       case 'Edit':
-        return params.file_path || 'Editing file';
+        return stripWorkingDirPrefix(params.file_path || 'Editing file', workingDir);
 
       case 'Glob':
         return params.pattern || 'Searching files';
@@ -379,6 +407,9 @@ function getToolDescription(toolName: string, input: string): string {
       case 'EnterPlanMode':
         return 'Entering plan mode';
 
+      case 'shareFile':
+        return `Sharing file: ${params.filePath}`;
+
       case 'cron_list_jobs':
         return 'Listing scheduled jobs';
 
@@ -408,5 +439,33 @@ function getToolDescription(toolName: string, input: string): string {
   } catch (e) {
     // If JSON parsing fails, return truncated raw input
     return input.slice(0, 100);
+  }
+}
+
+async function attachSharedFiles(
+  channel: TextChannel | ThreadChannel,
+  sessionManager: SessionManager,
+  sessionId: string
+): Promise<void> {
+  const filesToShare = sessionManager.getFilesToShare(sessionId);
+
+  if (filesToShare.length === 0) {
+    return;
+  }
+
+  try {
+    const attachments = filesToShare.map(filePath => new AttachmentBuilder(filePath));
+
+    await channel.send({
+      content: '📎 Shared files:',
+      files: attachments
+    });
+
+    console.log(`📎 Attached ${filesToShare.length} shared file(s)`);
+  } catch (error) {
+    console.error('Failed to attach shared files:', error);
+    await channel.send(
+      `❌ Failed to attach shared files: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
   }
 }

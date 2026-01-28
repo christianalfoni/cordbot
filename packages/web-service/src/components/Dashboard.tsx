@@ -3,6 +3,7 @@ import { Dialog, DialogPanel } from '@headlessui/react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/20/solid';
 import {
   BellIcon,
+  BookOpenIcon,
   Cog6ToothIcon,
   HomeIcon,
   LinkIcon,
@@ -10,6 +11,7 @@ import {
 import { UserData } from '../hooks/useAuth';
 import { BotSetup } from './BotSetup';
 import { GmailIntegration } from './GmailIntegration';
+import { Documentation } from './Documentation';
 
 interface DashboardProps {
   userData: UserData;
@@ -22,6 +24,7 @@ const secondaryNavigation = [
   { name: 'Overview', href: '#', icon: HomeIcon, current: true },
   { name: 'Bot Setup', href: '#bot-setup', icon: Cog6ToothIcon, current: false },
   { name: 'Service Integrations', href: '#integrations', icon: LinkIcon, current: false },
+  { name: 'Documentation', href: '#docs', icon: BookOpenIcon, current: false },
 ];
 
 function classNames(...classes: string[]) {
@@ -231,7 +234,7 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
               <div>
                 <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Bot Setup</h2>
                 <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
-                  Configure your Discord bot to work with Cordbot CLI.
+                  Configure your Discord bot to work with the Cordbot agent.
                 </p>
 
                 <div className="mt-6">
@@ -259,6 +262,8 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
                 </div>
               </div>
             )}
+
+            {currentSection === 'docs' && <Documentation />}
           </div>
         </main>
       </div>
