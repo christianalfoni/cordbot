@@ -1,0 +1,26 @@
+# {{CHANNEL_NAME}}
+
+<!-- Add channel-specific project context here -->
+
+**Working Directory:** `{{FOLDER_PATH}}`
+
+---
+
+## Automation
+
+This channel supports scheduled autonomous tasks via `.claude-cron`.
+
+**Example `.claude-cron`:**
+```yaml
+jobs:
+  - name: "Daily summary"
+    schedule: "0 9 * * *"
+    task: "Summarize recent changes"
+    postTo: "thread"
+```
+
+Results will be posted as threads in this channel.
+
+---
+
+See the root CLAUDE.md file for general Discord bot behavior and capabilities.

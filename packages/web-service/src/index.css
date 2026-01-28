@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply transition-colors duration-200;
+  }
+}
+
+@layer utilities {
+  .not-dark\:hidden {
+    display: none;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .dark\:not-dark\:hidden {
+      display: block;
+    }
+  }
+}

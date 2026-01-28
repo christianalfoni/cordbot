@@ -1,0 +1,67 @@
+import './firebase';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useAuth } from './hooks/useAuth';
+import { Login } from './components/Login';
+import { Dashboard } from './components/Dashboard';
+import { GmailCallback } from './pages/GmailCallback';
+import { CliAuth } from './pages/CliAuth';
+import { useEffect } from 'react';
+
+function AppContent() {
+  const { user, userData, loading, signInWithDiscord, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  // Check for pending CLI auth after successful login
+  useEffect(() => {
+    if (user && userData && !loading) {
+      const pendingCallback = sessionStorage.getItem('cli_auth_callback');
+      if (pendingCallback) {
+        sessionStorage.removeItem('cli_auth_callback');
+        navigate(`/auth/cli?callback=${encodeURIComponent(pendingCallback)}`);
+      }
+    }
+  }, [user, userData, loading, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="mx-auto h-16 w-16 bg-indigo-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+            <span className="text-white font-bold text-3xl">C</span>
+          </div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400 text-sm font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user || !userData) {
+    return (
+      <Routes>
+        <Route path="/auth/callback/gmail" element={<GmailCallback />} />
+        <Route path="/auth/cli" element={<CliAuth />} />
+        <Route path="*" element={<Login onSignIn={async () => { await signInWithDiscord(); }} />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<Dashboard userData={userData} onSignOut={signOut} />} />
+      <Route path="/auth/callback/gmail" element={<GmailCallback />} />
+      <Route path="/auth/cli" element={<CliAuth />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
+  );
+}
+
+export default App;

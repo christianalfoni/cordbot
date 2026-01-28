@@ -1,0 +1,58 @@
+{
+  "name": "@cordbot/bot",
+  "version": "1.0.0",
+  "description": "Discord bot powered by Claude Code SDK for autonomous coding assistance",
+  "type": "module",
+  "bin": {
+    "cordbot": "./bin/cordbot.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/cli.ts",
+    "build": "tsc && chmod +x bin/cordbot.js",
+    "start": "node dist/cli.js",
+    "prepublishOnly": "npm run build",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run"
+  },
+  "keywords": [
+    "discord",
+    "claude",
+    "bot",
+    "ai",
+    "coding",
+    "assistant"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/express": "^5.0.6",
+    "better-sqlite3": "^9.2.2",
+    "chalk": "^5.3.0",
+    "chokidar": "^3.5.3",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1",
+    "express": "^5.2.1",
+    "googleapis": "^128.0.0",
+    "inquirer": "^9.2.12",
+    "js-yaml": "^4.1.0",
+    "node-cron": "^3.0.3",
+    "open": "^11.0.0",
+    "ora": "^8.0.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.7",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.10.6",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

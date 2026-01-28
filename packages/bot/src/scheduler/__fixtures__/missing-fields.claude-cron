@@ -1,0 +1,4 @@
+jobs:
+  - name: "Missing schedule"
+    task: "Do something"
+    postTo: "thread"
