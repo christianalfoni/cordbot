@@ -1,4 +1,4 @@
-# CLI Authentication Flow
+# Agent Authentication Flow
 
 ## Overview
 
@@ -8,20 +8,20 @@ Cordbot now uses a streamlined OAuth-like authentication flow that eliminates ma
 
 ### User Flow
 
-1. **User runs CLI**: `npx cordbot`
-2. **Authentication prompt**: CLI prompts to press ENTER to authenticate
+1. **User runs Agent**: `npx cordbot`
+2. **Authentication prompt**: Agent prompts to press ENTER to authenticate
 3. **Browser opens**: Localhost server starts and browser opens to web service `/auth/cli` page
 4. **Web service checks**:
    - If not logged in → redirects to login with error
    - If no bot configured → shows error message with instructions
-   - If bot configured → redirects back to CLI with token and guild ID
-5. **CLI receives token**: Localhost server receives the callback and stores the credentials
+   - If bot configured → redirects back to Agent with token and guild ID
+5. **Agent receives token**: Localhost server receives the callback and stores the credentials
 6. **Configure Claude API**: User enters their Claude API key
 7. **Bot starts**: Cordbot is ready to use!
 
 ### Technical Details
 
-**CLI Side** (`packages/bot/src/auth.ts`):
+**Agent Side** (`packages/bot/src/auth.ts`):
 - Starts Express server on `localhost:3456` (or next available port)
 - Opens browser to `{WEB_SERVICE_URL}/auth/cli?callback=http://localhost:3456/callback`
 - Waits for callback with token and guild ID
@@ -39,7 +39,7 @@ Cordbot now uses a streamlined OAuth-like authentication flow that eliminates ma
 
 **Environment Variables**:
 ```bash
-# CLI (optional, defaults to cordbot.io)
+# Agent (optional, defaults to cordbot.io)
 WEB_SERVICE_URL=https://your-web-service.com
 ```
 
@@ -50,7 +50,7 @@ For production, you'll need to set `WEB_SERVICE_URL` environment variable to poi
 
 ### No Bot Configured
 If the user hasn't set up their bot on the web service:
-1. CLI shows error message
+1. Agent shows error message
 2. Directs user to visit web service
 3. User sets up bot
 4. User runs `npx cordbot` again
@@ -58,7 +58,7 @@ If the user hasn't set up their bot on the web service:
 ### Not Authenticated
 If the user isn't logged in:
 1. Redirects to callback with error
-2. CLI shows message to visit web service and sign in
+2. Agent shows message to visit web service and sign in
 3. User signs in
 4. User runs `npx cordbot` again
 
@@ -72,12 +72,12 @@ If authentication takes longer than 5 minutes:
 ✅ **No manual token copying** - Seamless browser-based auth
 ✅ **Better security** - Token never displayed in plaintext
 ✅ **Guided setup** - Users discover the web interface naturally
-✅ **Familiar pattern** - Similar to GitHub CLI, AWS CLI, etc.
+✅ **Familiar pattern** - Similar to GitHub Agent, AWS Agent, etc.
 ✅ **Error recovery** - Clear instructions when setup incomplete
 
 ## Files Modified
 
-### CLI
+### Agent
 - `packages/bot/src/auth.ts` - New authentication module
 - `packages/bot/src/cli.ts` - Updated to use web service auth
 - `packages/bot/package.json` - Added `express` and `open` dependencies

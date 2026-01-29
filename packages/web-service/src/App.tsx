@@ -11,7 +11,7 @@ function AppContent() {
   const { user, userData, loading, signInWithDiscord, signOut } = useAuth();
   const navigate = useNavigate();
 
-  // Check for pending CLI auth after successful login
+  // Check for pending agent auth after successful login
   useEffect(() => {
     if (user && userData && !loading) {
       const pendingCallback = sessionStorage.getItem('cli_auth_callback');

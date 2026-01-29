@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useGmailAuth } from '../hooks/useGmailAuth';
@@ -8,6 +9,7 @@ interface GmailIntegrationProps {
 }
 
 export function GmailIntegration({ userData }: GmailIntegrationProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const { initiateOAuth, disconnect, isConnecting, error } = useGmailAuth(userData.id);
 
   const gmailConnection = userData.oauthConnections?.gmail;
@@ -37,7 +39,7 @@ export function GmailIntegration({ userData }: GmailIntegrationProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
           <div className="flex gap-3">
@@ -53,73 +55,81 @@ export function GmailIntegration({ userData }: GmailIntegrationProps) {
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700">
-        {/* Gmail Connection Status */}
-        <div className="p-6">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/20">
-              <svg className="h-6 w-6 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M3 4a2 2 0 00-2 2v1.161l8.441 4.221a1.25 1.25 0 001.118 0L19 7.162V6a2 2 0 00-2-2H3z" />
-                <path d="M19 8.839l-7.77 3.885a2.75 2.75 0 01-2.46 0L1 8.839V14a2 2 0 002 2h14a2 2 0 002-2V8.839z" />
-              </svg>
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Gmail</h4>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Read and manage email messages
-              </p>
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        {/* Compact Header - Always Visible */}
+        <div className="w-full flex items-center gap-4 p-4">
+          {/* Icon */}
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/20">
+            <svg className="h-5 w-5 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M3 4a2 2 0 00-2 2v1.161l8.441 4.221a1.25 1.25 0 001.118 0L19 7.162V6a2 2 0 00-2-2H3z" />
+              <path d="M19 8.839l-7.77 3.885a2.75 2.75 0 01-2.46 0L1 8.839V14a2 2 0 002 2h14a2 2 0 002-2V8.839z" />
+            </svg>
+          </div>
 
-              {!isConnected ? (
-                <div className="mt-4">
-                  <button
-                    onClick={initiateOAuth}
-                    disabled={isConnecting}
-                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-indigo-500 dark:hover:bg-indigo-400"
-                  >
-                    {isConnecting ? 'Connecting...' : 'Connect Gmail'}
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  <div className="rounded-lg bg-green-50 dark:bg-green-900/20 px-3 py-2 border border-green-200 dark:border-green-800">
-                    <div className="flex items-center gap-2">
-                      <svg className="h-4 w-4 text-green-600 dark:text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-sm font-medium text-green-900 dark:text-green-200">Connected</span>
-                    </div>
-                    <p className="mt-1 text-xs text-green-700 dark:text-green-300 truncate">{gmailConnection.email}</p>
-                  </div>
-                  <button
-                    onClick={disconnect}
-                    disabled={isConnecting}
-                    className="text-sm font-semibold text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isConnecting ? 'Disconnecting...' : 'Disconnect'}
-                  </button>
-                </div>
-              )}
-            </div>
+          {/* Title + Description - Clickable to expand */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex-1 min-w-0 text-left hover:opacity-80 transition-opacity"
+          >
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Gmail</h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Read and manage email messages</p>
+          </button>
+
+          {/* Action Buttons - Right Aligned */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {!isConnected ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  initiateOAuth();
+                }}
+                disabled={isConnecting}
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-indigo-500 dark:hover:bg-indigo-400"
+              >
+                {isConnecting ? 'Connecting...' : 'Connect'}
+              </button>
+            ) : (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  disconnect();
+                }}
+                disabled={isConnecting}
+                className="text-sm font-semibold text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isConnecting ? 'Disconnecting...' : 'Disconnect'}
+              </button>
+            )}
+
+            {/* Chevron - only show if connected */}
+            {isConnected && (
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+              >
+                <svg
+                  className={`h-5 w-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Available Tools */}
-        <div className="p-6">
-          <h5 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Available Tools</h5>
-
-          {!isConnected ? (
-            <div className="text-center py-8">
-              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Connect Gmail to enable tools</p>
-            </div>
-          ) : (
-            <ul role="list" className="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-              {/* List Messages Tool */}
-              <li>
-                <label className="flex items-start gap-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
-                  <div className="flex h-6 items-center">
+        {/* Expandable Content - Tools Only */}
+        {isExpanded && isConnected && (
+          <div className="border-t border-gray-200 dark:border-gray-700">
+            <div className="p-4">
+              <h5 className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-3">
+                Available Tools
+              </h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* List Messages Tool */}
+                <label className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
+                  <div className="flex h-5 items-center">
                     <input
                       type="checkbox"
                       checked={listMessagesEnabled}
@@ -128,21 +138,19 @@ export function GmailIntegration({ userData }: GmailIntegrationProps) {
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-0.5">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">gmail_list_messages</p>
-                      <span className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-400 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-400/30">
+                      <span className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-400/30">
                         Read
                       </span>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">List and search email messages from your inbox</p>
                   </div>
                 </label>
-              </li>
 
-              {/* Send Email Tool */}
-              <li>
-                <label className="flex items-start gap-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
-                  <div className="flex h-6 items-center">
+                {/* Send Email Tool */}
+                <label className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
+                  <div className="flex h-5 items-center">
                     <input
                       type="checkbox"
                       checked={sendEmailEnabled}
@@ -151,19 +159,19 @@ export function GmailIntegration({ userData }: GmailIntegrationProps) {
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-0.5">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">gmail_send_email</p>
-                      <span className="inline-flex items-center rounded-md bg-amber-50 dark:bg-amber-900/30 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-700/10 dark:ring-amber-400/30">
+                      <span className="inline-flex items-center rounded-md bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-700/10 dark:ring-amber-400/30">
                         Write
                       </span>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Send emails via Gmail (requires user approval)</p>
                   </div>
                 </label>
-              </li>
-            </ul>
-          )}
-        </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

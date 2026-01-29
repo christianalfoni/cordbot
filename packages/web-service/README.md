@@ -9,7 +9,7 @@ The web service provides a user-friendly interface for:
 1. **Bot Setup** - Guided flow for creating and configuring your Discord bot
 2. **Token Management** - Securely store and manage your bot token
 3. **Service Integrations** - Connect OAuth-based services (Gmail, Calendar, Slack, etc.)
-4. **CLI Integration** - Copy your bot token for use with the CLI
+4. **Agent Integration** - Copy your bot token for use with the agent
 
 ## Getting Started
 
@@ -86,18 +86,18 @@ If the bot is in multiple guilds, users select which one to use with Cordbot:
 - No guilds: Show invite link
 - Multiple guilds: User chooses one
 
-### 5. Use with CLI
+### 5. Use with Agent
 
-Users run the Cordbot CLI which automatically authenticates:
+Users run the Cordbot agent which automatically authenticates:
 
 ```bash
 npx cordbot
-# CLI opens browser for automatic authentication
+# Agent opens browser for automatic authentication
 # User provides Claude API key
 # Bot starts!
 ```
 
-The CLI uses an OAuth-like flow that automatically fetches the bot token and guild ID from the web service, eliminating manual token copying.
+The agent uses an OAuth-like flow that automatically fetches the bot token and guild ID from the web service, eliminating manual token copying.
 
 ## Project Structure
 

@@ -60,7 +60,7 @@ export function CliAuth() {
       // Store the callback URL for after login
       sessionStorage.setItem('cli_auth_callback', callbackParam);
       setStatus('error');
-      setErrorMessage('Please sign in with Discord to continue CLI authentication.');
+      setErrorMessage('Please sign in with Discord to continue agent authentication.');
       return;
     }
 
@@ -75,14 +75,14 @@ export function CliAuth() {
 
     if (!hasBotConfigured) {
       setStatus('error');
-      setErrorMessage('No bot configured. Set up your bot below, then try running the CLI again.');
+      setErrorMessage('No bot configured. Set up your bot below, then try running the agent again.');
 
       // Don't redirect - let user set up bot here
       return;
     }
 
     // Success - redirect to callback with token and guild ID
-    console.log('[CliAuth] Redirecting to CLI with token');
+    console.log('[CliAuth] Redirecting to agent with token');
     setStatus('redirecting');
     setHasRedirected(true);
     const redirectUrl = new URL(callbackParam);
@@ -112,8 +112,8 @@ export function CliAuth() {
     console.log('[CliAuth] Bot status check', { hadBotToken: hadBotToken.current, hasBotNow });
 
     if (hadBotToken.current === false && hasBotNow) {
-      // Bot just got configured! Redirect to CLI
-      console.log('[CliAuth] Bot detected! Redirecting to CLI');
+      // Bot just got configured! Redirect to agent
+      console.log('[CliAuth] Bot detected! Redirecting to agent');
       setStatus('redirecting');
       setHasRedirected(true);
       const redirectUrl = new URL(callback);
@@ -145,7 +145,7 @@ export function CliAuth() {
             <span className="text-white font-bold text-3xl">C</span>
           </div>
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400 text-sm font-medium">Redirecting to CLI...</p>
+          <p className="text-gray-600 dark:text-gray-400 text-sm font-medium">Redirecting to agent...</p>
         </div>
       </div>
     );
@@ -191,7 +191,7 @@ export function CliAuth() {
                   Cordbot Setup
                 </h1>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Configure your bot to continue with CLI authentication
+                  Configure your bot to continue with agent authentication
                 </p>
               </div>
             </div>

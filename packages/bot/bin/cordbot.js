@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-// This file is the entry point for the CLI command
-// It simply imports and runs the CLI module
+// This file is the entry point for the agent command
+// It simply imports and runs the agent module
 import('../dist/cli.js').then(module => {
   module.run();
 }).catch(err => {

@@ -13,6 +13,7 @@ export function BotSetup({ userId, initialToken, initialGuildId }: BotSetupProps
   const [showTokenInput, setShowTokenInput] = useState(!initialToken);
   const [selectedGuild, setSelectedGuild] = useState<string | undefined>(initialGuildId);
   const [copied, setCopied] = useState(false);
+  const [commandCopied, setCommandCopied] = useState(false);
 
   const handleSubmitToken = async () => {
     if (!tokenInput.trim()) return;
@@ -36,6 +37,12 @@ export function BotSetup({ userId, initialToken, initialGuildId }: BotSetupProps
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+  };
+
+  const handleCopyCommand = () => {
+    navigator.clipboard.writeText('curl -fsSL https://cordbot.io/install.sh | bash');
+    setCommandCopied(true);
+    setTimeout(() => setCommandCopied(false), 2000);
   };
 
   const handleResetBot = async () => {
@@ -259,7 +266,7 @@ export function BotSetup({ userId, initialToken, initialGuildId }: BotSetupProps
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Select a Server</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-            Your bot is in {validationResult.guilds.length} servers. Select which one to use with Cordbot CLI.
+            Your bot is in {validationResult.guilds.length} servers. Select which one to use with Cordbot.
           </p>
           <ul role="list" className="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
             {validationResult.guilds.map((guild) => (
@@ -327,13 +334,33 @@ export function BotSetup({ userId, initialToken, initialGuildId }: BotSetupProps
         <div className="p-6">
           <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Start Using Cordbot</h4>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Your bot is ready! Run the command below to install and start the CLI:
+            Your bot is ready! Run the command below to install and start the agent:
           </p>
-          <div className="bg-gray-900 dark:bg-gray-950 rounded-lg p-4 mb-4">
-            <code className="text-sm text-green-400 font-mono">curl -fsSL https://cordbot.io/install.sh | bash</code>
+          <div className="relative bg-gray-900 dark:bg-gray-950 rounded-lg p-4 mb-4 group">
+            <code className="text-sm text-green-400 font-mono pr-20">curl -fsSL https://cordbot.io/install.sh | bash</code>
+            <button
+              onClick={handleCopyCommand}
+              className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 rounded-md bg-gray-800 dark:bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 dark:hover:bg-gray-800 transition-colors"
+            >
+              {commandCopied ? (
+                <>
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                  </svg>
+                  <span>Copied</span>
+                </>
+              ) : (
+                <>
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-            This will install the Cordbot CLI. After installation, run <code className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">cordbot</code> to start. The CLI will automatically authenticate with your bot configuration.
+            This will install the Cordbot agent. After installation, run <code className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">cordbot</code> to start. The agent will automatically authenticate with your bot configuration.
           </p>
           <button
             onClick={handleCopyToken}

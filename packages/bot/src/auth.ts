@@ -121,7 +121,7 @@ async function startCallbackServer(port: number, callbackUrl: string): Promise<A
             <body>
               <h1>❌ Authentication Failed</h1>
               <p class="error">${error === 'no_bot' ? 'No bot configured' : error === 'not_authenticated' ? 'Not authenticated' : String(error)}</p>
-              <p class="message">Please check the CLI for instructions.</p>
+              <p class="message">Please check the agent for instructions.</p>
               <p class="message">You can close this window.</p>
             </body>
           </html>
@@ -160,7 +160,7 @@ async function startCallbackServer(port: number, callbackUrl: string): Promise<A
           <body>
             <h1>✅ Authentication Successful!</h1>
             <p class="success">Your bot is now authenticated</p>
-            <p class="message">You can close this window and return to the CLI.</p>
+            <p class="message">You can close this window and return to the agent.</p>
           </body>
         </html>
       `);
