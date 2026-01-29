@@ -15,6 +15,7 @@ Cordbot is a directory-based Discord bot that syncs Discord channels to local fo
 - **⏰ Scheduled Tasks**: Configure autonomous tasks with `.claude-cron` files
 - **🔌 Service Integrations**: Connect Gmail, Google Calendar, and other services via OAuth
 - **🔄 Hot Reload**: Watches for configuration changes and reloads automatically
+- **🏥 Health Monitoring**: Built-in health check endpoint for production deployments
 
 ## Getting Started
 
@@ -86,6 +87,32 @@ You: [Attach config.json] "Can you update the timeout to 30 seconds?"
 Claude: [Reads config.json, edits it, uses shareFile to send back]
 Discord: 📎 Shared files: config.json
 ```
+
+## Deployment
+
+### Deployment Templates
+
+Generate deployment configurations for various platforms:
+
+```bash
+# Generate Fly.io deployment template
+npx @cordbot/agent --template=fly
+```
+
+This creates:
+- `Dockerfile` - Simple container using `npx @cordbot/agent`
+- `fly.toml` - Fly.io configuration with persistent volume
+- `DEPLOYMENT.md` - Complete deployment guide
+- `.dockerignore` - Docker build exclusions
+
+The generated `DEPLOYMENT.md` includes:
+- Step-by-step deployment instructions
+- Environment variable configuration
+- Troubleshooting guides
+- Backup and recovery procedures
+
+**Available templates:**
+- `fly` - Deploy to Fly.io with filesystem-based session storage
 
 ## Project Structure
 

@@ -23,7 +23,21 @@ export function setupEventHandlers(
 ): void {
   // Handle new messages
   client.on('messageCreate', async (message) => {
-    await handleMessageWithLock(message, sessionManager, channelMappings);
+    try {
+      await handleMessageWithLock(message, sessionManager, channelMappings);
+    } catch (error) {
+      console.error('❌ Fatal error in messageCreate handler:', error);
+      // Try to notify the user
+      try {
+        await message.reply(
+          `❌ Sorry, I encountered a critical error: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`
+        );
+      } catch (replyError) {
+        console.error('Failed to send error notification:', replyError);
+      }
+    }
   });
 
   // Handle new channels being created
@@ -165,23 +179,35 @@ async function handleMessageWithLock(
     ? message.channel.id
     : message.id; // For new threads, use message ID temporarily
 
-  // Wait for any existing processing on this thread to complete
-  const existingLock = threadLocks.get(threadId);
-  if (existingLock) {
-    await existingLock;
+  try {
+    // Wait for any existing processing on this thread to complete
+    const existingLock = threadLocks.get(threadId);
+    if (existingLock) {
+      await existingLock.catch(() => {
+        // Ignore errors from previous lock - we'll try again
+        console.log(`Previous lock for ${threadId} failed, continuing anyway`);
+      });
+    }
+
+    // Create new lock for this message
+    const newLock = handleMessage(message, sessionManager, channelMappings)
+      .finally(() => {
+        // Remove lock when done
+        try {
+          if (threadLocks.get(threadId) === newLock) {
+            threadLocks.delete(threadId);
+          }
+        } catch (error) {
+          console.error('Error removing lock:', error);
+        }
+      });
+
+    threadLocks.set(threadId, newLock);
+    await newLock;
+  } catch (error) {
+    console.error(`Error in handleMessageWithLock for ${threadId}:`, error);
+    throw error; // Re-throw so outer handler can notify user
   }
-
-  // Create new lock for this message
-  const newLock = handleMessage(message, sessionManager, channelMappings)
-    .finally(() => {
-      // Remove lock when done
-      if (threadLocks.get(threadId) === newLock) {
-        threadLocks.delete(threadId);
-      }
-    });
-
-  threadLocks.set(threadId, newLock);
-  await newLock;
 }
 
 async function handleMessage(
@@ -281,6 +307,25 @@ async function handleMessage(
       } else {
         console.log(`✨ Created new session ${sessionId} for thread ${threadId}`);
       }
+
+      // Verify working directory exists and is accessible
+      if (!fs.existsSync(workingDir)) {
+        console.error(`❌ Working directory does not exist: ${workingDir}`);
+        console.error(`   This likely means the persistent volume is not mounted.`);
+        await threadChannel.send(
+          `❌ Error: Working directory not found. Please check server configuration.`
+        );
+        return;
+      } else {
+        console.log(`✓ Working directory exists: ${workingDir}`);
+        // Check if CLAUDE.md exists
+        const claudeMdPath = path.join(workingDir, 'CLAUDE.md');
+        if (fs.existsSync(claudeMdPath)) {
+          console.log(`✓ CLAUDE.md found in working directory`);
+        } else {
+          console.log(`⚠️  CLAUDE.md not found in working directory`);
+        }
+      }
     }
 
     // Set channel context for permission requests
@@ -302,18 +347,38 @@ async function handleMessage(
       // Create query for Claude
       // For new sessions, pass null to let SDK create a fresh session
       // For existing sessions, pass the real SDK session ID to resume
-      const queryResult = sessionManager.createQuery(
-        userMessage,
-        isNew ? null : sessionId,
-        workingDir
-      );
+      let queryResult;
+      try {
+        queryResult = sessionManager.createQuery(
+          userMessage,
+          isNew ? null : sessionId,
+          workingDir
+        );
+      } catch (queryError) {
+        console.error('Error creating query:', queryError);
+        await threadChannel.send(
+          `❌ Failed to create query: ${queryError instanceof Error ? queryError.message : 'Unknown error'}`
+        );
+        return;
+      }
 
       // Stream response from Claude agent to Discord
-      await streamToDiscord(queryResult, threadChannel, sessionManager, sessionId, workingDir);
+      try {
+        await streamToDiscord(queryResult, threadChannel, sessionManager, sessionId, workingDir);
+      } catch (streamError) {
+        console.error('Error streaming to Discord:', streamError);
+        await threadChannel.send(
+          `❌ Failed to stream response: ${streamError instanceof Error ? streamError.message : 'Unknown error'}`
+        );
+      }
     } finally {
-      // Clear contexts after execution
-      sessionManager.clearChannelContext(sessionId);
-      sessionManager.clearWorkingDirContext(sessionId);
+      // Clear contexts after execution - wrap in try/catch to prevent cleanup errors
+      try {
+        sessionManager.clearChannelContext(sessionId);
+        sessionManager.clearWorkingDirContext(sessionId);
+      } catch (cleanupError) {
+        console.error('Error during context cleanup:', cleanupError);
+      }
     }
   } catch (error) {
     console.error('Error handling message:', error);

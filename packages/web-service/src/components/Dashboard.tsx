@@ -4,6 +4,7 @@ import { Bars3Icon, XMarkIcon } from '@heroicons/react/20/solid';
 import {
   BellIcon,
   BookOpenIcon,
+  CloudArrowUpIcon,
   Cog6ToothIcon,
   LinkIcon,
 } from '@heroicons/react/24/outline';
@@ -11,6 +12,7 @@ import { UserData } from '../hooks/useAuth';
 import { BotSetup } from './BotSetup';
 import { GmailIntegration } from './GmailIntegration';
 import { Documentation } from './Documentation';
+import { Deployment } from './Deployment';
 
 interface DashboardProps {
   userData: UserData;
@@ -22,6 +24,7 @@ const navigation: Array<{ name: string; href: string; current: boolean }> = [];
 const secondaryNavigation = [
   { name: 'Bot Setup', href: '#bot-setup', icon: Cog6ToothIcon, current: true },
   { name: 'Service Integrations', href: '#integrations', icon: LinkIcon, current: false },
+  { name: 'Deployment', href: '#deployment', icon: CloudArrowUpIcon, current: false },
   { name: 'Documentation', href: '#docs', icon: BookOpenIcon, current: false },
 ];
 
@@ -204,6 +207,8 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
                 </div>
               </div>
             )}
+
+            {currentSection === 'deployment' && <Deployment />}
 
             {currentSection === 'docs' && <Documentation />}
           </div>

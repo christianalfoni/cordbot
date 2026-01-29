@@ -33,10 +33,16 @@ export async function streamToDiscord(
   };
 
   try {
+    console.log(`🚀 Starting SDK stream for session ${sessionId}`);
+    console.log(`📁 Working directory: ${workingDir}`);
+
     // Iterate through SDK messages
     for await (const message of queryResult) {
+      console.log(`📨 Received SDK message type: ${message.type}`);
       await handleSDKMessage(message, threadChannel, state, sessionManager, sessionId);
     }
+
+    console.log(`✅ SDK stream completed for session ${sessionId}`);
 
     // Save session ID for resumption
     await sessionManager.updateSession(sessionId, threadChannel.id);
@@ -44,10 +50,20 @@ export async function streamToDiscord(
     // Attach any files queued for sharing
     await attachSharedFiles(threadChannel, sessionManager, sessionId);
   } catch (error) {
-    console.error('Stream error:', error);
-    await threadChannel.send(
-      `❌ Failed to process: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
+    console.error('❌ Stream error:', error);
+    console.error('❌ Stream error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('❌ Stream error type:', error instanceof Error ? error.constructor.name : typeof error);
+
+    try {
+      await threadChannel.send(
+        `❌ Failed to process: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    } catch (sendError) {
+      console.error('Failed to send error message to Discord:', sendError);
+    }
+
+    // Re-throw to let outer handler deal with it
+    throw error;
   }
 }
 

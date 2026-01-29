@@ -5,6 +5,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
+test
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
@@ -140,7 +141,7 @@ vite.config.ts.timestamp-*
 
 # ClaudeBot specific
 .claude/  # Contains oauth-tokens.json and other sensitive runtime data
-*.test.db
+test-storage/  # Test storage directory
 .vitest/
 packages/bot/README.md  # Generated from root README.md before publishing
 packages/bot/dist/binaries/  # Standalone executables

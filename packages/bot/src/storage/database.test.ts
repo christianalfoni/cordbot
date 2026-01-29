@@ -2,48 +2,26 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SessionDatabase } from './database.js';
 import fs from 'fs';
 import path from 'path';
-import Database from 'better-sqlite3';
 
-const TEST_DB_PATH = path.join(process.cwd(), 'test-sessions.test.db');
-
-function initTestDatabase(dbPath: string): void {
-  const db = new Database(dbPath);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS session_mappings (
-      discord_thread_id TEXT PRIMARY KEY,
-      discord_channel_id TEXT NOT NULL,
-      discord_message_id TEXT NOT NULL,
-      session_id TEXT NOT NULL,
-      working_directory TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      last_active_at TEXT NOT NULL,
-      status TEXT NOT NULL CHECK(status IN ('active', 'archived'))
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_session_id ON session_mappings(session_id);
-    CREATE INDEX IF NOT EXISTS idx_channel_id ON session_mappings(discord_channel_id);
-  `);
-  db.close();
-}
+const TEST_STORAGE_DIR = path.join(process.cwd(), 'test-storage');
 
 describe('SessionDatabase', () => {
   let db: SessionDatabase;
 
   beforeEach(() => {
-    // Remove existing test database
-    if (fs.existsSync(TEST_DB_PATH)) {
-      fs.unlinkSync(TEST_DB_PATH);
+    // Remove existing test storage directory
+    if (fs.existsSync(TEST_STORAGE_DIR)) {
+      fs.rmSync(TEST_STORAGE_DIR, { recursive: true, force: true });
     }
 
-    // Initialize fresh database
-    initTestDatabase(TEST_DB_PATH);
-    db = new SessionDatabase(TEST_DB_PATH);
+    // Create fresh storage directory and initialize database
+    db = new SessionDatabase(TEST_STORAGE_DIR);
   });
 
   afterEach(() => {
     db.close();
-    if (fs.existsSync(TEST_DB_PATH)) {
-      fs.unlinkSync(TEST_DB_PATH);
+    if (fs.existsSync(TEST_STORAGE_DIR)) {
+      fs.rmSync(TEST_STORAGE_DIR, { recursive: true, force: true });
     }
   });
 
@@ -211,6 +189,32 @@ describe('SessionDatabase', () => {
     });
   });
 
+  describe('updateSessionId', () => {
+    it('should update session ID and last_active_at', () => {
+      db.createMapping({
+        discord_thread_id: 'thread_123',
+        discord_channel_id: 'channel_456',
+        discord_message_id: 'msg_789',
+        session_id: 'sess_abc',
+        working_directory: '/path/to/project',
+        status: 'active',
+      });
+
+      db.updateSessionId('thread_123', 'sess_xyz');
+
+      const mapping = db.getMapping('thread_123');
+      expect(mapping?.session_id).toBe('sess_xyz');
+
+      // Should be able to find by new session ID
+      const mappingBySessionId = db.getMappingBySessionId('sess_xyz');
+      expect(mappingBySessionId?.discord_thread_id).toBe('thread_123');
+
+      // Should NOT be able to find by old session ID
+      const oldMapping = db.getMappingBySessionId('sess_abc');
+      expect(oldMapping).toBeUndefined();
+    });
+  });
+
   describe('archiveSession', () => {
     it('should change status to archived', () => {
       db.createMapping({
@@ -230,7 +234,7 @@ describe('SessionDatabase', () => {
   });
 
   describe('deleteMapping', () => {
-    it('should remove mapping from database', () => {
+    it('should remove mapping from storage', () => {
       db.createMapping({
         discord_thread_id: 'thread_123',
         discord_channel_id: 'channel_456',
@@ -244,6 +248,27 @@ describe('SessionDatabase', () => {
 
       const mapping = db.getMapping('thread_123');
       expect(mapping).toBeUndefined();
+    });
+
+    it('should remove mapping from indexes', () => {
+      db.createMapping({
+        discord_thread_id: 'thread_123',
+        discord_channel_id: 'channel_456',
+        discord_message_id: 'msg_789',
+        session_id: 'sess_abc',
+        working_directory: '/path/to/project',
+        status: 'active',
+      });
+
+      db.deleteMapping('thread_123');
+
+      // Should not be findable by session ID
+      const mappingBySessionId = db.getMappingBySessionId('sess_abc');
+      expect(mappingBySessionId).toBeUndefined();
+
+      // Should not appear in channel sessions
+      const channelSessions = db.getChannelSessions('channel_456');
+      expect(channelSessions).toHaveLength(0);
     });
   });
 

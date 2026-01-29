@@ -5,12 +5,13 @@ import { setupEventHandlers } from "./discord/events.js";
 import { SessionDatabase } from "./storage/database.js";
 import { SessionManager } from "./agent/manager.js";
 import { CronRunner } from "./scheduler/runner.js";
+import { HealthServer } from "./health/server.js";
 
 export async function startBot(cwd: string): Promise<void> {
   console.log("🚀 Initializing Cordbot...\n");
 
-  // Initialize .claude folder and database
-  const { dbPath, sessionsDir, claudeDir, isFirstRun } = initializeClaudeFolder(cwd);
+  // Initialize .claude folder and storage
+  const { storageDir, sessionsDir, claudeDir, isFirstRun } = initializeClaudeFolder(cwd);
 
   if (isFirstRun) {
     console.log("\n✨ First run detected - initialized project structure\n");
@@ -25,8 +26,8 @@ export async function startBot(cwd: string): Promise<void> {
     throw new Error("Missing required environment variables");
   }
 
-  // Initialize database
-  const db = new SessionDatabase(dbPath);
+  // Initialize storage
+  const db = new SessionDatabase(storageDir);
   console.log(`📊 Active sessions: ${db.getActiveCount()}\n`);
 
   // Initialize session manager
@@ -51,9 +52,25 @@ export async function startBot(cwd: string): Promise<void> {
   setupEventHandlers(client, sessionManager, channelMappings, cwd, guildId, cronRunner);
   console.log("✅ Event handlers registered\n");
 
+  // Start health check server (if port is configured)
+  const healthPort = parseInt(process.env.HEALTH_PORT || "8080");
+  const healthServer = new HealthServer({
+    port: healthPort,
+    client,
+    db,
+    startTime: new Date(),
+  });
+  healthServer.start();
+  console.log("");
+
   // Setup graceful shutdown
   const shutdown = async () => {
+    const stack = new Error().stack;
     console.log("\n⏸️  Shutting down Cordbot...");
+    console.log("📍 Shutdown triggered from:", stack);
+
+    // Stop health server
+    healthServer.stop();
 
     // Stop cron scheduler
     cronRunner.stop();
@@ -73,8 +90,34 @@ export async function startBot(cwd: string): Promise<void> {
     process.exit(0);
   };
 
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => {
+    console.log("🔴 Received SIGINT signal");
+    shutdown();
+  });
+  process.on("SIGTERM", () => {
+    console.log("🔴 Received SIGTERM signal");
+    shutdown();
+  });
+
+  // Handle unhandled promise rejections to prevent silent crashes
+  process.on("unhandledRejection", (reason, promise) => {
+    console.error("❌ Unhandled Promise Rejection:", reason);
+    console.error("Promise:", promise);
+  });
+
+  // Handle uncaught exceptions
+  process.on("uncaughtException", (error) => {
+    console.error("❌ Uncaught Exception:", error);
+  });
+
+  // Detect unexpected exits
+  process.on("beforeExit", (code) => {
+    console.log("⚠️  Process beforeExit event with code:", code);
+  });
+
+  process.on("exit", (code) => {
+    console.log("⚠️  Process exiting with code:", code);
+  });
 
   // Archive old sessions periodically (every 24 hours)
   const archiveDays = parseInt(process.env.ARCHIVE_AFTER_DAYS || "30");

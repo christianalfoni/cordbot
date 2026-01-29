@@ -173,6 +173,149 @@ pnpm build
 firebase deploy --only hosting
 ```
 
+### Fly.io (For the Bot Agent)
+
+To deploy the Cordbot agent to Fly.io for 24/7 operation:
+
+#### Prerequisites
+
+1. Install Fly CLI:
+   ```bash
+   # macOS
+   brew install flyctl
+
+   # Linux/WSL
+   curl -L https://fly.io/install.sh | sh
+
+   # Windows
+   pwsh -Command "iwr https://fly.io/install.ps1 -useb | iex"
+   ```
+
+2. Sign up and authenticate:
+   ```bash
+   fly auth signup  # or fly auth login
+   ```
+
+#### Initial Setup
+
+1. **Create a deployment template:**
+   ```bash
+   npx @cordbot/agent --template=fly
+   ```
+
+   This creates `fly.toml` and `Dockerfile` in your current directory.
+
+2. **Create a Fly.io app:**
+   ```bash
+   fly apps create cordbot-agent
+   ```
+
+3. **Set up secrets:**
+   ```bash
+   # Get your bot token from the web service dashboard
+   fly secrets set DISCORD_BOT_TOKEN="your_bot_token"
+   fly secrets set DISCORD_GUILD_ID="your_guild_id"
+   fly secrets set ANTHROPIC_API_KEY="your_api_key"
+   ```
+
+4. **Create persistent volume (recommended):**
+   ```bash
+   fly volumes create cordbot_data --size 1
+   ```
+
+   The volume persists:
+   - Channel configurations (CLAUDE.md files)
+   - Cron job definitions
+   - Session data
+   - Files created by Claude
+
+#### Deploy
+
+```bash
+fly deploy
+```
+
+#### Monitor and Manage
+
+```bash
+# View logs
+fly logs
+
+# Check status
+fly status
+
+# SSH into the machine
+fly ssh console
+
+# Scale to zero (stop bot)
+fly scale count 0
+
+# Scale back up
+fly scale count 1
+```
+
+#### Updating the Bot
+
+When you publish a new version of `@cordbot/agent`:
+
+1. Update the version in your `Dockerfile`:
+   ```dockerfile
+   RUN npm install -g @cordbot/agent@1.3.x
+   ```
+
+2. Deploy:
+   ```bash
+   fly deploy
+   ```
+
+#### Volume Management
+
+```bash
+# List volumes
+fly volumes list
+
+# Expand volume
+fly volumes extend cordbot_data --size 2
+
+# Backup (manual)
+fly ssh console
+cd /data
+tar -czf /tmp/backup.tar.gz .
+exit
+fly ssh sftp get /tmp/backup.tar.gz ./cordbot-backup.tar.gz
+```
+
+#### Troubleshooting
+
+**Bot not starting:**
+- Check logs: `fly logs`
+- Verify secrets are set: `fly secrets list`
+- Ensure volume is created and mounted
+
+**Bot crashes/restarts:**
+- Check memory usage: `fly status`
+- Increase memory in `fly.toml` if needed (default: 1GB)
+- Review error logs: `fly logs --region arn`
+
+**Files not persisting:**
+- Verify volume is created: `fly volumes list`
+- Check volume is mounted to `/data` in `fly.toml`
+- Ensure bot is writing to `/data` not `/app`
+
+**Permission errors:**
+- The bot runs as the `node` user (non-root)
+- Volume must be owned by `node:node`
+- This is configured automatically in the Dockerfile
+
+#### Cost Estimate
+
+- **App (256MB RAM):** ~$2-3/month
+- **App (1GB RAM):** ~$5-7/month
+- **Volume (1GB):** ~$0.15/month
+- **Total:** ~$2-7/month depending on resources
+
+See [Fly.io pricing](https://fly.io/docs/about/pricing/) for current rates.
+
 ## Development
 
 ### Available Scripts

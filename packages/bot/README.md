@@ -15,23 +15,45 @@ Cordbot is a directory-based Discord bot that syncs Discord channels to local fo
 - **⏰ Scheduled Tasks**: Configure autonomous tasks with `.claude-cron` files
 - **🔌 Service Integrations**: Connect Gmail, Google Calendar, and other services via OAuth
 - **🔄 Hot Reload**: Watches for configuration changes and reloads automatically
+- **🏥 Health Monitoring**: Built-in health check endpoint for production deployments
 
 ## Getting Started
 
-Visit **[cordbot.io](https://cordbot.io)** to:
+### Quick Start (Manual Setup)
+
+You can run the agent locally by setting environment variables:
+
+```bash
+export DISCORD_BOT_TOKEN="your-discord-bot-token"
+export DISCORD_GUILD_ID="your-server-id"
+export WORKSPACE_DIR="./workspace"  # Optional, defaults to ./workspace
+
+npx @cordbot/agent
+```
+
+The agent will sync Discord channels to folders in your workspace directory, where you can interact with Claude through Discord messages and threads.
+
+### Enhanced Setup (With Service Integrations)
+
+For additional capabilities like Gmail, Google Calendar, and other integrations, visit **[cordbot.io](https://cordbot.io)** to:
 
 1. Sign in with your Discord account
 2. Configure your bot token and server
-3. Connect service integrations (Gmail, etc.)
-4. Get your agent authentication token
+3. Connect service integrations (Gmail, Google Calendar, etc.)
+4. Run the agent with automatic authentication
 
-Run the agent:
+When signed in to the service, the agent can access connected integrations as tools that Claude can use. For example:
+- **Gmail**: Send and read emails
+- **Google Calendar**: Create and manage calendar events
+- **More integrations**: Additional services coming soon
+
+Run with authentication:
 
 ```bash
 npx @cordbot/agent
 ```
 
-The bot will sync Discord channels to folders in your workspace directory, where you can interact with Claude through Discord messages and threads.
+The agent will automatically authenticate with your cordbot.io account and gain access to your connected services.
 
 ## How It Works
 
@@ -65,6 +87,32 @@ You: [Attach config.json] "Can you update the timeout to 30 seconds?"
 Claude: [Reads config.json, edits it, uses shareFile to send back]
 Discord: 📎 Shared files: config.json
 ```
+
+## Deployment
+
+### Deployment Templates
+
+Generate deployment configurations for various platforms:
+
+```bash
+# Generate Fly.io deployment template
+npx @cordbot/agent --template=fly
+```
+
+This creates:
+- `Dockerfile` - Simple container using `npx @cordbot/agent`
+- `fly.toml` - Fly.io configuration with persistent volume
+- `DEPLOYMENT.md` - Complete deployment guide
+- `.dockerignore` - Docker build exclusions
+
+The generated `DEPLOYMENT.md` includes:
+- Step-by-step deployment instructions
+- Environment variable configuration
+- Troubleshooting guides
+- Backup and recovery procedures
+
+**Available templates:**
+- `fly` - Deploy to Fly.io with filesystem-based session storage
 
 ## Project Structure
 

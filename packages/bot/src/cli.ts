@@ -15,7 +15,99 @@ interface EnvConfig {
   ARCHIVE_AFTER_DAYS?: string;
 }
 
+async function generateTemplate(templateName: string): Promise<void> {
+  console.log(chalk.cyan.bold('\n📦 Cordbot Template Generator\n'));
+
+  const availableTemplates = ['fly'];
+
+  if (!availableTemplates.includes(templateName)) {
+    console.log(chalk.red(`❌ Unknown template: ${templateName}`));
+    console.log(chalk.yellow(`\nAvailable templates:`));
+    availableTemplates.forEach(t => console.log(chalk.gray(`   - ${t}`)));
+    console.log();
+    process.exit(1);
+  }
+
+  const cwd = process.cwd();
+
+  // Determine the source template directory
+  // When running from dist (built), templates are in ../../templates
+  // When running from source (tsx), templates are in ../templates
+  const distTemplatesPath = path.join(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'templates', templateName);
+  const srcTemplatesPath = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'templates', templateName);
+
+  const templatePath = fs.existsSync(distTemplatesPath) ? distTemplatesPath : srcTemplatesPath;
+
+  if (!fs.existsSync(templatePath)) {
+    console.log(chalk.red(`❌ Template directory not found: ${templatePath}`));
+    process.exit(1);
+  }
+
+  // Copy all files from the template directory to the current directory
+  const spinner = ora(`Generating ${templateName} deployment template...`).start();
+
+  try {
+    const files = fs.readdirSync(templatePath);
+
+    for (const file of files) {
+      const srcPath = path.join(templatePath, file);
+      const destPath = path.join(cwd, file);
+
+      // Check if file already exists
+      if (fs.existsSync(destPath)) {
+        spinner.warn(chalk.yellow(`${file} already exists, skipping...`));
+        continue;
+      }
+
+      // Copy file
+      fs.copyFileSync(srcPath, destPath);
+      spinner.succeed(chalk.green(`Created ${file}`));
+      spinner.start();
+    }
+
+    spinner.stop();
+    console.log(chalk.green.bold(`\n✓ ${templateName} template generated successfully!\n`));
+
+    // Show next steps for fly template
+    if (templateName === 'fly') {
+      console.log(chalk.cyan('Next steps:'));
+      console.log(chalk.gray('  1. Review and customize fly.toml and Dockerfile'));
+      console.log(chalk.gray('  2. Install Fly CLI: https://fly.io/docs/hands-on/install-flyctl/'));
+      console.log(chalk.gray('  3. Follow the deployment guide in DEPLOYMENT.md\n'));
+    }
+  } catch (error) {
+    spinner.fail(chalk.red('Failed to generate template'));
+    console.error(error);
+    process.exit(1);
+  }
+}
+
 export async function run(): Promise<void> {
+  // Parse command line arguments
+  const args = process.argv.slice(2);
+  const templateArg = args.find(arg => arg.startsWith('--template='));
+  const helpArg = args.find(arg => arg === '--help' || arg === '-h');
+
+  if (helpArg) {
+    console.log(chalk.cyan.bold('\n🤖 Cordbot - Discord Bot powered by Claude Code SDK\n'));
+    console.log(chalk.white('Usage:'));
+    console.log(chalk.gray('  npx @cordbot/agent              Start the bot'));
+    console.log(chalk.gray('  npx @cordbot/agent --template=<name>  Generate deployment template\n'));
+    console.log(chalk.white('Options:'));
+    console.log(chalk.gray('  --template=<name>   Generate deployment template'));
+    console.log(chalk.gray('                      Available: fly\n'));
+    console.log(chalk.gray('  --help, -h          Show this help message\n'));
+    console.log(chalk.white('Examples:'));
+    console.log(chalk.gray('  npx @cordbot/agent --template=fly\n'));
+    return;
+  }
+
+  if (templateArg) {
+    const templateName = templateArg.split('=')[1];
+    await generateTemplate(templateName);
+    return;
+  }
+
   console.log(chalk.cyan.bold('\n🤖 Cordbot - Discord Bot powered by Claude Code SDK\n'));
 
   const cwd = process.cwd();

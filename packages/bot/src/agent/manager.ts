@@ -7,6 +7,7 @@ import { loadDynamicTools } from "../tools/loader.js";
 import { loadBuiltinTools } from "../tools/builtin-loader.js";
 import { SERVICE_URL } from "../service/config.js";
 import { TokenManager } from "../service/token-manager.js";
+import { spawn } from "child_process";
 
 export interface SessionData {
   sessionId: string;
@@ -205,6 +206,11 @@ export class SessionManager {
     sessionId: string | null,
     workingDir: string
   ): Query {
+    console.log(`📝 Creating query with options:`);
+    console.log(`   - workingDir: ${workingDir}`);
+    console.log(`   - sessionId: ${sessionId || 'new'}`);
+    console.log(`   - dynamicMcpServer: ${this.dynamicMcpServer ? 'yes' : 'no'}`);
+
     const options: any = {
       cwd: workingDir,
       resume: sessionId || undefined, // Resume if existing, else new
@@ -213,6 +219,70 @@ export class SessionManager {
       allowDangerouslySkipPermissions: true,
       permissionMode: "bypassPermissions",
       tools: { type: "preset", preset: "claude_code" }, // Enable all Claude Code tools
+      verbose: true, // Required for stream-json output format in Claude Code 2.1.x
+      debug: true, // Enable debug logging for subprocess
+      onStderr: (data: string) => {
+        // Capture stderr from Claude Code subprocess
+        console.error(`🔴 Claude Code stderr: ${data}`);
+      },
+      onStdout: (data: string) => {
+        // Capture stdout from Claude Code subprocess
+        console.log(`📤 Claude Code stdout: ${data}`);
+      },
+      onProcessError: (error: Error) => {
+        // Capture process spawn errors
+        console.error(`🔴 Process spawn error: ${error.message}`);
+        console.error(`🔴 Error details:`, error);
+      },
+      onProcessExit: (code: number | null, signal: string | null) => {
+        // Capture process exit details
+        console.error(`🔴 Process exited - Code: ${code}, Signal: ${signal}`);
+      },
+      // Custom spawn function to fix fly.io issues
+      // 1. Use full path to node (instead of shell:true which breaks arg parsing)
+      // 2. --print flag - Required to output to stdout instead of opening editor
+      spawnClaudeCodeProcess: (spawnOptions: any) => {
+        // Add --print flag after the script path (first arg)
+        // args = ['/path/to/cli.js', '--output-format', 'stream-json', ...]
+        // becomes: ['/path/to/cli.js', '--print', '--output-format', 'stream-json', ...]
+        let args = [...spawnOptions.args];
+        if (!args.includes('--print')) {
+          // Insert --print after the first argument (the script path)
+          args = [args[0], '--print', ...args.slice(1)];
+        }
+
+        console.log(`🐚 Custom spawn: ${spawnOptions.command} with ${args.length} args`);
+        console.log(`🐚 First 3 args: ${args.slice(0, 3).join(', ')}`);
+
+        // Use full path to node instead of relying on PATH/shell
+        // This avoids shell argument parsing issues with JSON strings
+        const command = spawnOptions.command === 'node' ? '/usr/local/bin/node' : spawnOptions.command;
+
+        // Spread all original options but DON'T use shell:true
+        // shell:true breaks argument parsing for complex args like JSON
+        const child = spawn(command, args, {
+          ...spawnOptions,  // Keep all SDK-provided options
+        });
+
+        // Log when data comes through
+        child.stdout?.on('data', (data) => {
+          console.log(`🐚 subprocess stdout: ${data.toString().substring(0, 100)}...`);
+        });
+
+        child.stderr?.on('data', (data) => {
+          console.error(`🐚 subprocess stderr: ${data.toString().substring(0, 100)}...`);
+        });
+
+        child.on('spawn', () => {
+          console.log(`🐚 Process spawned successfully`);
+        });
+
+        child.on('error', (error) => {
+          console.error(`🐚 Process error:`, error);
+        });
+
+        return child;
+      },
     };
 
     // Add dynamic MCP server if available
@@ -220,12 +290,21 @@ export class SessionManager {
       options.mcpServers = {
         'cordbot-dynamic-tools': this.dynamicMcpServer
       };
+      console.log(`   - MCP tools: ${Object.keys(this.dynamicMcpServer).length}`);
     }
 
-    return query({
-      prompt: userMessage,
-      options,
-    });
+    try {
+      console.log(`🎯 Calling SDK query() function...`);
+      const result = query({
+        prompt: userMessage,
+        options,
+      });
+      console.log(`✅ SDK query() returned successfully`);
+      return result;
+    } catch (error) {
+      console.error(`❌ SDK query() threw error:`, error);
+      throw error;
+    }
   }
 
   async updateSession(sessionId: string, threadId: string): Promise<void> {

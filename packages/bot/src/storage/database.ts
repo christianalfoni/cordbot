@@ -1,4 +1,5 @@
-import Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
 
 export interface SessionMapping {
   discord_thread_id: string;
@@ -20,11 +21,98 @@ export interface NewSessionMapping {
   status: 'active' | 'archived';
 }
 
-export class SessionDatabase {
-  private db: Database.Database;
+interface IndexMap {
+  [key: string]: string; // Maps session_id or channel_id to thread_id
+}
 
-  constructor(dbPath: string) {
-    this.db = new Database(dbPath);
+interface ChannelIndexMap {
+  [key: string]: string[]; // Maps channel_id to array of thread_ids
+}
+
+export class SessionDatabase {
+  private sessionsDir: string;
+  private indexesDir: string;
+  private sessionIndexPath: string;
+  private channelIndexPath: string;
+
+  constructor(storageDir: string) {
+    this.sessionsDir = path.join(storageDir, 'sessions');
+    this.indexesDir = path.join(storageDir, 'indexes');
+    this.sessionIndexPath = path.join(this.indexesDir, 'by-session.json');
+    this.channelIndexPath = path.join(this.indexesDir, 'by-channel.json');
+
+    // Ensure directories exist
+    fs.mkdirSync(this.sessionsDir, { recursive: true });
+    fs.mkdirSync(this.indexesDir, { recursive: true });
+
+    // Initialize index files if they don't exist
+    if (!fs.existsSync(this.sessionIndexPath)) {
+      fs.writeFileSync(this.sessionIndexPath, '{}', 'utf-8');
+    }
+    if (!fs.existsSync(this.channelIndexPath)) {
+      fs.writeFileSync(this.channelIndexPath, '{}', 'utf-8');
+    }
+  }
+
+  private getSessionPath(threadId: string): string {
+    return path.join(this.sessionsDir, `${threadId}.json`);
+  }
+
+  private readSessionIndex(): IndexMap {
+    try {
+      const data = fs.readFileSync(this.sessionIndexPath, 'utf-8');
+      return JSON.parse(data);
+    } catch {
+      return {};
+    }
+  }
+
+  private writeSessionIndex(index: IndexMap): void {
+    fs.writeFileSync(this.sessionIndexPath, JSON.stringify(index, null, 2), 'utf-8');
+  }
+
+  private readChannelIndex(): ChannelIndexMap {
+    try {
+      const data = fs.readFileSync(this.channelIndexPath, 'utf-8');
+      return JSON.parse(data);
+    } catch {
+      return {};
+    }
+  }
+
+  private writeChannelIndex(index: ChannelIndexMap): void {
+    fs.writeFileSync(this.channelIndexPath, JSON.stringify(index, null, 2), 'utf-8');
+  }
+
+  private updateIndexes(mapping: SessionMapping, remove = false): void {
+    // Update session index
+    const sessionIndex = this.readSessionIndex();
+    if (remove) {
+      delete sessionIndex[mapping.session_id];
+    } else {
+      sessionIndex[mapping.session_id] = mapping.discord_thread_id;
+    }
+    this.writeSessionIndex(sessionIndex);
+
+    // Update channel index
+    const channelIndex = this.readChannelIndex();
+    if (remove) {
+      const threadIds = channelIndex[mapping.discord_channel_id] || [];
+      channelIndex[mapping.discord_channel_id] = threadIds.filter(
+        (id) => id !== mapping.discord_thread_id
+      );
+      if (channelIndex[mapping.discord_channel_id].length === 0) {
+        delete channelIndex[mapping.discord_channel_id];
+      }
+    } else {
+      if (!channelIndex[mapping.discord_channel_id]) {
+        channelIndex[mapping.discord_channel_id] = [];
+      }
+      if (!channelIndex[mapping.discord_channel_id].includes(mapping.discord_thread_id)) {
+        channelIndex[mapping.discord_channel_id].push(mapping.discord_thread_id);
+      }
+    }
+    this.writeChannelIndex(channelIndex);
   }
 
   /**
@@ -33,143 +121,214 @@ export class SessionDatabase {
   createMapping(mapping: NewSessionMapping): void {
     const now = new Date().toISOString();
 
-    const stmt = this.db.prepare(`
-      INSERT INTO session_mappings (
-        discord_thread_id,
-        discord_channel_id,
-        discord_message_id,
-        session_id,
-        working_directory,
-        created_at,
-        last_active_at,
-        status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const sessionMapping: SessionMapping = {
+      ...mapping,
+      created_at: now,
+      last_active_at: now,
+    };
 
-    stmt.run(
-      mapping.discord_thread_id,
-      mapping.discord_channel_id,
-      mapping.discord_message_id,
-      mapping.session_id,
-      mapping.working_directory,
-      now,
-      now,
-      mapping.status
-    );
+    const sessionPath = this.getSessionPath(mapping.discord_thread_id);
+    fs.writeFileSync(sessionPath, JSON.stringify(sessionMapping, null, 2), 'utf-8');
+
+    this.updateIndexes(sessionMapping);
   }
 
   /**
    * Get a session mapping by Discord thread ID
    */
   getMapping(threadId: string): SessionMapping | undefined {
-    const stmt = this.db.prepare(`
-      SELECT * FROM session_mappings WHERE discord_thread_id = ?
-    `);
+    const sessionPath = this.getSessionPath(threadId);
 
-    return stmt.get(threadId) as SessionMapping | undefined;
+    if (!fs.existsSync(sessionPath)) {
+      return undefined;
+    }
+
+    try {
+      const data = fs.readFileSync(sessionPath, 'utf-8');
+      return JSON.parse(data) as SessionMapping;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
    * Get session mapping by session ID
    */
   getMappingBySessionId(sessionId: string): SessionMapping | undefined {
-    const stmt = this.db.prepare(`
-      SELECT * FROM session_mappings WHERE session_id = ?
-    `);
+    const sessionIndex = this.readSessionIndex();
+    const threadId = sessionIndex[sessionId];
 
-    return stmt.get(sessionId) as SessionMapping | undefined;
+    if (!threadId) {
+      return undefined;
+    }
+
+    return this.getMapping(threadId);
   }
 
   /**
    * Get all sessions for a channel
    */
   getChannelSessions(channelId: string): SessionMapping[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM session_mappings WHERE discord_channel_id = ?
-      ORDER BY last_active_at DESC
-    `);
+    const channelIndex = this.readChannelIndex();
+    const threadIds = channelIndex[channelId] || [];
 
-    return stmt.all(channelId) as SessionMapping[];
+    const sessions = threadIds
+      .map((threadId) => this.getMapping(threadId))
+      .filter((mapping): mapping is SessionMapping => mapping !== undefined);
+
+    // Sort by last_active_at DESC
+    return sessions.sort(
+      (a, b) => new Date(b.last_active_at).getTime() - new Date(a.last_active_at).getTime()
+    );
   }
 
   /**
    * Get all active sessions
    */
   getAllActive(): SessionMapping[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM session_mappings WHERE status = 'active'
-      ORDER BY last_active_at DESC
-    `);
+    const sessions: SessionMapping[] = [];
 
-    return stmt.all() as SessionMapping[];
+    // Read all session files
+    const files = fs.readdirSync(this.sessionsDir);
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) {
+        continue;
+      }
+
+      try {
+        const sessionPath = path.join(this.sessionsDir, file);
+        const data = fs.readFileSync(sessionPath, 'utf-8');
+        const mapping = JSON.parse(data) as SessionMapping;
+
+        if (mapping.status === 'active') {
+          sessions.push(mapping);
+        }
+      } catch {
+        // Skip invalid files
+        continue;
+      }
+    }
+
+    // Sort by last_active_at DESC
+    return sessions.sort(
+      (a, b) => new Date(b.last_active_at).getTime() - new Date(a.last_active_at).getTime()
+    );
   }
 
   /**
    * Update last active timestamp for a session
    */
   updateLastActive(threadId: string): void {
-    const stmt = this.db.prepare(`
-      UPDATE session_mappings
-      SET last_active_at = ?
-      WHERE discord_thread_id = ?
-    `);
+    const mapping = this.getMapping(threadId);
 
-    stmt.run(new Date().toISOString(), threadId);
+    if (!mapping) {
+      return;
+    }
+
+    mapping.last_active_at = new Date().toISOString();
+
+    const sessionPath = this.getSessionPath(threadId);
+    fs.writeFileSync(sessionPath, JSON.stringify(mapping, null, 2), 'utf-8');
   }
 
   /**
    * Update session ID for a thread
    */
   updateSessionId(threadId: string, newSessionId: string): void {
-    const stmt = this.db.prepare(`
-      UPDATE session_mappings
-      SET session_id = ?, last_active_at = ?
-      WHERE discord_thread_id = ?
-    `);
+    const mapping = this.getMapping(threadId);
 
-    stmt.run(newSessionId, new Date().toISOString(), threadId);
+    if (!mapping) {
+      return;
+    }
+
+    // Remove old session index entry
+    const sessionIndex = this.readSessionIndex();
+    delete sessionIndex[mapping.session_id];
+
+    // Update mapping
+    mapping.session_id = newSessionId;
+    mapping.last_active_at = new Date().toISOString();
+
+    // Add new session index entry
+    sessionIndex[newSessionId] = threadId;
+    this.writeSessionIndex(sessionIndex);
+
+    // Write updated mapping
+    const sessionPath = this.getSessionPath(threadId);
+    fs.writeFileSync(sessionPath, JSON.stringify(mapping, null, 2), 'utf-8');
   }
 
   /**
    * Archive a session
    */
   archiveSession(threadId: string): void {
-    const stmt = this.db.prepare(`
-      UPDATE session_mappings
-      SET status = 'archived'
-      WHERE discord_thread_id = ?
-    `);
+    const mapping = this.getMapping(threadId);
 
-    stmt.run(threadId);
+    if (!mapping) {
+      return;
+    }
+
+    mapping.status = 'archived';
+
+    const sessionPath = this.getSessionPath(threadId);
+    fs.writeFileSync(sessionPath, JSON.stringify(mapping, null, 2), 'utf-8');
   }
 
   /**
    * Delete a session mapping
    */
   deleteMapping(threadId: string): void {
-    const stmt = this.db.prepare(`
-      DELETE FROM session_mappings WHERE discord_thread_id = ?
-    `);
+    const mapping = this.getMapping(threadId);
 
-    stmt.run(threadId);
+    if (!mapping) {
+      return;
+    }
+
+    // Remove indexes
+    this.updateIndexes(mapping, true);
+
+    // Delete session file
+    const sessionPath = this.getSessionPath(threadId);
+    if (fs.existsSync(sessionPath)) {
+      fs.unlinkSync(sessionPath);
+    }
   }
 
   /**
    * Get count of active sessions
    */
   getActiveCount(): number {
-    const stmt = this.db.prepare(`
-      SELECT COUNT(*) as count FROM session_mappings WHERE status = 'active'
-    `);
+    let count = 0;
 
-    const result = stmt.get() as { count: number };
-    return result.count;
+    const files = fs.readdirSync(this.sessionsDir);
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) {
+        continue;
+      }
+
+      try {
+        const sessionPath = path.join(this.sessionsDir, file);
+        const data = fs.readFileSync(sessionPath, 'utf-8');
+        const mapping = JSON.parse(data) as SessionMapping;
+
+        if (mapping.status === 'active') {
+          count++;
+        }
+      } catch {
+        // Skip invalid files
+        continue;
+      }
+    }
+
+    return count;
   }
 
   /**
-   * Close the database connection
+   * Close the database connection (no-op for filesystem storage)
    */
   close(): void {
-    this.db.close();
+    // No cleanup needed for filesystem storage
   }
 }
