@@ -15,6 +15,11 @@
   "scripts": {
     "dev": "tsx watch src/cli.ts",
     "build": "tsc && chmod +x bin/cordbot.js",
+    "build:binaries": "npm run build && bun build ./src/cli.ts --compile --target=bun --minify --sourcemap --outfile dist/binaries/cordbot",
+    "build:binaries:all": "npm run build && npm run build:binaries:linux && npm run build:binaries:macos && npm run build:binaries:windows",
+    "build:binaries:linux": "bun build ./src/cli.ts --compile --target=bun-linux-x64 --minify --sourcemap --outfile dist/binaries/cordbot-linux-x64",
+    "build:binaries:macos": "bun build ./src/cli.ts --compile --target=bun-darwin-arm64 --minify --sourcemap --outfile dist/binaries/cordbot-macos-arm64 && bun build ./src/cli.ts --compile --target=bun-darwin-x64 --minify --sourcemap --outfile dist/binaries/cordbot-macos-x64",
+    "build:binaries:windows": "bun build ./src/cli.ts --compile --target=bun-windows-x64 --minify --sourcemap --outfile dist/binaries/cordbot-win-x64.exe",
     "start": "node dist/cli.js",
     "copy-readme": "node scripts/copy-readme.js",
     "prepublishOnly": "npm run copy-readme && npm run build",
