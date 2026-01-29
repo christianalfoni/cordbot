@@ -300,24 +300,6 @@ export function BotSetup({ userId, initialToken, initialGuildId }: BotSetupProps
 
   return (
     <div className="space-y-6">
-      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-        <div className="flex gap-3">
-          <div className="flex-shrink-0">
-            <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-green-800 dark:text-green-200">
-              Bot Configured Successfully
-            </h3>
-            <div className="mt-1 text-sm text-green-700 dark:text-green-300">
-              <p>Your bot <strong>{validationResult?.bot?.username}</strong> is ready to use.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700">
         {selectedGuildInfo && (
           <div className="p-6">
@@ -345,13 +327,13 @@ export function BotSetup({ userId, initialToken, initialGuildId }: BotSetupProps
         <div className="p-6">
           <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Start Using Cordbot</h4>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Your bot is ready! Run the command below to start the CLI:
+            Your bot is ready! Run the command below to install and start the CLI:
           </p>
           <div className="bg-gray-900 dark:bg-gray-950 rounded-lg p-4 mb-4">
-            <code className="text-sm text-green-400 font-mono">npx cordbot</code>
+            <code className="text-sm text-green-400 font-mono">curl -fsSL https://cordbot.io/install.sh | bash</code>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-            The CLI will automatically authenticate with your bot configuration. You'll just need to provide your Claude API key.
+            This will install the Cordbot CLI. After installation, run <code className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">cordbot</code> to start. The CLI will automatically authenticate with your bot configuration.
           </p>
           <button
             onClick={handleCopyToken}

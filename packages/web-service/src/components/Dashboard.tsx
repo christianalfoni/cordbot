@@ -5,7 +5,6 @@ import {
   BellIcon,
   BookOpenIcon,
   Cog6ToothIcon,
-  HomeIcon,
   LinkIcon,
 } from '@heroicons/react/24/outline';
 import { UserData } from '../hooks/useAuth';
@@ -21,8 +20,7 @@ interface DashboardProps {
 const navigation: Array<{ name: string; href: string; current: boolean }> = [];
 
 const secondaryNavigation = [
-  { name: 'Overview', href: '#', icon: HomeIcon, current: true },
-  { name: 'Bot Setup', href: '#bot-setup', icon: Cog6ToothIcon, current: false },
+  { name: 'Bot Setup', href: '#bot-setup', icon: Cog6ToothIcon, current: true },
   { name: 'Service Integrations', href: '#integrations', icon: LinkIcon, current: false },
   { name: 'Documentation', href: '#docs', icon: BookOpenIcon, current: false },
 ];
@@ -33,7 +31,7 @@ function classNames(...classes: string[]) {
 
 export function Dashboard({ userData, onSignOut }: DashboardProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [currentSection, setCurrentSection] = useState('overview');
+  const [currentSection, setCurrentSection] = useState('bot-setup');
 
   return (
     <>
@@ -146,10 +144,10 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
                     href={item.href}
                     onClick={(e) => {
                       e.preventDefault();
-                      setCurrentSection(item.href.replace('#', '') || 'overview');
+                      setCurrentSection(item.href.replace('#', '') || 'bot-setup');
                     }}
                     className={classNames(
-                      currentSection === (item.href.replace('#', '') || 'overview')
+                      currentSection === (item.href.replace('#', '') || 'bot-setup')
                         ? 'bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white'
                         : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white',
                       'group flex gap-x-3 rounded-md py-2 pr-3 pl-2 text-sm/6 font-semibold'
@@ -158,7 +156,7 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
                     <item.icon
                       aria-hidden="true"
                       className={classNames(
-                        currentSection === (item.href.replace('#', '') || 'overview')
+                        currentSection === (item.href.replace('#', '') || 'bot-setup')
                           ? 'text-indigo-600 dark:text-white'
                           : 'text-gray-400 group-hover:text-indigo-600 dark:text-gray-500 dark:group-hover:text-white',
                         'size-6 shrink-0'
@@ -174,62 +172,6 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
 
         <main className="px-4 py-16 sm:px-6 lg:flex-auto lg:px-0 lg:py-20">
           <div className="mx-auto max-w-2xl space-y-16 sm:space-y-20 lg:mx-0 lg:max-w-none">
-            {currentSection === 'overview' && (
-              <div>
-                <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
-                  Welcome, {userData.displayName || 'User'}!
-                </h2>
-                <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
-                  Manage your Cordbot configuration, connect services, and enable tools.
-                </p>
-
-                <dl className="mt-6 divide-y divide-gray-100 border-t border-gray-200 text-sm/6 dark:divide-white/5 dark:border-white/5">
-                  <div className="py-6 sm:flex">
-                    <dt className="font-medium text-gray-900 sm:w-64 sm:flex-none sm:pr-6 dark:text-white">
-                      Display Name
-                    </dt>
-                    <dd className="mt-1 flex justify-between gap-x-6 sm:mt-0 sm:flex-auto">
-                      <div className="text-gray-900 dark:text-gray-300">
-                        {userData.displayName || 'Not set'}
-                      </div>
-                    </dd>
-                  </div>
-                  <div className="py-6 sm:flex">
-                    <dt className="font-medium text-gray-900 sm:w-64 sm:flex-none sm:pr-6 dark:text-white">
-                      Email
-                    </dt>
-                    <dd className="mt-1 flex justify-between gap-x-6 sm:mt-0 sm:flex-auto">
-                      <div className="text-gray-900 dark:text-gray-300">{userData.email}</div>
-                    </dd>
-                  </div>
-                  <div className="py-6 sm:flex">
-                    <dt className="font-medium text-gray-900 sm:w-64 sm:flex-none sm:pr-6 dark:text-white">
-                      Bot Status
-                    </dt>
-                    <dd className="mt-1 flex justify-between gap-x-6 sm:mt-0 sm:flex-auto">
-                      <div className="text-gray-900 dark:text-gray-300">
-                        {userData.botToken ? (
-                          <span className="inline-flex items-center gap-x-1.5 rounded-md px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20 dark:text-green-400 dark:ring-green-400/20">
-                            <svg className="h-1.5 w-1.5 fill-green-500" viewBox="0 0 6 6" aria-hidden="true">
-                              <circle cx={3} cy={3} r={3} />
-                            </svg>
-                            Configured
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-x-1.5 rounded-md px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10 dark:text-gray-400 dark:ring-gray-400/20">
-                            <svg className="h-1.5 w-1.5 fill-gray-400" viewBox="0 0 6 6" aria-hidden="true">
-                              <circle cx={3} cy={3} r={3} />
-                            </svg>
-                            Not configured
-                          </span>
-                        )}
-                      </div>
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            )}
-
             {currentSection === 'bot-setup' && (
               <div>
                 <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Bot Setup</h2>
