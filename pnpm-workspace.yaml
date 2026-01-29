@@ -1,2 +1,8 @@
 packages:
-  - 'packages/*'
+  - packages/*
+
+ignoredBuiltDependencies:
+  - '@firebase/util'
+  - better-sqlite3
+  - esbuild
+  - protobufjs

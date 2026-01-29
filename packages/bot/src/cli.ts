@@ -21,9 +21,17 @@ export async function run(): Promise<void> {
   const cwd = process.cwd();
   const envPath = path.join(cwd, '.env');
 
-  // Check if .env exists in current directory
-  if (!fs.existsSync(envPath)) {
-    console.log(chalk.yellow('No .env file found in current directory.'));
+  // First, try to load from .env file if it exists
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+  }
+
+  // Check if we have all required environment variables
+  const validation = validateConfig();
+
+  // If configuration is incomplete and no .env file exists, run setup
+  if (!validation.valid && !fs.existsSync(envPath)) {
+    console.log(chalk.yellow('No .env file found and environment variables not set.'));
     console.log(chalk.gray(`Current directory: ${cwd}\n`));
 
     // Use web service authentication flow
@@ -43,26 +51,21 @@ export async function run(): Promise<void> {
     spinner.succeed(chalk.green('.env file created successfully!'));
 
     console.log(chalk.gray(`\n📄 Configuration saved to: ${envPath}\n`));
-  }
 
-  // Load environment variables
-  dotenv.config({ path: envPath });
-
-  // Validate configuration
-  const spinner = ora('Validating configuration...').start();
-  const validation = validateConfig();
-
-  if (!validation.valid) {
-    spinner.fail(chalk.red('Configuration validation failed'));
+    // Load the newly created .env file
+    dotenv.config({ path: envPath });
+  } else if (!validation.valid) {
+    // .env file exists but is incomplete
     console.log(chalk.red('\n❌ Missing required environment variables:'));
     validation.missing.forEach(key => {
       console.log(chalk.red(`   - ${key}`));
     });
-    console.log(chalk.yellow(`\nPlease update ${envPath} with the missing values.\n`));
+    console.log(chalk.yellow(`\nPlease set these as environment variables or update ${envPath}.\n`));
     process.exit(1);
   }
 
-  spinner.succeed(chalk.green('Configuration valid'));
+  // Configuration is valid (from env vars or .env file)
+  console.log(chalk.green('✓ Configuration valid'));
 
   // Start the bot
   console.log(chalk.cyan('\n🚀 Starting Cordbot...\n'));

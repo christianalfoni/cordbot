@@ -2,7 +2,87 @@
   "hash": "e36d972a",
   "configHash": "7d32e531",
   "lockfileHash": "78c2e377",
-  "browserHash": "bce1390a",
-  "optimized": {},
-  "chunks": {}
+  "browserHash": "66e31ac2",
+  "optimized": {
+    "react/jsx-dev-runtime": {
+      "src": "../../../../node_modules/.pnpm/react@18.3.1/node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "923fedf9",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../../../node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "36bc226d",
+      "needsInterop": true
+    },
+    "react-router-dom": {
+      "src": "../../../../node_modules/.pnpm/react-router-dom@7.13.0_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/react-router-dom/dist/index.mjs",
+      "file": "react-router-dom.js",
+      "fileHash": "41b2a7b0",
+      "needsInterop": false
+    },
+    "react": {
+      "src": "../../../../node_modules/.pnpm/react@18.3.1/node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "ddfdd7a1",
+      "needsInterop": true
+    },
+    "firebase/app": {
+      "src": "../../../../node_modules/.pnpm/firebase@11.10.0/node_modules/firebase/app/dist/esm/index.esm.js",
+      "file": "firebase_app.js",
+      "fileHash": "2cac0d1f",
+      "needsInterop": false
+    },
+    "firebase/auth": {
+      "src": "../../../../node_modules/.pnpm/firebase@11.10.0/node_modules/firebase/auth/dist/esm/index.esm.js",
+      "file": "firebase_auth.js",
+      "fileHash": "15cb6f37",
+      "needsInterop": false
+    },
+    "firebase/firestore": {
+      "src": "../../../../node_modules/.pnpm/firebase@11.10.0/node_modules/firebase/firestore/dist/esm/index.esm.js",
+      "file": "firebase_firestore.js",
+      "fileHash": "d17b7878",
+      "needsInterop": false
+    },
+    "firebase/functions": {
+      "src": "../../../../node_modules/.pnpm/firebase@11.10.0/node_modules/firebase/functions/dist/esm/index.esm.js",
+      "file": "firebase_functions.js",
+      "fileHash": "0a330778",
+      "needsInterop": false
+    },
+    "@headlessui/react": {
+      "src": "../../../../node_modules/.pnpm/@headlessui+react@2.2.9_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/@headlessui/react/dist/headlessui.esm.js",
+      "file": "@headlessui_react.js",
+      "fileHash": "0c05d68e",
+      "needsInterop": false
+    },
+    "@heroicons/react/20/solid": {
+      "src": "../../../../node_modules/.pnpm/@heroicons+react@2.2.0_react@18.3.1/node_modules/@heroicons/react/20/solid/esm/index.js",
+      "file": "@heroicons_react_20_solid.js",
+      "fileHash": "77d9da1c",
+      "needsInterop": false
+    },
+    "@heroicons/react/24/outline": {
+      "src": "../../../../node_modules/.pnpm/@heroicons+react@2.2.0_react@18.3.1/node_modules/@heroicons/react/24/outline/esm/index.js",
+      "file": "@heroicons_react_24_outline.js",
+      "fileHash": "09b8cd57",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-BYJH3YSM": {
+      "file": "chunk-BYJH3YSM.js"
+    },
+    "chunk-UQZRJZXN": {
+      "file": "chunk-UQZRJZXN.js"
+    },
+    "chunk-MH3J3B3F": {
+      "file": "chunk-MH3J3B3F.js"
+    },
+    "chunk-5WRI5ZAA": {
+      "file": "chunk-5WRI5ZAA.js"
+    }
+  }
 }
