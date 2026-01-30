@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { UserData } from '../hooks/useAuth';
 import { useHostedBot } from '../hooks/useHostedBot';
-import { ArrowPathIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, TrashIcon, RocketLaunchIcon } from '@heroicons/react/24/outline';
 
 interface HostedBotActionsProps {
   userData: UserData;
 }
 
 export function HostedBotActions({ userData }: HostedBotActionsProps) {
-  const { restartBot, deprovisionBot, isLoading, error } = useHostedBot(userData);
+  const { restartBot, redeployBot, deprovisionBot, isLoading, error } = useHostedBot(userData);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showRedeployConfirm, setShowRedeployConfirm] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -22,6 +23,20 @@ export function HostedBotActions({ userData }: HostedBotActionsProps) {
       setTimeout(() => setActionSuccess(null), 5000);
     } catch (err: any) {
       setActionError(err.message || 'Failed to restart bot');
+    }
+  };
+
+  const handleRedeploy = async () => {
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await redeployBot();
+      setShowRedeployConfirm(false);
+      setActionSuccess('Bot is redeploying with latest image...');
+      setTimeout(() => setActionSuccess(null), 5000);
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to redeploy bot');
+      setShowRedeployConfirm(false);
     }
   };
 
@@ -68,6 +83,47 @@ export function HostedBotActions({ userData }: HostedBotActionsProps) {
             Restart the bot to apply configuration changes
           </p>
         </div>
+
+        {!showRedeployConfirm ? (
+          <div>
+            <button
+              onClick={() => setShowRedeployConfirm(true)}
+              disabled={isLoading}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 border border-indigo-300 text-sm font-medium rounded-md text-indigo-700 bg-white hover:bg-indigo-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-indigo-400 dark:border-indigo-800 dark:hover:bg-indigo-900/20"
+            >
+              <RocketLaunchIcon className="h-4 w-4" />
+              Redeploy Bot
+            </button>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Deploy latest Docker image (deletes and recreates machine)
+            </p>
+          </div>
+        ) : (
+          <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-md">
+            <p className="text-sm font-medium text-indigo-900 dark:text-indigo-100 mb-3">
+              Redeploy your hosted bot?
+            </p>
+            <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-4">
+              This will delete the current machine and create a new one with the latest Docker image. Your persistent data will be preserved.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleRedeploy}
+                disabled={isLoading}
+                className="flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                {isLoading ? 'Redeploying...' : 'Yes, Redeploy'}
+              </button>
+              <button
+                onClick={() => setShowRedeployConfirm(false)}
+                disabled={isLoading}
+                className="flex-1 px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {!showDeleteConfirm ? (
           <div>

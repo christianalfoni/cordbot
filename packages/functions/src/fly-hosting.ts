@@ -76,11 +76,23 @@ async function flyRequest(
 /**
  * Generate a unique app name for a user
  * Format: cordbot-{first8ofuid}-{timestamp}
+ * Apps allow dashes and up to 63 chars
  */
 function generateAppName(userId: string): string {
-  const userPrefix = userId.substring(0, 8);
+  const userPrefix = userId.substring(0, 8).toLowerCase().replace(/[^a-z0-9]/g, '');
   const timestamp = Date.now().toString(36);
   return `cordbot-${userPrefix}-${timestamp}`;
+}
+
+/**
+ * Generate a volume name from user ID
+ * Format: cb_{first6ofuid}_{timestamp}
+ * Volumes only allow underscores/alphanumeric and max 30 chars
+ */
+function generateVolumeName(userId: string): string {
+  const userPrefix = userId.substring(0, 6).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const timestamp = Date.now().toString(36);
+  return `cb_${userPrefix}_${timestamp}`;
 }
 
 /**
@@ -150,7 +162,7 @@ export const provisionHostedBot = onCall(
 
       const token = flyApiToken.value();
       const appName = generateAppName(userId);
-      const volumeName = `${appName}_data`;
+      const volumeName = generateVolumeName(userId);
 
       logger.info(`Provisioning hosted bot for user ${userId}`, {
         appName,
@@ -187,12 +199,21 @@ export const provisionHostedBot = onCall(
         token
       );
 
-      // Step 3: Get bot token from user data
+      // Step 3: Get bot token and guild ID from user data
       const botToken = userData.botToken;
+      const guildId = userData.guildId;
+
       if (!botToken) {
         throw new HttpsError(
           "failed-precondition",
           "User does not have a Discord bot token configured"
+        );
+      }
+
+      if (!guildId) {
+        throw new HttpsError(
+          "failed-precondition",
+          "User does not have a Discord guild ID configured"
         );
       }
 
@@ -206,7 +227,8 @@ export const provisionHostedBot = onCall(
           memory_mb: 1024,
         },
         env: {
-          DISCORD_TOKEN: botToken,
+          DISCORD_BOT_TOKEN: botToken,
+          DISCORD_GUILD_ID: guildId,
           ANTHROPIC_API_KEY: anthropicApiKey,
         },
         mounts: [
@@ -308,7 +330,7 @@ export const getHostedBotStatus = onCall(
           ? "stopped"
           : machine.state === "starting"
           ? "provisioning"
-          : "error";
+          : "pending";
 
       // Update Firestore if status changed
       if (status !== userData.hostedBot.status) {
@@ -521,6 +543,151 @@ export const deployHostedBot = onCall(
       throw new HttpsError(
         "internal",
         `Failed to deploy update: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
+  }
+);
+
+/**
+ * Redeploy hosted bot by deleting and recreating the machine
+ * Keeps the app and volume, only replaces the machine with latest image
+ */
+export const redeployHostedBot = onCall(
+  { secrets: [flyApiToken] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "User must be authenticated");
+    }
+
+    const userId = request.auth.uid;
+
+    try {
+      const userDoc = await db.collection("users").doc(userId).get();
+      const userData = userDoc.data();
+
+      if (!userData?.hostedBot) {
+        throw new HttpsError("not-found", "User does not have a hosted bot");
+      }
+
+      const { appName, machineId, volumeId, region, version } = userData.hostedBot;
+      const token = flyApiToken.value();
+
+      logger.info(`Redeploying hosted bot for user ${userId}`, {
+        appName,
+        oldMachineId: machineId,
+      });
+
+      // Step 1: Get bot token and guild ID from user data
+      const botToken = userData.botToken;
+      const guildId = userData.guildId;
+
+      if (!botToken || !guildId) {
+        throw new HttpsError(
+          "failed-precondition",
+          "User does not have bot token or guild ID configured"
+        );
+      }
+
+      // Step 2: Get Anthropic API key from current machine config
+      let anthropicApiKey = "";
+      try {
+        const machine = await flyRequest(
+          `/apps/${appName}/machines/${machineId}`,
+          {},
+          token
+        );
+        anthropicApiKey = machine.config?.env?.ANTHROPIC_API_KEY || "";
+      } catch (error) {
+        logger.warn(`Could not fetch old machine config: ${error}`);
+      }
+
+      if (!anthropicApiKey) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Could not retrieve Anthropic API key from existing machine"
+        );
+      }
+
+      // Step 3: Force delete the old machine
+      logger.info(`Force deleting machine ${machineId}`);
+      try {
+        await flyRequest(
+          `/apps/${appName}/machines/${machineId}`,
+          {
+            method: "DELETE",
+            body: JSON.stringify({ force: true }),
+          },
+          token
+        );
+      } catch (error) {
+        logger.warn(`Failed to delete old machine: ${error}`);
+        // Continue anyway - machine might already be gone
+      }
+
+      // Step 4: Create new machine with same config
+      logger.info(`Creating new machine in region ${region}`);
+      const machineConfig: FlyMachineConfig = {
+        image: `${DEFAULT_IMAGE}:${version || DEFAULT_VERSION}`,
+        guest: {
+          cpu_kind: "shared",
+          cpus: 1,
+          memory_mb: 1024,
+        },
+        env: {
+          DISCORD_BOT_TOKEN: botToken,
+          DISCORD_GUILD_ID: guildId,
+          ANTHROPIC_API_KEY: anthropicApiKey,
+        },
+        mounts: [
+          {
+            volume: volumeId,
+            path: "/workspace",
+          },
+        ],
+      };
+
+      const machineResponse = await flyRequest(
+        `/apps/${appName}/machines`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: `${appName}-main`,
+            config: machineConfig,
+            region,
+          }),
+        },
+        token
+      );
+
+      // Step 5: Update Firestore with new machine info
+      await db.collection("users").doc(userId).update({
+        "hostedBot.machineId": machineResponse.id,
+        "hostedBot.status": "provisioning",
+        "hostedBot.lastDeployedAt": new Date().toISOString(),
+      });
+
+      logger.info(`Successfully redeployed hosted bot for user ${userId}`, {
+        appName,
+        newMachineId: machineResponse.id,
+      });
+
+      return {
+        success: true,
+        machineId: machineResponse.id,
+        message: "Bot redeployed successfully",
+      };
+    } catch (error) {
+      logger.error("Error redeploying hosted bot:", error);
+
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+
+      throw new HttpsError(
+        "internal",
+        `Failed to redeploy hosted bot: ${
           error instanceof Error ? error.message : "Unknown error"
         }`
       );

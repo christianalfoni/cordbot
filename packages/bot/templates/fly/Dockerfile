@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
 RUN npm install -g @anthropic-ai/claude-code@2.1.23
 
 # Install cordbot package - using latest version
-RUN npm install -g @cordbot/agent@1.3.11
+RUN npm install -g @cordbot/agent@1.4.1
 
 # Create workspace directory for persistent storage
 # Use the existing 'node' user from the base image (already UID 1000)

@@ -409,11 +409,9 @@ export class SessionManager {
   }
 
   /**
-   * Cleanup token manager on shutdown
+   * Cleanup on shutdown
    */
   shutdown(): void {
-    if (this.tokenManager) {
-      this.tokenManager.stopBackgroundRefresh();
-    }
+    // Token manager cleanup no longer needed - tokens refresh on-demand
   }
 }

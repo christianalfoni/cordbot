@@ -38,7 +38,6 @@ export async function streamToDiscord(
 
     // Iterate through SDK messages
     for await (const message of queryResult) {
-      console.log(`📨 Received SDK message type: ${message.type}`);
       await handleSDKMessage(message, threadChannel, state, sessionManager, sessionId);
     }
 
@@ -179,17 +178,14 @@ async function handleStreamEvent(
             console.error('Failed to parse ExitPlanMode input:', e);
           }
         } else {
-          // Send complete tool use message for other tools
+          // Log tool use message (but don't send to Discord)
           const shouldShow = shouldShowToolMessage(state.currentToolUse.name, state.currentToolUse.input);
           if (shouldShow) {
             const emoji = getToolEmoji(state.currentToolUse.name);
             const description = getToolDescription(state.currentToolUse.name, state.currentToolUse.input, state.workingDir);
             // Strip MCP server prefix from tool name for cleaner display
             const displayName = stripMcpPrefix(state.currentToolUse.name);
-            const msg = await channel.send(
-              `\`\`\`\n${emoji} ${displayName}: ${description}\n\`\`\``
-            );
-            state.toolMessages.push(msg);
+            console.log(`🔧 Tool: ${emoji} ${displayName}: ${description}`);
           }
         }
         state.currentToolUse = null;

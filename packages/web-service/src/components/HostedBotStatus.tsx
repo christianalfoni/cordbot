@@ -47,6 +47,8 @@ export function HostedBotStatus({ userData }: HostedBotStatusProps) {
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
       case 'provisioning':
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
       case 'error':
         return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
       default:
@@ -62,6 +64,8 @@ export function HostedBotStatus({ userData }: HostedBotStatusProps) {
         return 'Stopped';
       case 'provisioning':
         return 'Starting...';
+      case 'pending':
+        return 'Pending';
       case 'error':
         return 'Error';
       default:

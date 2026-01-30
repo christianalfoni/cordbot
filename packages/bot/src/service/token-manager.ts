@@ -8,8 +8,6 @@ import { ToolManifest } from './types.js';
  */
 export class TokenManager {
   private manifest: ToolManifest | null = null;
-  private refreshInterval: NodeJS.Timeout | null = null;
-  private isRefreshing = false;
   private categoryRefreshLocks = new Map<string, Promise<boolean>>();
 
   constructor(
@@ -20,60 +18,6 @@ export class TokenManager {
     this.manifest = initialManifest;
   }
 
-  /**
-   * Start background token refresh
-   * Checks every 5 minutes and refreshes tokens expiring in <10 minutes
-   */
-  startBackgroundRefresh(): void {
-    if (this.refreshInterval) return;
-
-    // Check every 5 minutes
-    const checkInterval = 5 * 60 * 1000;
-
-    this.refreshInterval = setInterval(async () => {
-      await this.refreshIfNeeded();
-    }, checkInterval);
-
-    console.log('🔄 Token refresh background task started');
-  }
-
-  /**
-   * Stop background token refresh
-   */
-  stopBackgroundRefresh(): void {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-      console.log('⏸️  Token refresh background task stopped');
-    }
-  }
-
-  /**
-   * Check if any tokens need refresh and refresh if needed
-   */
-  private async refreshIfNeeded(): Promise<void> {
-    if (this.isRefreshing || !this.manifest) return;
-
-    const now = Date.now();
-    const tenMinutes = 10 * 60 * 1000;
-    let needsRefresh = false;
-
-    // Check if any tokens expire in the next 10 minutes
-    for (const [category, token] of Object.entries(this.manifest.tokens)) {
-      if (token && token.expiresAt) {
-        const timeUntilExpiry = token.expiresAt - now;
-        if (timeUntilExpiry < tenMinutes) {
-          console.log(`⚠️  ${category} token expires in ${Math.round(timeUntilExpiry / 1000 / 60)} minutes`);
-          needsRefresh = true;
-          break;
-        }
-      }
-    }
-
-    if (needsRefresh) {
-      await this.refreshTokens();
-    }
-  }
 
   /**
    * Refresh a specific token category (e.g., 'gmail')
@@ -123,44 +67,14 @@ export class TokenManager {
     }
   }
 
-  /**
-   * Force refresh all tokens from service
-   * (Kept for backward compatibility, but prefer refreshToken(category) for on-demand refresh)
-   */
-  async refreshTokens(): Promise<boolean> {
-    if (this.isRefreshing) {
-      console.log('⏳ Token refresh already in progress...');
-      return false;
-    }
-
-    this.isRefreshing = true;
-
-    try {
-      console.log('🔄 Refreshing tokens from service...');
-      const newManifest = await fetchManifest(this.botToken, this.serviceUrl);
-
-      if (!newManifest) {
-        console.error('❌ Failed to refresh tokens - service unavailable');
-        this.isRefreshing = false;
-        return false;
-      }
-
-      this.manifest = newManifest;
-      console.log('✅ Tokens refreshed successfully');
-      this.isRefreshing = false;
-      return true;
-    } catch (error) {
-      console.error('❌ Token refresh failed:', error);
-      this.isRefreshing = false;
-      return false;
-    }
-  }
 
   /**
    * Get a valid token for a category
    * Automatically refreshes if token is expired or expiring soon
    */
   async getToken(category: string): Promise<{ accessToken: string; expiresAt: number } | null> {
+    console.log(`🔍 Getting token for ${category}...`);
+
     if (!this.manifest) {
       console.error(`❌ No manifest available for ${category}`);
       return null;
@@ -177,7 +91,10 @@ export class TokenManager {
     const now = Date.now();
     const twoMinutes = 2 * 60 * 1000;
     const tenMinutes = 10 * 60 * 1000;
+
+    console.log(`🔍 Token info: expiresAt=${token.expiresAt}, now=${now}, expiresAt date=${new Date(token.expiresAt).toISOString()}`);
     const expiresIn = token.expiresAt - now;
+    console.log(`🔍 Token expires in ${Math.round(expiresIn / 1000)}s (${Math.round(expiresIn / 60000)} minutes)`);
 
     // If expired or expiring very soon (< 2 minutes), refresh immediately and wait
     if (expiresIn < twoMinutes) {

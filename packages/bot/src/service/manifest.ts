@@ -62,7 +62,12 @@ export async function refreshToken(
       return null;
     }
 
-    return data.result as { accessToken: string; expiresAt: number };
+    const token = data.result as { accessToken: string; expiresAt: number };
+    const now = Date.now();
+    const expiresIn = token.expiresAt - now;
+    console.log(`🔍 Received refreshed ${category} token: expiresAt=${token.expiresAt}, expiresIn=${Math.round(expiresIn / 60000)} minutes, date=${new Date(token.expiresAt).toISOString()}`);
+
+    return token;
   } catch (error) {
     console.error(`Error refreshing token for ${category}:`, error);
     return null;
