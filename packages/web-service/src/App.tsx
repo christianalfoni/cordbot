@@ -1,5 +1,5 @@
 import './firebase';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
@@ -12,6 +12,7 @@ import { useEffect } from 'react';
 function AppContent() {
   const { user, userData, loading, signInWithDiscord, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Check for pending agent auth after successful login
   useEffect(() => {
@@ -23,6 +24,18 @@ function AppContent() {
       }
     }
   }, [user, userData, loading, navigate]);
+
+  // Public routes that don't require auth - render immediately
+  const isPublicRoute = location.pathname === '/privacy' || location.pathname === '/terms';
+
+  if (isPublicRoute) {
+    return (
+      <Routes>
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+      </Routes>
+    );
+  }
 
   if (loading) {
     return (
@@ -43,8 +56,6 @@ function AppContent() {
       <Routes>
         <Route path="/auth/callback/gmail" element={<GmailCallback />} />
         <Route path="/auth/cli" element={<CliAuth />} />
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="/terms" element={<Terms />} />
         <Route path="*" element={<Login onSignIn={async () => { await signInWithDiscord(); }} />} />
       </Routes>
     );
@@ -55,8 +66,6 @@ function AppContent() {
       <Route path="/" element={<Dashboard userData={userData} onSignOut={signOut} />} />
       <Route path="/auth/callback/gmail" element={<GmailCallback />} />
       <Route path="/auth/cli" element={<CliAuth />} />
-      <Route path="/privacy" element={<Privacy />} />
-      <Route path="/terms" element={<Terms />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
