@@ -14,7 +14,8 @@ import { GmailIntegration } from './GmailIntegration';
 import { Documentation } from './Documentation';
 import { HostingBetaApply } from './HostingBetaApply';
 import { HostedBotDashboard } from './HostedBotDashboard';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import chatBotLogo from '../chat-bot-logo.svg';
 
 interface DashboardProps {
   userData: UserData;
@@ -24,10 +25,10 @@ interface DashboardProps {
 const navigation: Array<{ name: string; href: string; current: boolean }> = [];
 
 const secondaryNavigation = [
-  { name: 'Bot Setup', href: '#bot-setup', icon: Cog6ToothIcon, current: true },
-  { name: 'Service Integrations', href: '#integrations', icon: LinkIcon, current: false },
-  { name: 'Hosting', href: '#hosting', icon: CloudArrowUpIcon, current: false },
-  { name: 'Documentation', href: '#docs', icon: BookOpenIcon, current: false },
+  { name: 'Bot Setup', href: '/bot-setup', icon: Cog6ToothIcon, section: 'bot-setup' },
+  { name: 'Service Integrations', href: '/integrations', icon: LinkIcon, section: 'integrations' },
+  { name: 'Hosting', href: '/hosting', icon: CloudArrowUpIcon, section: 'hosting' },
+  { name: 'Documentation', href: '/docs', icon: BookOpenIcon, section: 'docs' },
 ];
 
 function classNames(...classes: string[]) {
@@ -36,7 +37,10 @@ function classNames(...classes: string[]) {
 
 export function Dashboard({ userData, onSignOut }: DashboardProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [currentSection, setCurrentSection] = useState('bot-setup');
+  const location = useLocation();
+
+  // Determine current section from URL path
+  const currentSection = location.pathname.substring(1);
 
   return (
     <>
@@ -52,9 +56,7 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
               <Bars3Icon aria-hidden="true" className="size-5 text-gray-900 dark:text-white" />
             </button>
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">C</span>
-              </div>
+              <img src={chatBotLogo} alt="Cordbot" className="h-16 w-16" />
               <div>
                 <h1 className="text-lg font-bold text-gray-900 dark:text-white">Cordbot</h1>
               </div>
@@ -114,9 +116,7 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
                 <XMarkIcon aria-hidden="true" className="size-6" />
               </button>
               <div className="-ml-0.5 flex items-center gap-3">
-                <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">C</span>
-                </div>
+                <img src={chatBotLogo} alt="Cordbot" className="h-16 w-16" />
                 <span className="text-lg font-bold text-gray-900 dark:text-white">Cordbot</span>
               </div>
             </div>
@@ -145,14 +145,10 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
             <ul role="list" className="flex gap-x-3 gap-y-1 whitespace-nowrap lg:flex-col">
               {secondaryNavigation.map((item) => (
                 <li key={item.name}>
-                  <a
-                    href={item.href}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setCurrentSection(item.href.replace('#', '') || 'bot-setup');
-                    }}
+                  <Link
+                    to={item.href}
                     className={classNames(
-                      currentSection === (item.href.replace('#', '') || 'bot-setup')
+                      currentSection === item.section
                         ? 'bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white'
                         : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white',
                       'group flex gap-x-3 rounded-md py-2 pr-3 pl-2 text-sm/6 font-semibold'
@@ -161,14 +157,14 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
                     <item.icon
                       aria-hidden="true"
                       className={classNames(
-                        currentSection === (item.href.replace('#', '') || 'bot-setup')
+                        currentSection === item.section
                           ? 'text-indigo-600 dark:text-white'
                           : 'text-gray-400 group-hover:text-indigo-600 dark:text-gray-500 dark:group-hover:text-white',
                         'size-6 shrink-0'
                       )}
                     />
                     {item.name}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>

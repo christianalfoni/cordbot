@@ -8,6 +8,7 @@ import { CliAuth } from './pages/CliAuth';
 import { Privacy } from './pages/Privacy';
 import { Terms } from './pages/Terms';
 import { useEffect } from 'react';
+import chatBotLogo from './chat-bot-logo.svg';
 
 function AppContent() {
   const { user, userData, loading, signInWithDiscord, signOut } = useAuth();
@@ -41,8 +42,8 @@ function AppContent() {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="mx-auto h-16 w-16 bg-indigo-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-            <span className="text-white font-bold text-3xl">C</span>
+          <div className="mx-auto h-32 w-32 flex items-center justify-center mb-6">
+            <img src={chatBotLogo} alt="Cordbot" className="h-32 w-32" />
           </div>
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto mb-4"></div>
           <p className="text-gray-600 dark:text-gray-400 text-sm font-medium">Loading...</p>
@@ -63,10 +64,14 @@ function AppContent() {
 
   return (
     <Routes>
-      <Route path="/" element={<Dashboard userData={userData} onSignOut={signOut} />} />
+      <Route path="/" element={<Navigate to="/bot-setup" replace />} />
+      <Route path="/bot-setup" element={<Dashboard userData={userData} onSignOut={signOut} />} />
+      <Route path="/integrations" element={<Dashboard userData={userData} onSignOut={signOut} />} />
+      <Route path="/hosting" element={<Dashboard userData={userData} onSignOut={signOut} />} />
+      <Route path="/docs" element={<Dashboard userData={userData} onSignOut={signOut} />} />
       <Route path="/auth/callback/gmail" element={<GmailCallback />} />
       <Route path="/auth/cli" element={<CliAuth />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/bot-setup" replace />} />
     </Routes>
   );
 }
