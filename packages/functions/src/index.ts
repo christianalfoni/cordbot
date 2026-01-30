@@ -5,7 +5,7 @@ import {logger} from "firebase-functions/v2";
 import {defineSecret} from "firebase-functions/params";
 
 initializeApp();
-const db = getFirestore();
+export const db = getFirestore();
 
 // Define secrets (stored in Google Cloud Secret Manager)
 const googleClientId = defineSecret("GOOGLE_CLIENT_ID");
@@ -253,17 +253,12 @@ export const getBotManifest = onCall(async (request) => {
     const tokens: { gmail?: { accessToken: string; expiresAt: number } } = {};
     const oauthConnections = userData.oauthConnections || {};
 
-    // Add Gmail token if connected and not expired
+    // Add Gmail token if connected (return even if expired - bot will refresh on demand)
     if (oauthConnections.gmail) {
-      const now = Date.now();
-      if (oauthConnections.gmail.expiresAt > now) {
-        tokens.gmail = {
-          accessToken: oauthConnections.gmail.accessToken,
-          expiresAt: oauthConnections.gmail.expiresAt,
-        };
-      } else {
-        logger.warn(`Gmail token expired for user ${userId}`);
-      }
+      tokens.gmail = {
+        accessToken: oauthConnections.gmail.accessToken,
+        expiresAt: oauthConnections.gmail.expiresAt,
+      };
     }
 
     // Count tools for logging
@@ -288,3 +283,130 @@ export const getBotManifest = onCall(async (request) => {
     );
   }
 });
+
+/**
+ * Refresh an expired OAuth token for a specific category
+ * Authenticated via bot token in request data
+ */
+export const refreshToken = onCall(
+  { secrets: [googleClientId, googleClientSecret] },
+  async (request) => {
+    const { botToken, category } = request.data;
+
+    if (!botToken || !category) {
+      throw new HttpsError(
+        'invalid-argument',
+        'botToken and category are required'
+      );
+    }
+
+    try {
+      // Query Firestore for user with matching botToken
+      const usersSnapshot = await db.collection('users')
+        .where('botToken', '==', botToken)
+        .limit(1)
+        .get();
+
+      if (usersSnapshot.empty) {
+        logger.warn('No user found with provided bot token');
+        throw new HttpsError(
+          'not-found',
+          'Invalid bot token'
+        );
+      }
+
+      const userDoc = usersSnapshot.docs[0];
+      const userData = userDoc.data();
+      const userId = userDoc.id;
+
+      // Handle token refresh based on category
+      if (category === 'gmail') {
+        const gmailConnection = userData.oauthConnections?.gmail;
+
+        if (!gmailConnection) {
+          throw new HttpsError(
+            'not-found',
+            'Gmail not connected for this user'
+          );
+        }
+
+        if (!gmailConnection.refreshToken) {
+          throw new HttpsError(
+            'failed-precondition',
+            'No refresh token available for Gmail'
+          );
+        }
+
+        logger.info(`Refreshing Gmail token for user ${userId}`);
+
+        // Use refresh token to get new access token
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            refresh_token: gmailConnection.refreshToken,
+            client_id: googleClientId.value(),
+            client_secret: googleClientSecret.value(),
+            grant_type: 'refresh_token',
+          }),
+        });
+
+        if (!tokenResponse.ok) {
+          const errorData = await tokenResponse.json();
+          logger.error('Failed to refresh Gmail token:', {
+            status: tokenResponse.status,
+            error: errorData,
+            userId,
+          });
+          throw new HttpsError(
+            'internal',
+            `Failed to refresh token: ${errorData.error_description || errorData.error}`
+          );
+        }
+
+        const tokens = await tokenResponse.json();
+
+        // Update Firestore with new access token
+        const newExpiresAt = Date.now() + (tokens.expires_in * 1000);
+        await userDoc.ref.update({
+          'oauthConnections.gmail.accessToken': tokens.access_token,
+          'oauthConnections.gmail.expiresAt': newExpiresAt,
+        });
+
+        logger.info(`Gmail token refreshed for user ${userId}, expires at ${new Date(newExpiresAt).toISOString()}`);
+
+        return {
+          accessToken: tokens.access_token,
+          expiresAt: newExpiresAt,
+        };
+      } else {
+        throw new HttpsError(
+          'invalid-argument',
+          `Unknown token category: ${category}`
+        );
+      }
+    } catch (error) {
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+      logger.error('Error refreshing token:', error);
+      throw new HttpsError(
+        'internal',
+        'An error occurred while refreshing token'
+      );
+    }
+  }
+);
+
+// Export Fly.io hosting functions
+export {
+  applyForHostingBeta,
+  provisionHostedBot,
+  getHostedBotStatus,
+  getHostedBotLogs,
+  restartHostedBot,
+  deployHostedBot,
+  deprovisionHostedBot,
+} from './fly-hosting.js';

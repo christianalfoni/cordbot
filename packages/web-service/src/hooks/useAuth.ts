@@ -57,6 +57,18 @@ export interface UserData {
   toolsConfig?: {
     [domain: string]: string[]; // e.g., { gmail: ['send_email', 'list_messages'] }
   };
+  hostingBetaRequested?: boolean;
+  hostingBetaApproved?: boolean;
+  hostedBot?: {
+    appName: string;
+    machineId: string;
+    region: string;
+    status: 'provisioning' | 'running' | 'stopped' | 'error';
+    version: string;
+    provisionedAt: string;
+    lastRestartedAt?: string;
+    errorMessage?: string;
+  };
 }
 
 export function useAuth() {

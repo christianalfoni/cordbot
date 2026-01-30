@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 interface LoginProps {
   onSignIn: () => Promise<void>;
@@ -79,13 +80,13 @@ export function Login({ onSignIn }: LoginProps) {
 
           <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-center gap-6 text-xs text-gray-500 dark:text-gray-400">
-              <a href="#" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+              <Link to="/terms" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
                 Terms of Service
-              </a>
+              </Link>
               <span>•</span>
-              <a href="#" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+              <Link to="/privacy" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
                 Privacy Policy
-              </a>
+              </Link>
             </div>
           </div>
         </div>

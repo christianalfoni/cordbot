@@ -12,7 +12,9 @@ import { UserData } from '../hooks/useAuth';
 import { BotSetup } from './BotSetup';
 import { GmailIntegration } from './GmailIntegration';
 import { Documentation } from './Documentation';
-import { Deployment } from './Deployment';
+import { HostingBetaApply } from './HostingBetaApply';
+import { HostedBotDashboard } from './HostedBotDashboard';
+import { Link } from 'react-router-dom';
 
 interface DashboardProps {
   userData: UserData;
@@ -24,7 +26,7 @@ const navigation: Array<{ name: string; href: string; current: boolean }> = [];
 const secondaryNavigation = [
   { name: 'Bot Setup', href: '#bot-setup', icon: Cog6ToothIcon, current: true },
   { name: 'Service Integrations', href: '#integrations', icon: LinkIcon, current: false },
-  { name: 'Deployment', href: '#deployment', icon: CloudArrowUpIcon, current: false },
+  { name: 'Hosting', href: '#hosting', icon: CloudArrowUpIcon, current: false },
   { name: 'Documentation', href: '#docs', icon: BookOpenIcon, current: false },
 ];
 
@@ -208,10 +210,39 @@ export function Dashboard({ userData, onSignOut }: DashboardProps) {
               </div>
             )}
 
-            {currentSection === 'deployment' && <Deployment />}
+            {currentSection === 'hosting' && (
+              <div>
+                <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
+                  Managed Hosting
+                </h2>
+                <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
+                  Run your bot 24/7 in the cloud with managed hosting.
+                </p>
+
+                <div className="mt-6">
+                  {!userData.hostingBetaApproved ? (
+                    <HostingBetaApply userData={userData} />
+                  ) : (
+                    <HostedBotDashboard userData={userData} />
+                  )}
+                </div>
+              </div>
+            )}
 
             {currentSection === 'docs' && <Documentation />}
           </div>
+
+          <footer className="mt-16 pt-8 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-center gap-6 text-xs text-gray-500 dark:text-gray-400">
+              <Link to="/terms" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                Terms of Service
+              </Link>
+              <span>•</span>
+              <Link to="/privacy" className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                Privacy Policy
+              </Link>
+            </div>
+          </footer>
         </main>
       </div>
     </>

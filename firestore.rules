@@ -5,18 +5,24 @@ service cloud.firestore {
 
     // Users collection - users can only read/write their own profile
     match /users/{userId} {
-      // Allow authenticated users to read and write their own document
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Allow authenticated users to read their own document
+      allow read: if request.auth != null && request.auth.uid == userId;
 
       // Ensure required fields are present on create
       allow create: if request.auth != null
                     && request.auth.uid == userId
                     && request.resource.data.keys().hasAll(['id', 'createdAt', 'lastLoginAt']);
 
-      // Allow update with consistent userId
+      // Allow update with consistent userId and restrictions on hosting fields
       allow update: if request.auth != null
                     && request.auth.uid == userId
-                    && request.resource.data.id == userId;
+                    && request.resource.data.id == userId
+                    // Users can only set hostingBetaRequested to true
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hostingBetaApproved', 'hostedBot'])
+                        || request.resource.data.hostingBetaRequested == true)
+                    // Prevent direct modification of hostedBot (Cloud Functions only)
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hostedBot'])
+                        || !('hostedBot' in request.resource.data));
     }
 
     // Deny all other access

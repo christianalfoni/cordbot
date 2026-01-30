@@ -65,9 +65,9 @@ export class SessionManager {
       const toolCount = Object.values(manifest.toolsConfig || {}).reduce((sum, tools) => sum + tools.length, 0);
       console.log(`📦 Manifest loaded: ${toolCount} authenticated tools available`);
 
-      // Create token manager
+      // Create token manager with on-demand refresh (no background polling)
       this.tokenManager = new TokenManager(botToken, SERVICE_URL, manifest);
-      this.tokenManager.startBackgroundRefresh();
+      console.log('🔄 Token refresh: on-demand (tokens will refresh automatically when needed)');
 
       // Load dynamic tools with token manager and channel getter
       dynamicTools = await loadDynamicTools(

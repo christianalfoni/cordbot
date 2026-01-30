@@ -5,6 +5,8 @@ import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
 import { GmailCallback } from './pages/GmailCallback';
 import { CliAuth } from './pages/CliAuth';
+import { Privacy } from './pages/Privacy';
+import { Terms } from './pages/Terms';
 import { useEffect } from 'react';
 
 function AppContent() {
@@ -41,6 +43,8 @@ function AppContent() {
       <Routes>
         <Route path="/auth/callback/gmail" element={<GmailCallback />} />
         <Route path="/auth/cli" element={<CliAuth />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
         <Route path="*" element={<Login onSignIn={async () => { await signInWithDiscord(); }} />} />
       </Routes>
     );
@@ -51,6 +55,8 @@ function AppContent() {
       <Route path="/" element={<Dashboard userData={userData} onSignOut={signOut} />} />
       <Route path="/auth/callback/gmail" element={<GmailCallback />} />
       <Route path="/auth/cli" element={<CliAuth />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
