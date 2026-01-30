@@ -81,20 +81,22 @@ export function HostedBotDashboard({ userData }: HostedBotDashboardProps) {
         <div>
           <label
             htmlFor="anthropic-api-key"
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            className="block text-sm/6 font-medium text-gray-900 dark:text-white"
           >
             Anthropic API Key
           </label>
-          <input
-            type="password"
-            id="anthropic-api-key"
-            value={anthropicApiKey}
-            onChange={(e) => setAnthropicApiKey(e.target.value)}
-            placeholder="sk-ant-..."
-            disabled={isLoading || isProvisioning || !userData.botToken}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
-          />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          <div className="mt-2">
+            <input
+              type="password"
+              id="anthropic-api-key"
+              value={anthropicApiKey}
+              onChange={(e) => setAnthropicApiKey(e.target.value)}
+              placeholder="sk-ant-..."
+              disabled={isLoading || isProvisioning || !userData.botToken}
+              className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed sm:text-sm/6 dark:bg-white/5 dark:text-white dark:outline-white/10 dark:placeholder:text-gray-500 dark:focus:outline-indigo-500"
+            />
+          </div>
+          <p className="mt-2 text-xs/5 text-gray-500 dark:text-gray-400">
             Your API key will be securely stored in the hosted environment and never saved to our
             database.
           </p>
@@ -103,24 +105,26 @@ export function HostedBotDashboard({ userData }: HostedBotDashboardProps) {
         <div>
           <label
             htmlFor="region"
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            className="block text-sm/6 font-medium text-gray-900 dark:text-white"
           >
             Region
           </label>
-          <select
-            id="region"
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-            disabled={isLoading || isProvisioning || !userData.botToken}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-          >
-            {REGIONS.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          <div className="mt-2">
+            <select
+              id="region"
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+              disabled={isLoading || isProvisioning || !userData.botToken}
+              className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed sm:text-sm/6 dark:bg-white/5 dark:text-white dark:outline-white/10 dark:*:bg-gray-800 dark:focus:outline-indigo-500"
+            >
+              {REGIONS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="mt-2 text-xs/5 text-gray-500 dark:text-gray-400">
             Choose a region close to your location for best performance.
           </p>
         </div>

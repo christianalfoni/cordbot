@@ -1,7 +1,7 @@
-import {onCall, HttpsError} from "firebase-functions/v2/https";
-import {logger} from "firebase-functions/v2";
-import {defineSecret} from "firebase-functions/params";
-import {db} from './index.js';
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { logger } from "firebase-functions/v2";
+import { defineSecret } from "firebase-functions/params";
+import { db } from "./index.js";
 
 // Define Fly.io API secret
 const flyApiToken = defineSecret("FLY_API_TOKEN");
@@ -9,14 +9,14 @@ const flyApiToken = defineSecret("FLY_API_TOKEN");
 // Fly.io configuration
 const FLY_API_BASE = "https://api.machines.dev/v1";
 const FLY_ORG = "cordbot"; // Update with your Fly.io organization slug
-const DEFAULT_IMAGE = "registry-1.docker.io/cordbot/agent";
+const DEFAULT_IMAGE = "registry-1.docker.io/christianalfoni/cordbot-agent";
 const DEFAULT_VERSION = "latest";
 
 interface FlyMachineConfig {
   image: string;
   env?: Record<string, string>;
   services?: Array<{
-    ports: Array<{port: number; handlers?: string[]}>;
+    ports: Array<{ port: number; handlers?: string[] }>;
     protocol: string;
     internal_port: number;
   }>;
@@ -44,7 +44,7 @@ async function flyRequest(
   const response = await fetch(url, {
     ...options,
     headers: {
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...options.headers,
     },
@@ -88,16 +88,13 @@ function generateAppName(userId: string): string {
  */
 export const applyForHostingBeta = onCall(async (request) => {
   if (!request.auth) {
-    throw new HttpsError(
-      'unauthenticated',
-      'User must be authenticated'
-    );
+    throw new HttpsError("unauthenticated", "User must be authenticated");
   }
 
   const userId = request.auth.uid;
 
   try {
-    await db.collection('users').doc(userId).update({
+    await db.collection("users").doc(userId).update({
       hostingBetaRequested: true,
       hostingBetaRequestedAt: new Date().toISOString(),
     });
@@ -109,11 +106,8 @@ export const applyForHostingBeta = onCall(async (request) => {
       message: "Beta access requested. You'll be notified when approved.",
     };
   } catch (error) {
-    logger.error('Error applying for hosting beta:', error);
-    throw new HttpsError(
-      'internal',
-      'Failed to submit beta application'
-    );
+    logger.error("Error applying for hosting beta:", error);
+    throw new HttpsError("internal", "Failed to submit beta application");
   }
 });
 
@@ -124,39 +118,34 @@ export const provisionHostedBot = onCall(
   { secrets: [flyApiToken] },
   async (request) => {
     if (!request.auth) {
-      throw new HttpsError(
-        'unauthenticated',
-        'User must be authenticated'
-      );
+      throw new HttpsError("unauthenticated", "User must be authenticated");
     }
 
     const userId = request.auth.uid;
-    const { anthropicApiKey, region = "sjc", version = DEFAULT_VERSION } = request.data;
+    const {
+      anthropicApiKey,
+      region = "sjc",
+      version = DEFAULT_VERSION,
+    } = request.data;
 
     if (!anthropicApiKey) {
-      throw new HttpsError(
-        'invalid-argument',
-        'anthropicApiKey is required'
-      );
+      throw new HttpsError("invalid-argument", "anthropicApiKey is required");
     }
 
     try {
       // Check if user is approved for beta
-      const userDoc = await db.collection('users').doc(userId).get();
+      const userDoc = await db.collection("users").doc(userId).get();
       const userData = userDoc.data();
 
       if (!userData?.hostingBetaApproved) {
         throw new HttpsError(
-          'permission-denied',
-          'User is not approved for hosting beta'
+          "permission-denied",
+          "User is not approved for hosting beta"
         );
       }
 
       if (userData.hostedBot) {
-        throw new HttpsError(
-          'already-exists',
-          'User already has a hosted bot'
-        );
+        throw new HttpsError("already-exists", "User already has a hosted bot");
       }
 
       const token = flyApiToken.value();
@@ -202,8 +191,8 @@ export const provisionHostedBot = onCall(
       const botToken = userData.botToken;
       if (!botToken) {
         throw new HttpsError(
-          'failed-precondition',
-          'User does not have a Discord bot token configured'
+          "failed-precondition",
+          "User does not have a Discord bot token configured"
         );
       }
 
@@ -247,12 +236,12 @@ export const provisionHostedBot = onCall(
         machineId: machineResponse.id,
         volumeId: volumeResponse.id,
         region,
-        status: 'provisioning' as const,
+        status: "provisioning" as const,
         version,
         provisionedAt: new Date().toISOString(),
       };
 
-      await db.collection('users').doc(userId).update({
+      await db.collection("users").doc(userId).update({
         hostedBot,
       });
 
@@ -266,15 +255,17 @@ export const provisionHostedBot = onCall(
         hostedBot,
       };
     } catch (error) {
-      logger.error('Error provisioning hosted bot:', error);
+      logger.error("Error provisioning hosted bot:", error);
 
       if (error instanceof HttpsError) {
         throw error;
       }
 
       throw new HttpsError(
-        'internal',
-        `Failed to provision hosted bot: ${error instanceof Error ? error.message : 'Unknown error'}`
+        "internal",
+        `Failed to provision hosted bot: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
     }
   }
@@ -287,23 +278,17 @@ export const getHostedBotStatus = onCall(
   { secrets: [flyApiToken] },
   async (request) => {
     if (!request.auth) {
-      throw new HttpsError(
-        'unauthenticated',
-        'User must be authenticated'
-      );
+      throw new HttpsError("unauthenticated", "User must be authenticated");
     }
 
     const userId = request.auth.uid;
 
     try {
-      const userDoc = await db.collection('users').doc(userId).get();
+      const userDoc = await db.collection("users").doc(userId).get();
       const userData = userDoc.data();
 
       if (!userData?.hostedBot) {
-        throw new HttpsError(
-          'not-found',
-          'User does not have a hosted bot'
-        );
+        throw new HttpsError("not-found", "User does not have a hosted bot");
       }
 
       const { appName, machineId } = userData.hostedBot;
@@ -316,14 +301,19 @@ export const getHostedBotStatus = onCall(
         token
       );
 
-      const status = machine.state === 'started' ? 'running' :
-                     machine.state === 'stopped' ? 'stopped' :
-                     machine.state === 'starting' ? 'provisioning' : 'error';
+      const status =
+        machine.state === "started"
+          ? "running"
+          : machine.state === "stopped"
+          ? "stopped"
+          : machine.state === "starting"
+          ? "provisioning"
+          : "error";
 
       // Update Firestore if status changed
       if (status !== userData.hostedBot.status) {
-        await db.collection('users').doc(userId).update({
-          'hostedBot.status': status,
+        await db.collection("users").doc(userId).update({
+          "hostedBot.status": status,
         });
       }
 
@@ -336,16 +326,13 @@ export const getHostedBotStatus = onCall(
         events: machine.events?.slice(-5) || [], // Last 5 events
       };
     } catch (error) {
-      logger.error('Error getting hosted bot status:', error);
+      logger.error("Error getting hosted bot status:", error);
 
       if (error instanceof HttpsError) {
         throw error;
       }
 
-      throw new HttpsError(
-        'internal',
-        'Failed to get hosted bot status'
-      );
+      throw new HttpsError("internal", "Failed to get hosted bot status");
     }
   }
 );
@@ -356,23 +343,17 @@ export const getHostedBotStatus = onCall(
  */
 export const getHostedBotLogs = onCall(async (request) => {
   if (!request.auth) {
-    throw new HttpsError(
-      'unauthenticated',
-      'User must be authenticated'
-    );
+    throw new HttpsError("unauthenticated", "User must be authenticated");
   }
 
   const userId = request.auth.uid;
 
   try {
-    const userDoc = await db.collection('users').doc(userId).get();
+    const userDoc = await db.collection("users").doc(userId).get();
     const userData = userDoc.data();
 
     if (!userData?.hostedBot) {
-      throw new HttpsError(
-        'not-found',
-        'User does not have a hosted bot'
-      );
+      throw new HttpsError("not-found", "User does not have a hosted bot");
     }
 
     const { appName, machineId } = userData.hostedBot;
@@ -383,16 +364,13 @@ export const getHostedBotLogs = onCall(async (request) => {
       machineCommand: `flyctl machine logs ${machineId} -a ${appName}`,
     };
   } catch (error) {
-    logger.error('Error getting hosted bot logs:', error);
+    logger.error("Error getting hosted bot logs:", error);
 
     if (error instanceof HttpsError) {
       throw error;
     }
 
-    throw new HttpsError(
-      'internal',
-      'Failed to get hosted bot logs'
-    );
+    throw new HttpsError("internal", "Failed to get hosted bot logs");
   }
 });
 
@@ -403,23 +381,17 @@ export const restartHostedBot = onCall(
   { secrets: [flyApiToken] },
   async (request) => {
     if (!request.auth) {
-      throw new HttpsError(
-        'unauthenticated',
-        'User must be authenticated'
-      );
+      throw new HttpsError("unauthenticated", "User must be authenticated");
     }
 
     const userId = request.auth.uid;
 
     try {
-      const userDoc = await db.collection('users').doc(userId).get();
+      const userDoc = await db.collection("users").doc(userId).get();
       const userData = userDoc.data();
 
       if (!userData?.hostedBot) {
-        throw new HttpsError(
-          'not-found',
-          'User does not have a hosted bot'
-        );
+        throw new HttpsError("not-found", "User does not have a hosted bot");
       }
 
       const { appName, machineId } = userData.hostedBot;
@@ -435,7 +407,7 @@ export const restartHostedBot = onCall(
       );
 
       // Wait a moment
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Start the machine
       await flyRequest(
@@ -445,9 +417,9 @@ export const restartHostedBot = onCall(
       );
 
       // Update Firestore
-      await db.collection('users').doc(userId).update({
-        'hostedBot.lastRestartedAt': new Date().toISOString(),
-        'hostedBot.status': 'provisioning',
+      await db.collection("users").doc(userId).update({
+        "hostedBot.lastRestartedAt": new Date().toISOString(),
+        "hostedBot.status": "provisioning",
       });
 
       logger.info(`Successfully restarted machine ${machineId}`);
@@ -457,15 +429,17 @@ export const restartHostedBot = onCall(
         message: "Bot is restarting",
       };
     } catch (error) {
-      logger.error('Error restarting hosted bot:', error);
+      logger.error("Error restarting hosted bot:", error);
 
       if (error instanceof HttpsError) {
         throw error;
       }
 
       throw new HttpsError(
-        'internal',
-        `Failed to restart hosted bot: ${error instanceof Error ? error.message : 'Unknown error'}`
+        "internal",
+        `Failed to restart hosted bot: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
     }
   }
@@ -478,31 +452,22 @@ export const deployHostedBot = onCall(
   { secrets: [flyApiToken] },
   async (request) => {
     if (!request.auth) {
-      throw new HttpsError(
-        'unauthenticated',
-        'User must be authenticated'
-      );
+      throw new HttpsError("unauthenticated", "User must be authenticated");
     }
 
     const userId = request.auth.uid;
     const { version } = request.data;
 
     if (!version) {
-      throw new HttpsError(
-        'invalid-argument',
-        'version is required'
-      );
+      throw new HttpsError("invalid-argument", "version is required");
     }
 
     try {
-      const userDoc = await db.collection('users').doc(userId).get();
+      const userDoc = await db.collection("users").doc(userId).get();
       const userData = userDoc.data();
 
       if (!userData?.hostedBot) {
-        throw new HttpsError(
-          'not-found',
-          'User does not have a hosted bot'
-        );
+        throw new HttpsError("not-found", "User does not have a hosted bot");
       }
 
       const { appName, machineId } = userData.hostedBot;
@@ -535,9 +500,9 @@ export const deployHostedBot = onCall(
       );
 
       // Update Firestore
-      await db.collection('users').doc(userId).update({
-        'hostedBot.version': version,
-        'hostedBot.lastDeployedAt': new Date().toISOString(),
+      await db.collection("users").doc(userId).update({
+        "hostedBot.version": version,
+        "hostedBot.lastDeployedAt": new Date().toISOString(),
       });
 
       logger.info(`Successfully deployed version ${version}`);
@@ -547,15 +512,17 @@ export const deployHostedBot = onCall(
         version,
       };
     } catch (error) {
-      logger.error('Error deploying hosted bot:', error);
+      logger.error("Error deploying hosted bot:", error);
 
       if (error instanceof HttpsError) {
         throw error;
       }
 
       throw new HttpsError(
-        'internal',
-        `Failed to deploy update: ${error instanceof Error ? error.message : 'Unknown error'}`
+        "internal",
+        `Failed to deploy update: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
     }
   }
@@ -568,23 +535,17 @@ export const deprovisionHostedBot = onCall(
   { secrets: [flyApiToken] },
   async (request) => {
     if (!request.auth) {
-      throw new HttpsError(
-        'unauthenticated',
-        'User must be authenticated'
-      );
+      throw new HttpsError("unauthenticated", "User must be authenticated");
     }
 
     const userId = request.auth.uid;
 
     try {
-      const userDoc = await db.collection('users').doc(userId).get();
+      const userDoc = await db.collection("users").doc(userId).get();
       const userData = userDoc.data();
 
       if (!userData?.hostedBot) {
-        throw new HttpsError(
-          'not-found',
-          'User does not have a hosted bot'
-        );
+        throw new HttpsError("not-found", "User does not have a hosted bot");
       }
 
       const { appName, machineId, volumeId } = userData.hostedBot;
@@ -621,17 +582,13 @@ export const deprovisionHostedBot = onCall(
 
       // Step 3: Delete app
       try {
-        await flyRequest(
-          `/apps/${appName}`,
-          { method: "DELETE" },
-          token
-        );
+        await flyRequest(`/apps/${appName}`, { method: "DELETE" }, token);
       } catch (error) {
         logger.warn(`Failed to delete app ${appName}:`, error);
       }
 
       // Step 4: Remove from Firestore
-      await db.collection('users').doc(userId).update({
+      await db.collection("users").doc(userId).update({
         hostedBot: null,
       });
 
@@ -642,15 +599,17 @@ export const deprovisionHostedBot = onCall(
         message: "Hosted bot deleted successfully",
       };
     } catch (error) {
-      logger.error('Error deprovisioning hosted bot:', error);
+      logger.error("Error deprovisioning hosted bot:", error);
 
       if (error instanceof HttpsError) {
         throw error;
       }
 
       throw new HttpsError(
-        'internal',
-        `Failed to delete hosted bot: ${error instanceof Error ? error.message : 'Unknown error'}`
+        "internal",
+        `Failed to delete hosted bot: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
     }
   }
