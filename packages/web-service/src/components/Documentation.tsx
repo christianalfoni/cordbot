@@ -362,7 +362,18 @@ export function Documentation() {
         </h3>
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <ol className="space-y-3 text-sm text-gray-600 dark:text-gray-300 list-decimal list-inside">
-            <li>Complete the "Bot Setup" to configure your Discord bot token and server</li>
+            <li>
+              Complete the "Bot Setup" to configure your Discord bot token and server
+              <div className="mt-2 ml-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                <p className="text-xs font-medium text-yellow-900 dark:text-yellow-200 mb-1">
+                  Important: Enable Privileged Gateway Intents
+                </p>
+                <p className="text-xs text-yellow-800 dark:text-yellow-300">
+                  In the Discord Developer Portal, go to Bot → Privileged Gateway Intents and enable "MESSAGE CONTENT INTENT".
+                  Without this, your bot will fail to connect.
+                </p>
+              </div>
+            </li>
             <li>Navigate to the workspace directory you want to give the agent and run <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">npx @cordbot/agent</code></li>
             <li>The bot will sync your Discord channels to folders</li>
             <li>Message the bot in Discord to start a conversation</li>

@@ -126,6 +126,24 @@ export function BotSetup({ userId, initialToken, initialGuildId }: BotSetupProps
                   3
                 </span>
                 <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Enable Privileged Gateway Intents</p>
+                  <ul className="mt-1 text-sm text-gray-500 dark:text-gray-400 space-y-1">
+                    <li>• Scroll down to "Privileged Gateway Intents"</li>
+                    <li>• Enable "MESSAGE CONTENT INTENT"</li>
+                    <li>• Click "Save Changes"</li>
+                  </ul>
+                  <div className="mt-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-2">
+                    <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                      <strong>Required:</strong> Without this, your bot will fail to connect.
+                    </p>
+                  </div>
+                </div>
+              </li>
+              <li className="flex gap-4">
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white">
+                  4
+                </span>
+                <div className="flex-1">
                   <p className="text-sm font-medium text-gray-900 dark:text-white">Copy Bot Token</p>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     Click "Reset Token", copy it, and paste below.

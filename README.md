@@ -29,12 +29,19 @@ Cordbot is a directory-based Discord bot that syncs Discord channels to local fo
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Create a new application and add a bot
-3. Copy your bot token
-4. Invite the bot to your server using this URL (replace `YOUR_CLIENT_ID` with your bot's client ID):
+3. **Enable Privileged Gateway Intents** (REQUIRED):
+   - Go to the **Bot** section
+   - Scroll down to **Privileged Gateway Intents**
+   - Enable **MESSAGE CONTENT INTENT**
+   - Click **Save Changes**
+4. Copy your bot token
+5. Invite the bot to your server using this URL (replace `YOUR_CLIENT_ID` with your bot's client ID):
 
 ```
 https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=309237763136&scope=bot%20applications.commands
 ```
+
+**Important:** The bot requires the Message Content privileged intent to read message content. Without this enabled, the bot will fail to connect with a "Used disallowed intents" error.
 
 ### Running Cordbot
 
