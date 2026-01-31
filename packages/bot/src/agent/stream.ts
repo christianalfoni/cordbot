@@ -49,9 +49,12 @@ export async function streamToDiscord(
     parentChannel = target.channel as TextChannel;
     channel = parentChannel; // Temporarily use parent channel
 
+    // Clean the message content by removing Discord mentions
+    const cleanContent = target.content.replace(/<@!?\d+>/g, '').trim();
+
     threadName = botConfig?.mode === 'shared'
-      ? `${botConfig.username}: ${target.content.slice(0, 40)}${target.content.length > 40 ? '...' : ''}`
-      : `${target.author.username}: ${target.content.slice(0, 50)}${target.content.length > 50 ? '...' : ''}`;
+      ? `${cleanContent.slice(0, 80)}${cleanContent.length > 80 ? '...' : ''}`
+      : `${target.author.username}: ${cleanContent.slice(0, 80)}${cleanContent.length > 80 ? '...' : ''}`;
   } else {
     // Already in a thread or channel
     channel = target;

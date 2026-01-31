@@ -436,7 +436,17 @@ async function pollMachineStatusAndUpdateBot(
   }
 
   // If we get here, machine didn't start within timeout
-  logger.warn(`Bot ${botId} did not start within timeout, keeping provisioning status`);
+  logger.error(`Bot ${botId} did not start within timeout (5 minutes)`);
+  await db
+    .collection("users")
+    .doc(userId)
+    .collection("bots")
+    .doc(botId)
+    .update({
+      status: "error",
+      errorMessage: "Machine did not start within 5 minutes. Check logs for details.",
+      updatedAt: new Date().toISOString(),
+    });
 }
 
 /**
@@ -908,12 +918,34 @@ export const restartHostedBot = onCall(
 
       logger.info(`Successfully restarted machine ${machineId}`);
 
+      // Poll machine status in background and update bot status when running
+      pollMachineStatusAndUpdateBot(
+        userId,
+        botId,
+        appName,
+        machineId,
+        token
+      ).catch((err) => {
+        logger.error(`Failed to poll machine status for bot ${botId}:`, err);
+      });
+
       return {
         success: true,
         message: "Bot is restarting",
       };
     } catch (error) {
       logger.error("Error restarting hosted bot:", error);
+
+      // Update status to error if restart fails
+      try {
+        await updateBotDoc(userId, botId, {
+          status: "error" as const,
+          errorMessage: `Failed to restart: ${error instanceof Error ? error.message : "Unknown error"}`,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (updateError) {
+        logger.error("Failed to update bot status to error:", updateError);
+      }
 
       if (error instanceof HttpsError) {
         throw error;
@@ -961,6 +993,12 @@ export const deployHostedBot = onCall(
 
       logger.info(`Deploying version ${version} for user ${userId}`);
 
+      // Immediately update status to provisioning
+      await updateBotDoc(userId, botId, {
+        status: "provisioning" as const,
+        updatedAt: new Date().toISOString(),
+      });
+
       // Get current machine config
       const machine = await flyRequest(
         `/apps/${appName}/machines/${machineId}`,
@@ -985,7 +1023,7 @@ export const deployHostedBot = onCall(
         token
       );
 
-      // Update Firestore
+      // Update Firestore with version info
       await updateBotDoc(userId, botId, {
         version,
         lastDeployedAt: new Date().toISOString(),
@@ -994,12 +1032,34 @@ export const deployHostedBot = onCall(
 
       logger.info(`Successfully deployed version ${version}`);
 
+      // Poll machine status in background and update bot status when running
+      pollMachineStatusAndUpdateBot(
+        userId,
+        botId,
+        appName,
+        machineId,
+        token
+      ).catch((err) => {
+        logger.error(`Failed to poll machine status for bot ${botId}:`, err);
+      });
+
       return {
         success: true,
         version,
       };
     } catch (error) {
       logger.error("Error deploying hosted bot:", error);
+
+      // Update status to error if deploy fails
+      try {
+        await updateBotDoc(userId, botId, {
+          status: "error" as const,
+          errorMessage: `Failed to deploy update: ${error instanceof Error ? error.message : "Unknown error"}`,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (updateError) {
+        logger.error("Failed to update bot status to error:", updateError);
+      }
 
       if (error instanceof HttpsError) {
         throw error;
@@ -1152,6 +1212,17 @@ export const redeployHostedBot = onCall(
         newMachineId: machineResponse.id,
       });
 
+      // Poll machine status in background and update bot status when running
+      pollMachineStatusAndUpdateBot(
+        userId,
+        botId,
+        appName,
+        machineResponse.id,
+        token
+      ).catch((err) => {
+        logger.error(`Failed to poll machine status for bot ${botId}:`, err);
+      });
+
       return {
         success: true,
         machineId: machineResponse.id,
@@ -1159,6 +1230,17 @@ export const redeployHostedBot = onCall(
       };
     } catch (error) {
       logger.error("Error redeploying hosted bot:", error);
+
+      // Update status to error if redeploy fails
+      try {
+        await updateBotDoc(userId, botId, {
+          status: "error" as const,
+          errorMessage: `Failed to redeploy: ${error instanceof Error ? error.message : "Unknown error"}`,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (updateError) {
+        logger.error("Failed to update bot status to error:", updateError);
+      }
 
       if (error instanceof HttpsError) {
         throw error;
