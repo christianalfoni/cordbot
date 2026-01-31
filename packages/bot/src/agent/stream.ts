@@ -88,7 +88,7 @@ export async function streamToDiscord(
 
     // Iterate through SDK messages
     for await (const message of queryResult) {
-      await handleSDKMessage(message, channel, state, sessionManager, sessionId);
+      channel = await handleSDKMessage(message, channel, state, sessionManager, sessionId);
     }
 
     console.log(`✅ SDK stream completed for session ${sessionId}`);
@@ -122,7 +122,7 @@ async function handleSDKMessage(
   state: StreamState,
   sessionManager: SessionManager,
   sessionId: string
-): Promise<void> {
+): Promise<TextChannel | ThreadChannel> {
   switch (message.type) {
     case 'assistant':
       // Final assistant message with complete response
@@ -192,6 +192,9 @@ async function handleSDKMessage(
       }
       break;
   }
+
+  // Return the potentially updated channel
+  return channel;
 }
 
 async function handleStreamEvent(
