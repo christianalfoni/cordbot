@@ -1,20 +1,22 @@
 import { useState, useEffect } from 'react';
 import { UserData } from '../hooks/useAuth';
-import { useHostedBot } from '../hooks/useHostedBot';
+import { useHostedBots, Bot } from '../hooks/useHostedBots';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 interface HostedBotStatusProps {
   userData: UserData;
+  bot: Bot;
+  botId: string;
 }
 
-export function HostedBotStatus({ userData }: HostedBotStatusProps) {
-  const { hostedBot, getStatus, isLoading } = useHostedBot(userData);
+export function HostedBotStatus({ userData, bot, botId }: HostedBotStatusProps) {
+  const { getStatus, isLoading } = useHostedBots(userData.id);
   const [status, setStatus] = useState<any>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const fetchStatus = async () => {
     try {
-      const result = await getStatus();
+      const result = await getStatus(botId);
       setStatus(result);
     } catch (err) {
       console.error('Error fetching status:', err);
@@ -22,22 +24,22 @@ export function HostedBotStatus({ userData }: HostedBotStatusProps) {
   };
 
   useEffect(() => {
-    if (hostedBot) {
+    if (bot) {
       fetchStatus();
     }
-  }, [hostedBot]);
+  }, [bot, botId]);
 
   useEffect(() => {
-    if (!autoRefresh || !hostedBot) return;
+    if (!autoRefresh || !bot) return;
 
     const interval = setInterval(() => {
       fetchStatus();
     }, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(interval);
-  }, [autoRefresh, hostedBot]);
+  }, [autoRefresh, bot, botId]);
 
-  if (!hostedBot) return null;
+  if (!bot) return null;
 
   const getStatusColor = (statusValue: string) => {
     switch (statusValue) {
@@ -103,44 +105,44 @@ export function HostedBotStatus({ userData }: HostedBotStatusProps) {
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
           <span
             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-              status?.status || hostedBot.status
+              status?.status || bot.status
             )}`}
           >
-            {getStatusLabel(status?.status || hostedBot.status)}
+            {getStatusLabel(status?.status || bot.status)}
           </span>
         </div>
 
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">App Name</span>
           <span className="text-sm text-gray-600 dark:text-gray-400 font-mono">
-            {hostedBot.appName}
+            {bot.appName}
           </span>
         </div>
 
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Region</span>
-          <span className="text-sm text-gray-600 dark:text-gray-400">{hostedBot.region}</span>
+          <span className="text-sm text-gray-600 dark:text-gray-400">{bot.region}</span>
         </div>
 
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Version</span>
-          <span className="text-sm text-gray-600 dark:text-gray-400">{hostedBot.version}</span>
+          <span className="text-sm text-gray-600 dark:text-gray-400">{bot.version}</span>
         </div>
 
-        {hostedBot.provisionedAt && (
+        {bot.provisionedAt && (
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Provisioned</span>
             <span className="text-sm text-gray-600 dark:text-gray-400">
-              {new Date(hostedBot.provisionedAt).toLocaleDateString()}
+              {new Date(bot.provisionedAt).toLocaleDateString()}
             </span>
           </div>
         )}
 
-        {hostedBot.lastRestartedAt && (
+        {bot.lastRestartedAt && (
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Last Restart</span>
             <span className="text-sm text-gray-600 dark:text-gray-400">
-              {new Date(hostedBot.lastRestartedAt).toLocaleString()}
+              {new Date(bot.lastRestartedAt).toLocaleString()}
             </span>
           </div>
         )}
@@ -167,9 +169,9 @@ export function HostedBotStatus({ userData }: HostedBotStatusProps) {
         </div>
       )}
 
-      {hostedBot.errorMessage && (
+      {bot.errorMessage && (
         <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
-          <p className="text-sm text-red-800 dark:text-red-300">{hostedBot.errorMessage}</p>
+          <p className="text-sm text-red-800 dark:text-red-300">{bot.errorMessage}</p>
         </div>
       )}
     </div>

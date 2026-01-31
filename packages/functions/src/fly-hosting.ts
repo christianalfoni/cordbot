@@ -1145,21 +1145,46 @@ export const redeployHostedBot = onCall(
         );
       }
 
-      // Step 3: Force delete the old machine
-      logger.info(`Force deleting machine ${machineId}`);
+      // Step 3: List all machines and delete them all to ensure clean slate
+      logger.info(`Listing all machines in app ${appName}`);
+      let existingMachines: any[] = [];
       try {
-        await flyRequest(
-          `/apps/${appName}/machines/${machineId}`,
-          {
-            method: "DELETE",
-            body: JSON.stringify({ force: true }),
-          },
+        existingMachines = await flyRequest(
+          `/apps/${appName}/machines`,
+          { method: "GET" },
           token
         );
-      } catch (error) {
-        logger.warn(`Failed to delete old machine: ${error}`);
-        // Continue anyway - machine might already be gone
+        logger.info(`Found ${existingMachines.length} existing machines`);
+      } catch (error: any) {
+        logger.warn(`Failed to list machines: ${error.message}`);
       }
+
+      // Delete all existing machines
+      for (const machine of existingMachines) {
+        logger.info(`Force deleting machine ${machine.id} (${machine.name})`);
+        try {
+          await flyRequest(
+            `/apps/${appName}/machines/${machine.id}`,
+            {
+              method: "DELETE",
+              body: JSON.stringify({ force: true }),
+            },
+            token
+          );
+          logger.info(`Successfully deleted machine ${machine.id}`);
+        } catch (error: any) {
+          // Only continue if machine doesn't exist (404), otherwise log error
+          if (error.message && error.message.includes("404")) {
+            logger.info(`Machine ${machine.id} already deleted`);
+          } else {
+            logger.error(`Failed to delete machine ${machine.id}:`, error);
+            // Don't throw - try to delete other machines and continue
+          }
+        }
+      }
+
+      // Wait for machines to be fully deleted
+      await new Promise((resolve) => setTimeout(resolve, 5000));
 
       // Step 4: Create new machine with same config
       logger.info(`Creating new machine in region ${region}`);
@@ -1191,7 +1216,7 @@ export const redeployHostedBot = onCall(
         {
           method: "POST",
           body: JSON.stringify({
-            name: `${appName}-main`,
+            // Don't specify name - let Fly.io auto-generate unique names
             config: machineConfig,
             region,
           }),

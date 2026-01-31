@@ -224,7 +224,7 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
                 />
               )}
 
-              {(bot.status === 'provisioning' || bot.status === 'running') && (
+              {(bot.status === 'provisioning' || bot.status === 'running' || bot.status === 'error' || bot.status === 'stopped') && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3">
@@ -243,6 +243,18 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
                               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
                             </span>
                             Running
+                          </span>
+                        )}
+                        {bot.status === 'error' && (
+                          <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium bg-red-50 text-red-700 ring-1 ring-inset ring-red-700/10 dark:bg-red-400/10 dark:text-red-400 dark:ring-red-400/30">
+                            <span className="flex h-1.5 w-1.5 rounded-full bg-red-500"></span>
+                            Error
+                          </span>
+                        )}
+                        {bot.status === 'stopped' && (
+                          <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium bg-gray-50 text-gray-700 ring-1 ring-inset ring-gray-700/10 dark:bg-gray-400/10 dark:text-gray-400 dark:ring-gray-400/30">
+                            <span className="flex h-1.5 w-1.5 rounded-full bg-gray-500"></span>
+                            Stopped
                           </span>
                         )}
                       </dd>
@@ -337,6 +349,20 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
                       )}
                     </button>
                   </div>
+
+                  {bot.status === 'error' && bot.errorMessage && (
+                    <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <div className="flex gap-3">
+                        <svg className="h-5 w-5 text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
+                        </svg>
+                        <div className="flex-1">
+                          <h4 className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">Deployment Error</h4>
+                          <p className="text-sm text-red-700 dark:text-red-300">{bot.errorMessage}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

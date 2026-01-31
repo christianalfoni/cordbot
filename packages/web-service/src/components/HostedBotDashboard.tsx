@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { UserData } from '../hooks/useAuth';
-import { useHostedBot } from '../hooks/useHostedBot';
+import { useHostedBots } from '../hooks/useHostedBots';
 import { HostedBotStatus } from './HostedBotStatus';
 import { HostedBotActions } from './HostedBotActions';
 import { MemorySettings } from './MemorySettings';
@@ -19,11 +19,14 @@ const REGIONS = [
 ];
 
 export function HostedBotDashboard({ userData }: HostedBotDashboardProps) {
-  const { hasHostedBot, provisionBot, isLoading, error } = useHostedBot(userData);
+  const { bots, createBot, isLoading, error } = useHostedBots(userData.id);
   const [anthropicApiKey, setAnthropicApiKey] = useState('');
   const [region, setRegion] = useState('sjc');
   const [provisionError, setProvisionError] = useState<string | null>(null);
   const [isProvisioning, setIsProvisioning] = useState(false);
+
+  // For legacy single-bot view, show the first bot
+  const firstBot = bots.length > 0 ? bots[0] : null;
 
   const handleProvision = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,14 +37,21 @@ export function HostedBotDashboard({ userData }: HostedBotDashboardProps) {
       return;
     }
 
-    if (!userData.botToken) {
+    if (!userData.botToken || !userData.guildId) {
       setProvisionError('Please configure your Discord bot token in Bot Setup first');
       return;
     }
 
     setIsProvisioning(true);
     try {
-      await provisionBot(anthropicApiKey, region);
+      await createBot(
+        'My Bot', // Default bot name
+        'personal', // Default mode
+        userData.botToken,
+        userData.guildId,
+        anthropicApiKey,
+        region
+      );
       setAnthropicApiKey(''); // Clear the API key from state
     } catch (err: any) {
       setProvisionError(err.message || 'Failed to provision hosted bot');
@@ -50,12 +60,12 @@ export function HostedBotDashboard({ userData }: HostedBotDashboardProps) {
     }
   };
 
-  if (hasHostedBot) {
+  if (firstBot) {
     return (
       <div className="space-y-6">
-        <HostedBotStatus userData={userData} />
+        <HostedBotStatus userData={userData} bot={firstBot} botId={firstBot.id} />
         <MemorySettings userData={userData} />
-        <HostedBotActions userData={userData} />
+        <HostedBotActions userData={userData} botId={firstBot.id} />
       </div>
     );
   }
