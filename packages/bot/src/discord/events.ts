@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { SessionManager } from '../agent/manager.js';
 import { streamToDiscord } from '../agent/stream.js';
-import { ChannelMapping, getChannelMapping, syncNewChannel, updateChannelClaudeMdTopic } from './sync.js';
+import { ChannelMapping, getChannelMapping, syncNewChannel, updateChannelClaudeMdTopic, BotConfig } from './sync.js';
 import { CronRunner } from '../scheduler/runner.js';
 import { DiscordPermissionManager } from '../permissions/discord.js';
 
@@ -19,12 +19,13 @@ export function setupEventHandlers(
   channelMappings: ChannelMapping[],
   basePath: string,
   guildId: string,
-  cronRunner: CronRunner
+  cronRunner: CronRunner,
+  botConfig?: BotConfig
 ): void {
   // Handle new messages
   client.on('messageCreate', async (message) => {
     try {
-      await handleMessageWithLock(message, sessionManager, channelMappings);
+      await handleMessageWithLock(message, sessionManager, channelMappings, botConfig);
     } catch (error) {
       console.error('❌ Fatal error in messageCreate handler:', error);
       // Try to notify the user
@@ -50,7 +51,7 @@ export function setupEventHandlers(
       console.log(`\n🆕 New channel detected: #${channel.name}`);
 
       // Sync the new channel
-      const mapping = await syncNewChannel(channel, basePath);
+      const mapping = await syncNewChannel(channel, basePath, botConfig);
 
       // Add to mappings array so it's immediately available
       channelMappings.push(mapping);
@@ -172,7 +173,8 @@ export function setupEventHandlers(
 async function handleMessageWithLock(
   message: Message,
   sessionManager: SessionManager,
-  channelMappings: ChannelMapping[]
+  channelMappings: ChannelMapping[],
+  botConfig?: BotConfig
 ): Promise<void> {
   // Determine thread ID for locking
   const threadId = message.channel.isThread()
@@ -190,7 +192,7 @@ async function handleMessageWithLock(
     }
 
     // Create new lock for this message
-    const newLock = handleMessage(message, sessionManager, channelMappings)
+    const newLock = handleMessage(message, sessionManager, channelMappings, botConfig)
       .finally(() => {
         // Remove lock when done
         try {
@@ -213,7 +215,8 @@ async function handleMessageWithLock(
 async function handleMessage(
   message: Message,
   sessionManager: SessionManager,
-  channelMappings: ChannelMapping[]
+  channelMappings: ChannelMapping[],
+  botConfig?: BotConfig
 ): Promise<void> {
   // Ignore bot messages
   if (message.author.bot) return;
@@ -233,6 +236,29 @@ async function handleMessage(
     return;
   }
 
+  // SHARED MODE FILTERING
+  if (botConfig?.mode === 'shared') {
+    if (!message.channel.isThread()) {
+      // In channel - only respond to mentions
+      const botMentioned = message.mentions.has(message.client.user!);
+      if (!botMentioned) {
+        return; // Ignore non-mention messages
+      }
+    } else {
+      // In thread - smart behavior based on participant count
+      const shouldRespond = await determineShouldRespond(
+        message,
+        message.channel as ThreadChannel
+      );
+
+      if (!shouldRespond) {
+        // Track message for context but don't respond
+        console.log(`📝 Tracking message from ${message.author.username} (not responding)`);
+        return;
+      }
+    }
+  }
+
   try {
     // Check if there's a pending cron session for this channel
     let pendingCronSession: any = null;
@@ -242,30 +268,17 @@ async function handleMessage(
 
     // Determine thread context
     let threadId: string;
-    let threadChannel: TextChannel | ThreadChannel;
+    let targetForStream: ThreadChannel | TextChannel | Message;
 
     if (message.channel.isThread()) {
       // User is replying in an existing thread
       threadId = message.channel.id;
-      threadChannel = message.channel as ThreadChannel;
+      targetForStream = message.channel as ThreadChannel;
     } else {
-      // User is writing in the channel - create a new thread
-      const textChannel = message.channel as TextChannel;
-
-      // Create thread name from message content
-      const threadName = `${message.author.username}: ${message.content.slice(0, 50)}${
-        message.content.length > 50 ? '...' : ''
-      }`;
-
-      const thread = await textChannel.threads.create({
-        name: threadName,
-        autoArchiveDuration: 1440, // 24 hours
-        reason: 'Claude conversation',
-        startMessage: message,
-      });
-
-      threadId = thread.id;
-      threadChannel = thread;
+      // User is writing in the channel - defer thread creation
+      // Pass message to streamToDiscord for lazy creation
+      threadId = `pending-${message.id}`;
+      targetForStream = message;
     }
 
     // Determine session ID and working directory
@@ -312,7 +325,13 @@ async function handleMessage(
       if (!fs.existsSync(workingDir)) {
         console.error(`❌ Working directory does not exist: ${workingDir}`);
         console.error(`   This likely means the persistent volume is not mounted.`);
-        await threadChannel.send(
+
+        // Send error to the appropriate target
+        const errorTarget = targetForStream instanceof Message
+          ? (targetForStream.channel as TextChannel)
+          : targetForStream;
+
+        await errorTarget.send(
           `❌ Error: Working directory not found. Please check server configuration.`
         );
         return;
@@ -329,7 +348,11 @@ async function handleMessage(
     }
 
     // Set channel context for permission requests
-    sessionManager.setChannelContext(sessionId, threadChannel);
+    // For lazy thread creation, use the message channel temporarily
+    const contextChannel = targetForStream instanceof Message
+      ? (targetForStream.channel as TextChannel)
+      : targetForStream;
+    sessionManager.setChannelContext(sessionId, contextChannel);
 
     // Set working directory context for built-in tools (cron, etc.)
     sessionManager.setWorkingDirContext(sessionId, workingDir);
@@ -341,6 +364,24 @@ async function handleMessage(
         const attachmentInfo = await downloadAttachments(message, workingDir);
         if (attachmentInfo.length > 0) {
           userMessage = `${message.content}\n\n[Files attached and saved to working directory: ${attachmentInfo.join(', ')}]`;
+        }
+      }
+
+      // Prefix with username in shared mode
+      if (botConfig?.mode === 'shared') {
+        const displayName = message.member?.displayName || message.author.username;
+        userMessage = `[${displayName}]: ${userMessage}`;
+      }
+
+      // Populate memory section in CLAUDE.md before query
+      const claudeMdPath = path.join(workingDir, 'CLAUDE.md');
+      if (fs.existsSync(claudeMdPath)) {
+        try {
+          await sessionManager.populateMemory(claudeMdPath, parentChannelId, sessionId);
+          console.log(`💾 Memory populated for channel ${parentChannelId}`);
+        } catch (memoryError) {
+          console.error('Failed to populate memory:', memoryError);
+          // Continue anyway - memory is nice-to-have, not critical
         }
       }
 
@@ -356,7 +397,10 @@ async function handleMessage(
         );
       } catch (queryError) {
         console.error('Error creating query:', queryError);
-        await threadChannel.send(
+        const errorTarget = targetForStream instanceof Message
+          ? (targetForStream.channel as TextChannel)
+          : targetForStream;
+        await errorTarget.send(
           `❌ Failed to create query: ${queryError instanceof Error ? queryError.message : 'Unknown error'}`
         );
         return;
@@ -364,10 +408,25 @@ async function handleMessage(
 
       // Stream response from Claude agent to Discord
       try {
-        await streamToDiscord(queryResult, threadChannel, sessionManager, sessionId, workingDir);
+        await streamToDiscord(
+          queryResult,
+          targetForStream,
+          sessionManager,
+          sessionId,
+          workingDir,
+          botConfig,
+          undefined, // messagePrefix
+          parentChannelId // Pass parent channel ID for memory operations
+        );
       } catch (streamError) {
         console.error('Error streaming to Discord:', streamError);
-        await threadChannel.send(
+
+        // Send error to the appropriate target
+        const errorTarget = targetForStream instanceof Message
+          ? (targetForStream.channel as TextChannel)
+          : targetForStream;
+
+        await errorTarget.send(
           `❌ Failed to stream response: ${streamError instanceof Error ? streamError.message : 'Unknown error'}`
         );
       }
@@ -423,4 +482,44 @@ async function downloadAttachments(message: Message, workingDir: string): Promis
   }
 
   return attachmentNames;
+}
+
+/**
+ * Determine if bot should respond in a thread (for shared mode)
+ * - Single participant (thread creator): respond to all messages
+ * - Multiple participants: only respond to mentions
+ */
+async function determineShouldRespond(
+  message: Message,
+  thread: ThreadChannel
+): Promise<boolean> {
+  const participants = await getThreadParticipants(thread);
+
+  // Single participant (thread creator) - respond to all
+  if (participants.size === 1) {
+    return true;
+  }
+
+  // Multiple participants - only respond to mentions
+  return message.mentions.has(message.client.user!);
+}
+
+/**
+ * Get unique human participants in a thread (excludes bots)
+ */
+async function getThreadParticipants(thread: ThreadChannel): Promise<Set<string>> {
+  const participants = new Set<string>();
+
+  try {
+    const messages = await thread.messages.fetch({ limit: 100 });
+    messages.forEach(msg => {
+      if (!msg.author.bot) {
+        participants.add(msg.author.id);
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching thread participants:', error);
+  }
+
+  return participants;
 }

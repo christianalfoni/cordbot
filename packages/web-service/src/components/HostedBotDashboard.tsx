@@ -3,6 +3,7 @@ import { UserData } from '../hooks/useAuth';
 import { useHostedBot } from '../hooks/useHostedBot';
 import { HostedBotStatus } from './HostedBotStatus';
 import { HostedBotActions } from './HostedBotActions';
+import { MemorySettings } from './MemorySettings';
 
 interface HostedBotDashboardProps {
   userData: UserData;
@@ -53,6 +54,7 @@ export function HostedBotDashboard({ userData }: HostedBotDashboardProps) {
     return (
       <div className="space-y-6">
         <HostedBotStatus userData={userData} />
+        <MemorySettings userData={userData} />
         <HostedBotActions userData={userData} />
       </div>
     );

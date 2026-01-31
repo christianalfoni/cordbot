@@ -43,6 +43,7 @@ export interface UserData {
   lastLoginAt: string;
   botToken?: string;
   guildId?: string;
+  memoryContextSize?: number; // Token budget for memory context (self-hosted bots, default: 10000)
   toolsManifest?: ToolsManifest;
   oauthConnections?: {
     gmail?: {
@@ -59,16 +60,8 @@ export interface UserData {
   };
   hostingBetaRequested?: boolean;
   hostingBetaApproved?: boolean;
-  hostedBot?: {
-    appName: string;
-    machineId: string;
-    region: string;
-    status: 'provisioning' | 'running' | 'stopped' | 'error';
-    version: string;
-    provisionedAt: string;
-    lastRestartedAt?: string;
-    errorMessage?: string;
-  };
+  // Note: Bots are now stored in a subcollection: users/{userId}/bots/{botId}
+  // Use useHostedBots hook to access them
 }
 
 export function useAuth() {

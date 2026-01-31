@@ -5,6 +5,9 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { AttachmentBuilder, TextChannel, ThreadChannel, Message } from 'discord.js';
 import { SessionManager } from './manager.js';
+import { BotConfig } from '../discord/sync.js';
+import { appendRawMemory } from '../memory/storage.js';
+import { logRawMemoryCaptured } from '../memory/logger.js';
 
 interface StreamState {
   currentToolUse: { name: string; input: string; id: string } | null;
@@ -13,16 +16,56 @@ interface StreamState {
   planContent: string | null;
   messagePrefix: string | null;
   workingDir: string;
+  channelId: string;
+  sessionId: string;
+  workspaceRoot: string;
+  // For lazy thread creation
+  threadCreated: boolean;
+  originalMessage: Message | null;
+  threadName: string | null;
+  parentChannel: TextChannel | null;
 }
 
 export async function streamToDiscord(
   queryResult: Query,
-  threadChannel: TextChannel | ThreadChannel,
+  target: TextChannel | ThreadChannel | Message,
   sessionManager: SessionManager,
   sessionId: string,
   workingDir: string,
-  messagePrefix?: string
+  botConfig?: BotConfig,
+  messagePrefix?: string,
+  parentChannelId?: string
 ): Promise<void> {
+  // Prepare for lazy thread creation (don't create yet)
+  let channel: TextChannel | ThreadChannel;
+  let threadCreated = false;
+  let originalMessage: Message | null = null;
+  let threadName: string | null = null;
+  let parentChannel: TextChannel | null = null;
+
+  if (target instanceof Message) {
+    // Store info for lazy thread creation (create when first message is ready)
+    originalMessage = target;
+    parentChannel = target.channel as TextChannel;
+    channel = parentChannel; // Temporarily use parent channel
+
+    threadName = botConfig?.mode === 'shared'
+      ? `${botConfig.username}: ${target.content.slice(0, 40)}${target.content.length > 40 ? '...' : ''}`
+      : `${target.author.username}: ${target.content.slice(0, 50)}${target.content.length > 50 ? '...' : ''}`;
+  } else {
+    // Already in a thread or channel
+    channel = target;
+    threadCreated = true; // No need to create
+  }
+
+  // Extract workspace root from workingDir (workingDir is workspace/channel-name)
+  const workspaceRoot = workingDir.split('/').slice(0, -1).join('/');
+
+  // Use parentChannelId for memory operations (not thread ID)
+  // If parentChannelId is provided (new message flow), use it
+  // Otherwise use the current channel ID (for existing threads/channels)
+  const memoryChannelId = parentChannelId || channel.id;
+
   const state: StreamState = {
     currentToolUse: null,
     toolMessages: [],
@@ -30,6 +73,13 @@ export async function streamToDiscord(
     planContent: null,
     messagePrefix: messagePrefix || null,
     workingDir,
+    channelId: memoryChannelId, // Use parent channel ID for memory
+    sessionId,
+    workspaceRoot,
+    threadCreated,
+    originalMessage,
+    threadName,
+    parentChannel,
   };
 
   try {
@@ -38,23 +88,23 @@ export async function streamToDiscord(
 
     // Iterate through SDK messages
     for await (const message of queryResult) {
-      await handleSDKMessage(message, threadChannel, state, sessionManager, sessionId);
+      await handleSDKMessage(message, channel, state, sessionManager, sessionId);
     }
 
     console.log(`✅ SDK stream completed for session ${sessionId}`);
 
     // Save session ID for resumption
-    await sessionManager.updateSession(sessionId, threadChannel.id);
+    await sessionManager.updateSession(sessionId, channel.id);
 
     // Attach any files queued for sharing
-    await attachSharedFiles(threadChannel, sessionManager, sessionId);
+    await attachSharedFiles(channel, sessionManager, sessionId);
   } catch (error) {
     console.error('❌ Stream error:', error);
     console.error('❌ Stream error stack:', error instanceof Error ? error.stack : 'No stack trace');
     console.error('❌ Stream error type:', error instanceof Error ? error.constructor.name : typeof error);
 
     try {
-      await threadChannel.send(
+      await channel.send(
         `❌ Failed to process: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     } catch (sendError) {
@@ -78,9 +128,29 @@ async function handleSDKMessage(
       // Final assistant message with complete response
       const content = extractTextFromMessage(message.message);
       if (content) {
-        await sendCompleteMessage(channel, content, state.planContent, state.messagePrefix);
+        // Send message (creates thread if needed) and get the actual channel
+        channel = await sendCompleteMessage(channel, content, state.planContent, state.messagePrefix, state);
         state.planContent = null; // Clear plan after sending
         state.messagePrefix = null; // Clear prefix after using
+
+        // Capture final message to memory
+        try {
+          await appendRawMemory(state.workspaceRoot, state.channelId, {
+            timestamp: new Date().toISOString(),
+            message: content,
+            sessionId: state.sessionId,
+            threadId: channel.id,
+          });
+
+          await logRawMemoryCaptured(
+            state.workspaceRoot,
+            state.channelId,
+            content.length,
+            state.sessionId
+          );
+        } catch (error) {
+          console.error('Failed to capture memory:', error);
+        }
       }
       break;
 
@@ -225,9 +295,27 @@ async function sendCompleteMessage(
   channel: TextChannel | ThreadChannel,
   content: string,
   planContent: string | null,
-  messagePrefix: string | null
-): Promise<void> {
+  messagePrefix: string | null,
+  state: StreamState
+): Promise<TextChannel | ThreadChannel> {
   console.log(`📤 Sending message to Discord (${content.length} chars)`);
+
+  // Create thread now if needed (lazy thread creation)
+  let targetChannel = channel;
+  if (!state.threadCreated && state.originalMessage && state.parentChannel && state.threadName) {
+    console.log(`✨ Creating thread: ${state.threadName}`);
+    const thread = await state.parentChannel.threads.create({
+      name: state.threadName,
+      autoArchiveDuration: 1440,
+      reason: 'Claude conversation',
+      startMessage: state.originalMessage,
+    });
+    targetChannel = thread;
+    state.threadCreated = true;
+
+    // Note: Keep state.channelId as parent channel ID for memory operations
+    // Don't update it to thread.id
+  }
 
   // Prepend prefix if provided
   let fullContent = content;
@@ -248,14 +336,16 @@ async function sendCompleteMessage(
         description: 'Claude Code Plan',
       });
 
-      await channel.send({
+      await targetChannel.send({
         content: chunk,
         files: [attachment],
       });
     } else {
-      await channel.send(chunk);
+      await targetChannel.send(chunk);
     }
   }
+
+  return targetChannel;
 }
 
 function splitMessage(text: string, maxLength: number): string[] {

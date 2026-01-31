@@ -127,12 +127,14 @@ export function HostedBotStatus({ userData }: HostedBotStatusProps) {
           <span className="text-sm text-gray-600 dark:text-gray-400">{hostedBot.version}</span>
         </div>
 
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Provisioned</span>
-          <span className="text-sm text-gray-600 dark:text-gray-400">
-            {new Date(hostedBot.provisionedAt).toLocaleDateString()}
-          </span>
-        </div>
+        {hostedBot.provisionedAt && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Provisioned</span>
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              {new Date(hostedBot.provisionedAt).toLocaleDateString()}
+            </span>
+          </div>
+        )}
 
         {hostedBot.lastRestartedAt && (
           <div className="flex items-center justify-between">

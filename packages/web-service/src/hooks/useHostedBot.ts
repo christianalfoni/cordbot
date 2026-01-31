@@ -22,14 +22,24 @@ interface HostedBotLogs {
   machineCommand: string;
 }
 
+interface LegacyHostedBot {
+  status?: string;
+  appName?: string;
+  region?: string;
+  version?: string;
+  provisionedAt?: string;
+  lastRestartedAt?: string;
+  errorMessage?: string;
+}
+
 export function useHostedBot(userData: UserData | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isApproved = userData?.hostingBetaApproved || false;
   const hasApplied = userData?.hostingBetaRequested || false;
-  const hasHostedBot = !!userData?.hostedBot;
-  const hostedBot = userData?.hostedBot;
+  const hasHostedBot = false; // Bots are now in subcollection
+  const hostedBot: LegacyHostedBot | null = null; // Bots are now in subcollection
 
   const applyForBeta = useCallback(async () => {
     setIsLoading(true);
@@ -160,7 +170,7 @@ export function useHostedBot(userData: UserData | null) {
     isApproved,
     hasApplied,
     hasHostedBot,
-    hostedBot,
+    hostedBot: hostedBot as LegacyHostedBot | null,
     applyForBeta,
     provisionBot,
     getStatus,

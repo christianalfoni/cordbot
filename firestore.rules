@@ -23,6 +23,16 @@ service cloud.firestore {
                     // Prevent direct modification of hostedBot (Cloud Functions only)
                     && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hostedBot'])
                         || !('hostedBot' in request.resource.data));
+
+      // Bots subcollection - users can read their own bots
+      // Write operations are handled by Cloud Functions only
+      match /bots/{botId} {
+        // Allow authenticated users to read their own bots
+        allow read: if request.auth != null && request.auth.uid == userId;
+
+        // Prevent direct writes - all bot operations go through Cloud Functions
+        allow write: if false;
+      }
     }
 
     // Deny all other access

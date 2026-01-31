@@ -1,6 +1,6 @@
 {
   "name": "@cordbot/agent",
-  "version": "1.4.1",
+  "version": "1.6.0",
   "description": "Discord bot powered by Claude Agent SDK",
   "type": "module",
   "bin": {
@@ -9,6 +9,7 @@
   "files": [
     "dist",
     "bin",
+    "templates",
     "README.md"
   ],
   "scripts": {

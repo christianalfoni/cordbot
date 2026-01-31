@@ -95,7 +95,7 @@ export const validateBotToken = onCall(async (request) => {
 });
 
 /**
- * Exchange Google OAuth code for tokens and store in user's profile
+ * Exchange Google OAuth code for tokens and store in bot's profile
  */
 export const exchangeGmailToken = onCall(
   { secrets: [googleClientId, googleClientSecret] },
@@ -108,12 +108,12 @@ export const exchangeGmailToken = onCall(
     );
   }
 
-  const { code, userId, redirectUri } = request.data;
+  const { code, userId, botId, redirectUri } = request.data;
 
-  if (!code || !userId || !redirectUri) {
+  if (!code || !userId || !botId || !redirectUri) {
     throw new HttpsError(
       'invalid-argument',
-      'code, userId, and redirectUri are required'
+      'code, userId, botId, and redirectUri are required'
     );
   }
 
@@ -183,9 +183,9 @@ export const exchangeGmailToken = onCall(
 
     const userInfo = await userInfoResponse.json();
 
-    // Store tokens in Firestore
-    const userRef = db.collection('users').doc(userId);
-    await userRef.update({
+    // Store tokens in bot's Firestore document
+    const botRef = db.collection('users').doc(userId).collection('bots').doc(botId);
+    await botRef.update({
       'oauthConnections.gmail': {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
@@ -196,7 +196,7 @@ export const exchangeGmailToken = onCall(
       },
     });
 
-    logger.info(`Gmail connected for user ${userId}: ${userInfo.email}`);
+    logger.info(`Gmail connected for bot ${botId} (user ${userId}): ${userInfo.email}`);
 
     return {
       success: true,
@@ -213,9 +213,9 @@ export const exchangeGmailToken = onCall(
 );
 
 /**
- * Get bot manifest with user's tool configuration and tokens
- * Authenticated via bot token in request data
- * Simply returns the user's data - bot decides what to load
+ * Get bot manifest with bot's tool configuration and tokens
+ * Authenticated via bot auth token in request data
+ * Returns per-bot OAuth connections and tools configuration
  */
 export const getBotManifest = onCall(async (request) => {
   const { botToken } = request.data;
@@ -228,30 +228,33 @@ export const getBotManifest = onCall(async (request) => {
   }
 
   try {
-    // Query Firestore for user with matching botToken
-    const usersSnapshot = await db.collection('users')
-      .where('botToken', '==', botToken)
+    // Query bot documents across all users using collection group query
+    const botsSnapshot = await db.collectionGroup('bots')
+      .where('authToken', '==', botToken)
       .limit(1)
       .get();
 
-    if (usersSnapshot.empty) {
-      logger.warn('No user found with provided bot token');
+    if (botsSnapshot.empty) {
+      logger.warn('No bot found with provided auth token');
       return {
         error: 'Invalid bot token',
       };
     }
 
-    const userDoc = usersSnapshot.docs[0];
-    const userData = userDoc.data();
-    const userId = userDoc.id;
+    const botDoc = botsSnapshot.docs[0];
+    const botData = botDoc.data();
+    const botId = botDoc.id;
 
-    // Get toolsConfig directly from user data (new format)
+    // Extract user ID from document path (format: users/{userId}/bots/{botId})
+    const userId = botDoc.ref.parent.parent?.id;
+
+    // Get per-bot toolsConfig and oauthConnections
     // e.g., { gmail: ['send_email', 'list_messages'] }
-    const toolsConfig = userData.toolsConfig || {};
+    const toolsConfig = botData.toolsConfig || {};
 
-    // Build tokens object from oauthConnections
+    // Build tokens object from bot's oauthConnections
     const tokens: { gmail?: { accessToken: string; expiresAt: number } } = {};
-    const oauthConnections = userData.oauthConnections || {};
+    const oauthConnections = botData.oauthConnections || {};
 
     // Add Gmail token if connected (return even if expired - bot will refresh on demand)
     if (oauthConnections.gmail) {
@@ -267,12 +270,14 @@ export const getBotManifest = onCall(async (request) => {
       0
     );
 
-    logger.info(`Manifest generated for user ${userId}: ${toolCount} tools configured`);
+    logger.info(`Manifest generated for bot ${botId} (user ${userId}): ${toolCount} tools configured`);
 
     return {
       userId,
+      botId,
       toolsConfig,
       tokens,
+      memoryContextSize: botData.memoryContextSize || 10000, // Default 10k tokens
       generatedAt: new Date().toISOString(),
     };
   } catch (error) {
@@ -286,7 +291,8 @@ export const getBotManifest = onCall(async (request) => {
 
 /**
  * Refresh an expired OAuth token for a specific category
- * Authenticated via bot token in request data
+ * Authenticated via bot auth token in request data
+ * Updates per-bot OAuth connections
  */
 export const refreshToken = onCall(
   { secrets: [googleClientId, googleClientSecret] },
@@ -301,32 +307,35 @@ export const refreshToken = onCall(
     }
 
     try {
-      // Query Firestore for user with matching botToken
-      const usersSnapshot = await db.collection('users')
-        .where('botToken', '==', botToken)
+      // Query bot documents across all users using collection group query
+      const botsSnapshot = await db.collectionGroup('bots')
+        .where('authToken', '==', botToken)
         .limit(1)
         .get();
 
-      if (usersSnapshot.empty) {
-        logger.warn('No user found with provided bot token');
+      if (botsSnapshot.empty) {
+        logger.warn('No bot found with provided auth token');
         throw new HttpsError(
           'not-found',
           'Invalid bot token'
         );
       }
 
-      const userDoc = usersSnapshot.docs[0];
-      const userData = userDoc.data();
-      const userId = userDoc.id;
+      const botDoc = botsSnapshot.docs[0];
+      const botData = botDoc.data();
+      const botId = botDoc.id;
+
+      // Extract user ID from document path
+      const userId = botDoc.ref.parent.parent?.id;
 
       // Handle token refresh based on category
       if (category === 'gmail') {
-        const gmailConnection = userData.oauthConnections?.gmail;
+        const gmailConnection = botData.oauthConnections?.gmail;
 
         if (!gmailConnection) {
           throw new HttpsError(
             'not-found',
-            'Gmail not connected for this user'
+            'Gmail not connected for this bot'
           );
         }
 
@@ -337,7 +346,7 @@ export const refreshToken = onCall(
           );
         }
 
-        logger.info(`Refreshing Gmail token for user ${userId}`);
+        logger.info(`Refreshing Gmail token for bot ${botId} (user ${userId})`);
 
         // Use refresh token to get new access token
         const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -358,6 +367,7 @@ export const refreshToken = onCall(
           logger.error('Failed to refresh Gmail token:', {
             status: tokenResponse.status,
             error: errorData,
+            botId,
             userId,
           });
           throw new HttpsError(
@@ -368,14 +378,14 @@ export const refreshToken = onCall(
 
         const tokens = await tokenResponse.json();
 
-        // Update Firestore with new access token
+        // Update bot's Firestore document with new access token
         const newExpiresAt = Date.now() + (tokens.expires_in * 1000);
-        await userDoc.ref.update({
+        await botDoc.ref.update({
           'oauthConnections.gmail.accessToken': tokens.access_token,
           'oauthConnections.gmail.expiresAt': newExpiresAt,
         });
 
-        logger.info(`Gmail token refreshed for user ${userId}, expires at ${new Date(newExpiresAt).toISOString()}`);
+        logger.info(`Gmail token refreshed for bot ${botId}, expires at ${new Date(newExpiresAt).toISOString()}`);
 
         return {
           accessToken: tokens.access_token,
@@ -403,7 +413,10 @@ export const refreshToken = onCall(
 // Export Fly.io hosting functions
 export {
   applyForHostingBeta,
-  provisionHostedBot,
+  createBotDocument,
+  updateBotDiscordConfig,
+  createHostedBot,
+  listHostedBots,
   getHostedBotStatus,
   getHostedBotLogs,
   restartHostedBot,

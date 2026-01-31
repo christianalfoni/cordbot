@@ -74,25 +74,71 @@ async function flyRequest(
 }
 
 /**
- * Generate a unique app name for a user
- * Format: cordbot-{first8ofuid}-{timestamp}
+ * Generate a unique app name for a user and bot
+ * Format: cordbot-{first8ofuid}-{first8ofbotid}
  * Apps allow dashes and up to 63 chars
  */
-function generateAppName(userId: string): string {
+function generateAppName(userId: string, botId: string): string {
   const userPrefix = userId.substring(0, 8).toLowerCase().replace(/[^a-z0-9]/g, '');
-  const timestamp = Date.now().toString(36);
-  return `cordbot-${userPrefix}-${timestamp}`;
+  const botPrefix = botId.substring(0, 8).toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `cordbot-${userPrefix}-${botPrefix}`;
 }
 
 /**
- * Generate a volume name from user ID
- * Format: cb_{first6ofuid}_{timestamp}
+ * Generate a volume name from user ID and bot ID
+ * Format: cb_{first6ofuid}_{first6ofbotid}
  * Volumes only allow underscores/alphanumeric and max 30 chars
  */
-function generateVolumeName(userId: string): string {
+function generateVolumeName(userId: string, botId: string): string {
   const userPrefix = userId.substring(0, 6).toLowerCase().replace(/[^a-z0-9]/g, '');
-  const timestamp = Date.now().toString(36);
-  return `cb_${userPrefix}_${timestamp}`;
+  const botPrefix = botId.substring(0, 6).toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `cb_${userPrefix}_${botPrefix}`;
+}
+
+/**
+ * Helper: Get a bot document from subcollection
+ */
+async function getBotDoc(userId: string, botId: string): Promise<any> {
+  const botDoc = await db
+    .collection("users")
+    .doc(userId)
+    .collection("bots")
+    .doc(botId)
+    .get();
+
+  if (!botDoc.exists) {
+    return null;
+  }
+
+  return { id: botDoc.id, ...botDoc.data() };
+}
+
+/**
+ * Helper: Update a bot document in subcollection
+ */
+async function updateBotDoc(
+  userId: string,
+  botId: string,
+  updates: any
+): Promise<void> {
+  await db
+    .collection("users")
+    .doc(userId)
+    .collection("bots")
+    .doc(botId)
+    .update(updates);
+}
+
+/**
+ * Helper: Delete a bot document from subcollection
+ */
+async function deleteBotDoc(userId: string, botId: string): Promise<void> {
+  await db
+    .collection("users")
+    .doc(userId)
+    .collection("bots")
+    .doc(botId)
+    .delete();
 }
 
 /**
@@ -124,9 +170,280 @@ export const applyForHostingBeta = onCall(async (request) => {
 });
 
 /**
- * Provision a new hosted bot for a user
+ * Create a bot document without provisioning (for onboarding flow)
  */
-export const provisionHostedBot = onCall(
+export const createBotDocument = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be authenticated");
+  }
+
+  const userId = request.auth.uid;
+  const { botName, mode = "personal" } = request.data;
+
+  if (!botName) {
+    throw new HttpsError("invalid-argument", "botName is required");
+  }
+
+  if (mode !== "personal" && mode !== "shared") {
+    throw new HttpsError("invalid-argument", 'mode must be "personal" or "shared"');
+  }
+
+  try {
+    // Check if user is approved for beta
+    const userDoc = await db.collection("users").doc(userId).get();
+    const userData = userDoc.data();
+
+    if (!userData?.hostingBetaApproved) {
+      throw new HttpsError(
+        "permission-denied",
+        "User is not approved for hosting beta"
+      );
+    }
+
+    // Check bot limit (max 10 per user)
+    const botsSnapshot = await db
+      .collection("users")
+      .doc(userId)
+      .collection("bots")
+      .get();
+
+    if (botsSnapshot.size >= 10) {
+      throw new HttpsError(
+        "resource-exhausted",
+        "Maximum of 10 bots per user reached"
+      );
+    }
+
+    // Generate unique bot ID and auth token
+    const botId = crypto.randomUUID();
+    const authToken = crypto.randomUUID(); // Separate token for API authentication
+
+    // Create bot document with unconfigured status
+    const newBot = {
+      botName,
+      mode,
+      status: "unconfigured" as const,
+      authToken, // Token for bot to authenticate to getBotManifest, refreshToken, etc.
+      memoryContextSize: 10000,
+      oauthConnections: {}, // Per-bot OAuth connections (gmail, etc.)
+      toolsConfig: {}, // Per-bot tools configuration
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await db
+      .collection("users")
+      .doc(userId)
+      .collection("bots")
+      .doc(botId)
+      .set(newBot);
+
+    logger.info(`Created bot document ${botId} for user ${userId}`);
+
+    return {
+      success: true,
+      botId,
+      bot: { id: botId, ...newBot },
+    };
+  } catch (error) {
+    logger.error("Error creating bot document:", error);
+
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+
+    throw new HttpsError(
+      "internal",
+      `Failed to create bot: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
+});
+
+/**
+ * List all hosted bots for a user
+ */
+export const listHostedBots = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be authenticated");
+  }
+
+  const userId = request.auth.uid;
+
+  try {
+    const botsSnapshot = await db
+      .collection("users")
+      .doc(userId)
+      .collection("bots")
+      .get();
+
+    const bots = botsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return {
+      bots,
+      canCreateMore: bots.length < 10,
+    };
+  } catch (error) {
+    logger.error("Error listing hosted bots:", error);
+    throw new HttpsError("internal", "Failed to list hosted bots");
+  }
+});
+
+/**
+ * Update bot with Discord configuration (without provisioning)
+ * Used during onboarding to save Discord credentials
+ */
+export const updateBotDiscordConfig = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be authenticated");
+  }
+
+  const userId = request.auth.uid;
+  const {
+    botId,
+    discordBotToken,
+    discordGuildId,
+    discordGuildName,
+    discordGuildIcon,
+    discordBotUserId,
+    botDiscordUsername,
+    botDiscordAvatar,
+  } = request.data;
+
+  if (!botId || !discordBotToken || !discordGuildId) {
+    throw new HttpsError(
+      "invalid-argument",
+      "botId, discordBotToken, and discordGuildId are required"
+    );
+  }
+
+  try {
+    const bot = await getBotDoc(userId, botId);
+    if (!bot) {
+      throw new HttpsError("not-found", "Bot not found");
+    }
+
+    // Update bot with Discord credentials and change status to 'configured'
+    await updateBotDoc(userId, botId, {
+      discordBotToken,
+      discordGuildId,
+      discordGuildName: discordGuildName || null,
+      discordGuildIcon: discordGuildIcon || null,
+      discordBotUserId: discordBotUserId || null,
+      botDiscordUsername: botDiscordUsername || null,
+      botDiscordAvatar: botDiscordAvatar || null,
+      status: "configured" as const,
+      updatedAt: new Date().toISOString(),
+    });
+
+    logger.info(`Discord config updated for bot ${botId} (user ${userId})`);
+
+    return {
+      success: true,
+      message: "Discord configuration saved",
+    };
+  } catch (error) {
+    logger.error("Error updating bot Discord config:", error);
+
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+
+    throw new HttpsError(
+      "internal",
+      `Failed to update Discord config: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
+});
+
+/**
+ * Poll Fly.io machine status and update bot status to "running" when ready
+ */
+async function pollMachineStatusAndUpdateBot(
+  userId: string,
+  botId: string,
+  appName: string,
+  machineId: string,
+  token: string
+): Promise<void> {
+  const maxAttempts = 60; // Poll for up to 5 minutes (60 * 5 seconds)
+  const pollInterval = 5000; // 5 seconds
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      // Wait before polling (except first attempt)
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      }
+
+      // Get machine status from Fly.io
+      const machine = await flyRequest(
+        `/apps/${appName}/machines/${machineId}`,
+        { method: "GET" },
+        token
+      );
+
+      logger.info(`Machine ${machineId} status: ${machine.state}`, {
+        attempt: attempt + 1,
+        botId,
+      });
+
+      // Check if machine is running (state: "started")
+      if (machine.state === "started") {
+        // Update bot status to running
+        await db
+          .collection("users")
+          .doc(userId)
+          .collection("bots")
+          .doc(botId)
+          .update({
+            status: "running",
+            updatedAt: new Date().toISOString(),
+          });
+
+        logger.info(`Bot ${botId} status updated to running`);
+        return;
+      }
+
+      // Check for error states
+      if (machine.state === "stopped" || machine.state === "failed") {
+        logger.error(`Machine ${machineId} in error state: ${machine.state}`);
+        await db
+          .collection("users")
+          .doc(userId)
+          .collection("bots")
+          .doc(botId)
+          .update({
+            status: "error",
+            errorMessage: `Machine failed to start (state: ${machine.state})`,
+            updatedAt: new Date().toISOString(),
+          });
+        return;
+      }
+    } catch (error) {
+      logger.error(
+        `Error polling machine status (attempt ${attempt + 1}):`,
+        error
+      );
+      // Continue polling on error (Fly.io API might be temporarily unavailable)
+    }
+  }
+
+  // If we get here, machine didn't start within timeout
+  logger.warn(`Bot ${botId} did not start within timeout, keeping provisioning status`);
+}
+
+/**
+ * Provision a hosted bot (creates Fly.io resources and updates bot document)
+ * Can be used for new bots or to provision existing unconfigured bots
+ */
+export const createHostedBot = onCall(
   { secrets: [flyApiToken] },
   async (request) => {
     if (!request.auth) {
@@ -135,13 +452,23 @@ export const provisionHostedBot = onCall(
 
     const userId = request.auth.uid;
     const {
+      botId: existingBotId, // Optional: if provided, update existing bot
+      botName,
+      mode,
+      discordBotToken: providedDiscordBotToken,
+      discordGuildId: providedDiscordGuildId,
       anthropicApiKey,
+      memoryContextSize = 10000,
       region = "sjc",
       version = DEFAULT_VERSION,
     } = request.data;
 
-    if (!anthropicApiKey) {
-      throw new HttpsError("invalid-argument", "anthropicApiKey is required");
+    // Validate memory context size
+    if (memoryContextSize < 1000 || memoryContextSize > 100000) {
+      throw new HttpsError(
+        "invalid-argument",
+        "memoryContextSize must be between 1000 and 100000"
+      );
     }
 
     try {
@@ -156,15 +483,122 @@ export const provisionHostedBot = onCall(
         );
       }
 
-      if (userData.hostedBot) {
-        throw new HttpsError("already-exists", "User already has a hosted bot");
+      let botId: string;
+      let authToken: string;
+      let finalBotName: string;
+      let finalMode: "personal" | "shared";
+      let discordBotToken: string;
+      let discordGuildId: string;
+
+      if (existingBotId) {
+        // Update existing bot document
+        const existingBot = await getBotDoc(userId, existingBotId);
+        if (!existingBot) {
+          throw new HttpsError("not-found", "Bot not found");
+        }
+
+        botId = existingBotId;
+        authToken = existingBot.authToken || crypto.randomUUID();
+        finalBotName = existingBot.botName;
+        finalMode = existingBot.mode;
+        // Use existing bot's Discord credentials or override if provided
+        discordBotToken = providedDiscordBotToken || existingBot.discordBotToken;
+        discordGuildId = providedDiscordGuildId || existingBot.discordGuildId;
+
+        if (!discordBotToken || !discordGuildId) {
+          throw new HttpsError(
+            "invalid-argument",
+            "Bot is missing Discord credentials. Please complete bot setup first."
+          );
+        }
+      } else {
+        // Create new bot
+        if (!botName || !mode) {
+          throw new HttpsError(
+            "invalid-argument",
+            "botName and mode are required for new bots"
+          );
+        }
+
+        if (!providedDiscordBotToken || !providedDiscordGuildId || !anthropicApiKey) {
+          throw new HttpsError(
+            "invalid-argument",
+            "discordBotToken, discordGuildId, and anthropicApiKey are required for new bots"
+          );
+        }
+
+        // Validate mode
+        if (mode !== "personal" && mode !== "shared") {
+          throw new HttpsError(
+            "invalid-argument",
+            'mode must be "personal" or "shared"'
+          );
+        }
+
+        // Check bot limit (max 10 per user)
+        const botsSnapshot = await db
+          .collection("users")
+          .doc(userId)
+          .collection("bots")
+          .get();
+
+        if (botsSnapshot.size >= 10) {
+          throw new HttpsError(
+            "resource-exhausted",
+            "Maximum of 10 bots per user reached"
+          );
+        }
+
+        botId = crypto.randomUUID();
+        authToken = crypto.randomUUID();
+        finalBotName = botName;
+        finalMode = mode;
+        discordBotToken = providedDiscordBotToken;
+        discordGuildId = providedDiscordGuildId;
+      }
+
+      // Validate anthropicApiKey is provided
+      if (!anthropicApiKey) {
+        throw new HttpsError(
+          "invalid-argument",
+          "anthropicApiKey is required"
+        );
       }
 
       const token = flyApiToken.value();
-      const appName = generateAppName(userId);
-      const volumeName = generateVolumeName(userId);
+
+      // Validate Discord token and fetch bot username
+      logger.info(`Validating Discord token for bot ${botId}`);
+      let botInfo;
+      try {
+        const response = await fetch("https://discord.com/api/v10/users/@me", {
+          headers: { Authorization: `Bot ${discordBotToken}` },
+        });
+
+        if (!response.ok) {
+          throw new HttpsError(
+            "invalid-argument",
+            "Invalid Discord bot token. Please check and try again."
+          );
+        }
+
+        botInfo = await response.json();
+        logger.info(`Bot username: ${botInfo.username}`);
+      } catch (error) {
+        logger.error("Failed to validate Discord token:", error);
+        throw new HttpsError(
+          "invalid-argument",
+          "Failed to validate Discord bot token"
+        );
+      }
+
+      const appName = generateAppName(userId, botId);
+      const volumeName = generateVolumeName(userId, botId);
 
       logger.info(`Provisioning hosted bot for user ${userId}`, {
+        botId,
+        botName: finalBotName,
+        mode: finalMode,
         appName,
         region,
         version,
@@ -199,25 +633,7 @@ export const provisionHostedBot = onCall(
         token
       );
 
-      // Step 3: Get bot token and guild ID from user data
-      const botToken = userData.botToken;
-      const guildId = userData.guildId;
-
-      if (!botToken) {
-        throw new HttpsError(
-          "failed-precondition",
-          "User does not have a Discord bot token configured"
-        );
-      }
-
-      if (!guildId) {
-        throw new HttpsError(
-          "failed-precondition",
-          "User does not have a Discord guild ID configured"
-        );
-      }
-
-      // Step 4: Create machine with configuration
+      // Step 3: Create machine with configuration
       logger.info(`Creating machine in region ${region}`);
       const machineConfig: FlyMachineConfig = {
         image: `${DEFAULT_IMAGE}:${version}`,
@@ -227,9 +643,13 @@ export const provisionHostedBot = onCall(
           memory_mb: 1024,
         },
         env: {
-          DISCORD_BOT_TOKEN: botToken,
-          DISCORD_GUILD_ID: guildId,
+          DISCORD_BOT_TOKEN: discordBotToken,
+          DISCORD_GUILD_ID: discordGuildId,
           ANTHROPIC_API_KEY: anthropicApiKey,
+          BOT_MODE: finalMode,
+          BOT_ID: botId,
+          DISCORD_BOT_USERNAME: botInfo.username,
+          MEMORY_CONTEXT_SIZE: memoryContextSize.toString(),
         },
         mounts: [
           {
@@ -252,8 +672,12 @@ export const provisionHostedBot = onCall(
         token
       );
 
-      // Step 5: Update Firestore with hosted bot info
-      const hostedBot = {
+      // Step 4: Update Firestore with provisioning info
+      const botUpdate = {
+        botName: finalBotName,
+        botDiscordUsername: botInfo.username,
+        mode: finalMode,
+        authToken, // Token for bot to authenticate to getBotManifest, refreshToken, etc.
         appName,
         machineId: machineResponse.id,
         volumeId: volumeResponse.id,
@@ -261,23 +685,53 @@ export const provisionHostedBot = onCall(
         status: "provisioning" as const,
         version,
         provisionedAt: new Date().toISOString(),
+        discordBotToken, // Store per-bot token
+        discordGuildId, // Store per-bot guild
+        memoryContextSize, // Memory context size in tokens
+        updatedAt: new Date().toISOString(),
       };
 
-      await db.collection("users").doc(userId).update({
-        hostedBot,
-      });
+      // Add fields for new bots only
+      if (!existingBotId) {
+        Object.assign(botUpdate, {
+          oauthConnections: {}, // Per-bot OAuth connections (gmail, etc.)
+          toolsConfig: {}, // Per-bot tools configuration
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      await db
+        .collection("users")
+        .doc(userId)
+        .collection("bots")
+        .doc(botId)
+        .set(botUpdate, { merge: true });
 
       logger.info(`Successfully provisioned hosted bot for user ${userId}`, {
+        botId,
         appName,
         machineId: machineResponse.id,
       });
 
+      // Poll machine status in background and update bot status when running
+      // Don't await this - let it run in the background
+      pollMachineStatusAndUpdateBot(
+        userId,
+        botId,
+        appName,
+        machineResponse.id,
+        token
+      ).catch((err) => {
+        logger.error(`Failed to poll machine status for bot ${botId}:`, err);
+      });
+
       return {
         success: true,
-        hostedBot,
+        botId,
+        bot: { id: botId, ...botUpdate },
       };
     } catch (error) {
-      logger.error("Error provisioning hosted bot:", error);
+      logger.error("Error creating hosted bot:", error);
 
       if (error instanceof HttpsError) {
         throw error;
@@ -285,7 +739,7 @@ export const provisionHostedBot = onCall(
 
       throw new HttpsError(
         "internal",
-        `Failed to provision hosted bot: ${
+        `Failed to create hosted bot: ${
           error instanceof Error ? error.message : "Unknown error"
         }`
       );
@@ -304,16 +758,19 @@ export const getHostedBotStatus = onCall(
     }
 
     const userId = request.auth.uid;
+    const { botId } = request.data;
+
+    if (!botId) {
+      throw new HttpsError("invalid-argument", "botId is required");
+    }
 
     try {
-      const userDoc = await db.collection("users").doc(userId).get();
-      const userData = userDoc.data();
-
-      if (!userData?.hostedBot) {
-        throw new HttpsError("not-found", "User does not have a hosted bot");
+      const bot = await getBotDoc(userId, botId);
+      if (!bot) {
+        throw new HttpsError("not-found", "Bot not found");
       }
 
-      const { appName, machineId } = userData.hostedBot;
+      const { appName, machineId } = bot;
       const token = flyApiToken.value();
 
       // Get machine status from Fly.io
@@ -333,10 +790,8 @@ export const getHostedBotStatus = onCall(
           : "pending";
 
       // Update Firestore if status changed
-      if (status !== userData.hostedBot.status) {
-        await db.collection("users").doc(userId).update({
-          "hostedBot.status": status,
-        });
+      if (status !== bot.status) {
+        await updateBotDoc(userId, botId, { status });
       }
 
       return {
@@ -369,16 +824,19 @@ export const getHostedBotLogs = onCall(async (request) => {
   }
 
   const userId = request.auth.uid;
+  const { botId } = request.data;
+
+  if (!botId) {
+    throw new HttpsError("invalid-argument", "botId is required");
+  }
 
   try {
-    const userDoc = await db.collection("users").doc(userId).get();
-    const userData = userDoc.data();
-
-    if (!userData?.hostedBot) {
-      throw new HttpsError("not-found", "User does not have a hosted bot");
+    const bot = await getBotDoc(userId, botId);
+    if (!bot) {
+      throw new HttpsError("not-found", "Bot not found");
     }
 
-    const { appName, machineId } = userData.hostedBot;
+    const { appName, machineId } = bot;
 
     return {
       message: "Log streaming is not yet implemented in the dashboard.",
@@ -407,16 +865,19 @@ export const restartHostedBot = onCall(
     }
 
     const userId = request.auth.uid;
+    const { botId } = request.data;
+
+    if (!botId) {
+      throw new HttpsError("invalid-argument", "botId is required");
+    }
 
     try {
-      const userDoc = await db.collection("users").doc(userId).get();
-      const userData = userDoc.data();
-
-      if (!userData?.hostedBot) {
-        throw new HttpsError("not-found", "User does not have a hosted bot");
+      const bot = await getBotDoc(userId, botId);
+      if (!bot) {
+        throw new HttpsError("not-found", "Bot not found");
       }
 
-      const { appName, machineId } = userData.hostedBot;
+      const { appName, machineId } = bot;
       const token = flyApiToken.value();
 
       logger.info(`Restarting machine ${machineId} for user ${userId}`);
@@ -439,9 +900,10 @@ export const restartHostedBot = onCall(
       );
 
       // Update Firestore
-      await db.collection("users").doc(userId).update({
-        "hostedBot.lastRestartedAt": new Date().toISOString(),
-        "hostedBot.status": "provisioning",
+      await updateBotDoc(userId, botId, {
+        lastRestartedAt: new Date().toISOString(),
+        status: "provisioning" as const,
+        updatedAt: new Date().toISOString(),
       });
 
       logger.info(`Successfully restarted machine ${machineId}`);
@@ -478,21 +940,23 @@ export const deployHostedBot = onCall(
     }
 
     const userId = request.auth.uid;
-    const { version } = request.data;
+    const { version, botId } = request.data;
 
     if (!version) {
       throw new HttpsError("invalid-argument", "version is required");
     }
 
-    try {
-      const userDoc = await db.collection("users").doc(userId).get();
-      const userData = userDoc.data();
+    if (!botId) {
+      throw new HttpsError("invalid-argument", "botId is required");
+    }
 
-      if (!userData?.hostedBot) {
-        throw new HttpsError("not-found", "User does not have a hosted bot");
+    try {
+      const bot = await getBotDoc(userId, botId);
+      if (!bot) {
+        throw new HttpsError("not-found", "Bot not found");
       }
 
-      const { appName, machineId } = userData.hostedBot;
+      const { appName, machineId } = bot;
       const token = flyApiToken.value();
 
       logger.info(`Deploying version ${version} for user ${userId}`);
@@ -522,9 +986,10 @@ export const deployHostedBot = onCall(
       );
 
       // Update Firestore
-      await db.collection("users").doc(userId).update({
-        "hostedBot.version": version,
-        "hostedBot.lastDeployedAt": new Date().toISOString(),
+      await updateBotDoc(userId, botId, {
+        version,
+        lastDeployedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
 
       logger.info(`Successfully deployed version ${version}`);
@@ -562,36 +1027,43 @@ export const redeployHostedBot = onCall(
     }
 
     const userId = request.auth.uid;
+    const { botId } = request.data;
+
+    if (!botId) {
+      throw new HttpsError("invalid-argument", "botId is required");
+    }
 
     try {
-      const userDoc = await db.collection("users").doc(userId).get();
-      const userData = userDoc.data();
-
-      if (!userData?.hostedBot) {
-        throw new HttpsError("not-found", "User does not have a hosted bot");
+      const bot = await getBotDoc(userId, botId);
+      if (!bot) {
+        throw new HttpsError("not-found", "Bot not found");
       }
 
-      const { appName, machineId, volumeId, region, version } = userData.hostedBot;
+      const { appName, machineId, volumeId, region, version } = bot;
       const token = flyApiToken.value();
 
       logger.info(`Redeploying hosted bot for user ${userId}`, {
         appName,
         oldMachineId: machineId,
+        botId,
       });
 
-      // Step 1: Get bot token and guild ID from user data
-      const botToken = userData.botToken;
-      const guildId = userData.guildId;
+      // Step 1: Get bot credentials from bot record
+      const botToken = bot.discordBotToken;
+      const guildId = bot.discordGuildId;
 
       if (!botToken || !guildId) {
         throw new HttpsError(
           "failed-precondition",
-          "User does not have bot token or guild ID configured"
+          "Bot does not have Discord credentials configured"
         );
       }
 
-      // Step 2: Get Anthropic API key from current machine config
+      // Step 2: Get Anthropic API key and other env vars from current machine config
       let anthropicApiKey = "";
+      let botMode = bot.mode || "personal";
+      let botUsername = bot.botDiscordUsername || "";
+
       try {
         const machine = await flyRequest(
           `/apps/${appName}/machines/${machineId}`,
@@ -599,6 +1071,9 @@ export const redeployHostedBot = onCall(
           token
         );
         anthropicApiKey = machine.config?.env?.ANTHROPIC_API_KEY || "";
+        // Preserve existing env vars if present
+        botMode = machine.config?.env?.BOT_MODE || botMode;
+        botUsername = machine.config?.env?.DISCORD_BOT_USERNAME || botUsername;
       } catch (error) {
         logger.warn(`Could not fetch old machine config: ${error}`);
       }
@@ -639,6 +1114,9 @@ export const redeployHostedBot = onCall(
           DISCORD_BOT_TOKEN: botToken,
           DISCORD_GUILD_ID: guildId,
           ANTHROPIC_API_KEY: anthropicApiKey,
+          BOT_MODE: botMode,
+          BOT_ID: botId,
+          DISCORD_BOT_USERNAME: botUsername,
         },
         mounts: [
           {
@@ -662,10 +1140,11 @@ export const redeployHostedBot = onCall(
       );
 
       // Step 5: Update Firestore with new machine info
-      await db.collection("users").doc(userId).update({
-        "hostedBot.machineId": machineResponse.id,
-        "hostedBot.status": "provisioning",
-        "hostedBot.lastDeployedAt": new Date().toISOString(),
+      await updateBotDoc(userId, botId, {
+        machineId: machineResponse.id,
+        status: "provisioning" as const,
+        lastDeployedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
 
       logger.info(`Successfully redeployed hosted bot for user ${userId}`, {
@@ -706,21 +1185,25 @@ export const deprovisionHostedBot = onCall(
     }
 
     const userId = request.auth.uid;
+    const { botId } = request.data;
+
+    if (!botId) {
+      throw new HttpsError("invalid-argument", "botId is required");
+    }
 
     try {
-      const userDoc = await db.collection("users").doc(userId).get();
-      const userData = userDoc.data();
-
-      if (!userData?.hostedBot) {
-        throw new HttpsError("not-found", "User does not have a hosted bot");
+      const bot = await getBotDoc(userId, botId);
+      if (!bot) {
+        throw new HttpsError("not-found", "Bot not found");
       }
 
-      const { appName, machineId, volumeId } = userData.hostedBot;
+      const { appName, machineId, volumeId } = bot;
       const token = flyApiToken.value();
 
       logger.info(`Deprovisioning hosted bot for user ${userId}`, {
         appName,
         machineId,
+        botId,
       });
 
       // Step 1: Stop and delete machine
@@ -755,9 +1238,7 @@ export const deprovisionHostedBot = onCall(
       }
 
       // Step 4: Remove from Firestore
-      await db.collection("users").doc(userId).update({
-        hostedBot: null,
-      });
+      await deleteBotDoc(userId, botId);
 
       logger.info(`Successfully deprovisioned hosted bot for user ${userId}`);
 

@@ -19,45 +19,61 @@ Cordbot is a directory-based Discord bot that syncs Discord channels to local fo
 
 ## Getting Started
 
-### Quick Start (Manual Setup)
+### Prerequisites
 
-You can run the agent locally by setting environment variables:
+1. **Visit [cordbot.io](https://cordbot.io)** to configure your bot and server
+2. **Create a Discord Bot**: Follow the instructions on cordbot.io to create your bot application
+3. **Get your Anthropic API Key**: Sign up at [console.anthropic.com](https://console.anthropic.com)
+
+### Discord Bot Setup
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Create a new application and add a bot
+3. Copy your bot token
+4. Invite the bot to your server using this URL (replace `YOUR_CLIENT_ID` with your bot's client ID):
+
+```
+https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=309237763136&scope=bot%20applications.commands
+```
+
+### Running Cordbot
+
+Run the bot using npx with the required environment variables:
 
 ```bash
 export DISCORD_BOT_TOKEN="your-discord-bot-token"
 export DISCORD_GUILD_ID="your-server-id"
+export ANTHROPIC_API_KEY="your-anthropic-api-key"
 export WORKSPACE_DIR="./workspace"  # Optional, defaults to ./workspace
 
 npx @cordbot/agent
 ```
 
-The agent will sync Discord channels to folders in your workspace directory, where you can interact with Claude through Discord messages and threads.
+Or create a `.env` file in your project directory:
 
-### Enhanced Setup (With Service Integrations)
+```env
+DISCORD_BOT_TOKEN=your-discord-bot-token
+DISCORD_GUILD_ID=your-server-id
+ANTHROPIC_API_KEY=your-anthropic-api-key
+WORKSPACE_DIR=./workspace
+```
 
-For additional capabilities like Gmail, Google Calendar, and other integrations, visit **[cordbot.io](https://cordbot.io)** to:
-
-1. Sign in with your Discord account
-2. Configure your bot token and server
-3. Connect service integrations (Gmail, Google Calendar, etc.)
-4. Run the agent with automatic authentication
-
-When signed in to the service, the agent can access connected integrations as tools that Claude can use. For example:
-- **Gmail**: Send and read emails
-- **Google Calendar**: Create and manage calendar events
-- **More integrations**: Additional services coming soon
-
-Run with authentication:
+Then run:
 
 ```bash
 npx @cordbot/agent
 ```
 
-The agent will automatically authenticate with your cordbot.io account and gain access to your connected services.
+### Service Integrations
+
+For additional capabilities like Gmail and Google Calendar, visit **[cordbot.io](https://cordbot.io)** to connect service integrations. When connected, these services become available as tools that Claude can use:
+- **Gmail**: Send and read emails
+- **Google Calendar**: Create and manage calendar events
+- **More integrations**: Additional services coming soon
 
 ## How It Works
 
-1. **Authentication**: Sign in at cordbot.io to configure your bot and get authenticated
+1. **Configure**: Set up your bot on [cordbot.io](https://cordbot.io) and get your credentials
 2. **Channel Sync**: Discord channels are synced to local folders in your workspace directory
 3. **Contextual Instructions**: Each channel folder has a `CLAUDE.md` file providing context to Claude
 4. **Thread Sessions**: Start a conversation in Discord and the bot maintains context throughout the thread

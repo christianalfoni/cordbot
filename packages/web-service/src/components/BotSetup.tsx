@@ -12,7 +12,7 @@ export function BotSetup({ userId, initialToken, initialGuildId }: BotSetupProps
   const [tokenInput, setTokenInput] = useState('');
   const [showTokenInput, setShowTokenInput] = useState(!initialToken);
   const [selectedGuild, setSelectedGuild] = useState<string | undefined>(initialGuildId);
-  const [copied, setCopied] = useState(false);
+  const [_copied, _setCopied] = useState(false);
 
   const handleSubmitToken = async () => {
     if (!tokenInput.trim()) return;
@@ -30,13 +30,7 @@ export function BotSetup({ userId, initialToken, initialGuildId }: BotSetupProps
     }
   };
 
-  const handleCopyToken = () => {
-    if (token) {
-      navigator.clipboard.writeText(token);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
+  // Removed unused copy token handler
 
   const handleResetBot = async () => {
     if (confirm('Are you sure you want to remove your bot configuration? You will need to set it up again.')) {

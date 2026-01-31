@@ -6,6 +6,8 @@ import { SessionDatabase } from "./storage/database.js";
 import { SessionManager } from "./agent/manager.js";
 import { CronRunner } from "./scheduler/runner.js";
 import { HealthServer } from "./health/server.js";
+import cron from 'node-cron';
+import { runDailyMemoryCompression } from "./memory/compress.js";
 
 export async function startBot(cwd: string): Promise<void> {
   console.log("🚀 Initializing Cordbot...\n");
@@ -26,12 +28,25 @@ export async function startBot(cwd: string): Promise<void> {
     throw new Error("Missing required environment variables");
   }
 
+  // Extract bot configuration
+  const botMode = (process.env.BOT_MODE || 'personal') as 'personal' | 'shared';
+  const botId = process.env.BOT_ID || 'local';
+  const botUsername = process.env.DISCORD_BOT_USERNAME || 'Cordbot';
+  const memoryContextSize = Math.max(1000, Math.min(100000, parseInt(process.env.MEMORY_CONTEXT_SIZE || '10000')));
+
+  console.log(`🤖 Bot Mode: ${botMode}`);
+  console.log(`🆔 Bot ID: ${botId}`);
+  console.log(`👤 Bot Username: ${botUsername}`);
+  console.log(`💾 Memory Context Size: ${memoryContextSize.toLocaleString()} tokens\n`);
+
+  const botConfig = { mode: botMode, id: botId, username: botUsername };
+
   // Initialize storage
   const db = new SessionDatabase(storageDir);
   console.log(`📊 Active sessions: ${db.getActiveCount()}\n`);
 
   // Initialize session manager
-  const sessionManager = new SessionManager(db, sessionsDir);
+  const sessionManager = new SessionManager(db, sessionsDir, cwd, memoryContextSize);
   await sessionManager.initialize(token);
   console.log("");
 
@@ -40,7 +55,7 @@ export async function startBot(cwd: string): Promise<void> {
   const client = await createDiscordClient({ token, guildId });
 
   // Sync channels with folders
-  const channelMappings = await syncChannelsOnStartup(client, guildId, cwd);
+  const channelMappings = await syncChannelsOnStartup(client, guildId, cwd, botConfig);
   console.log("");
 
   // Start cron scheduler
@@ -48,8 +63,21 @@ export async function startBot(cwd: string): Promise<void> {
   cronRunner.start(channelMappings);
   console.log("");
 
+  // Schedule daily memory compression (runs at midnight every day)
+  cron.schedule('0 0 * * *', async () => {
+    console.log('\n⏰ Running scheduled memory compression');
+    const channelIds = channelMappings.map(m => m.channelId);
+    try {
+      await runDailyMemoryCompression(cwd, channelIds);
+    } catch (error) {
+      console.error('Memory compression failed:', error);
+    }
+  });
+  console.log('📅 Scheduled daily memory compression (midnight)');
+  console.log("");
+
   // Setup event handlers (after cron runner is initialized)
-  setupEventHandlers(client, sessionManager, channelMappings, cwd, guildId, cronRunner);
+  setupEventHandlers(client, sessionManager, channelMappings, cwd, guildId, cronRunner, botConfig);
   console.log("✅ Event handlers registered\n");
 
   // Start health check server (if port is configured)

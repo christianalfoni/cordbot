@@ -2,6 +2,8 @@ import { Client, TextChannel } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { loadMemoriesForChannel, formatMemoriesForClaudeMd } from '../memory/loader.js';
+import { logMemoryLoaded } from '../memory/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,10 +16,17 @@ export interface ChannelMapping {
   cronPath: string;
 }
 
+export interface BotConfig {
+  mode: 'personal' | 'shared';
+  id: string;
+  username: string;
+}
+
 export async function syncChannelsOnStartup(
   client: Client,
   guildId: string,
-  basePath: string
+  basePath: string,
+  botConfig?: BotConfig
 ): Promise<ChannelMapping[]> {
   const guild = client.guilds.cache.get(guildId);
 
@@ -57,7 +66,7 @@ export async function syncChannelsOnStartup(
 
     // Create CLAUDE.md if missing and sync Discord topic to it (one-way sync)
     if (!fs.existsSync(claudeMdPath)) {
-      await createChannelClaudeMd(claudeMdPath, channelName, channel.topic || '');
+      await createChannelClaudeMd(claudeMdPath, channelName, channel.topic || '', botConfig);
       console.log(`📄 Created CLAUDE.md for #${channelName}`);
     } else {
       // Update existing CLAUDE.md with Discord topic
@@ -95,12 +104,29 @@ export async function syncChannelsOnStartup(
 async function createChannelClaudeMd(
   claudeMdPath: string,
   channelName: string,
-  discordTopic: string
+  discordTopic: string,
+  botConfig?: BotConfig
 ): Promise<void> {
-  // Create a minimal CLAUDE.md with Discord topic synced
-  const content = discordTopic
-    ? `# ${channelName}\n\n> ${discordTopic}\n\n`
-    : `# ${channelName}\n\n`;
+  // Create CLAUDE.md with Discord topic and bot identity
+  let content = `# ${channelName}\n\n`;
+
+  if (discordTopic) {
+    content += `> ${discordTopic}\n\n`;
+  }
+
+  if (botConfig) {
+    content += `## Bot Identity\n\n`;
+    content += `You are **${botConfig.username}**, a Discord bot assistant.\n\n`;
+
+    if (botConfig.mode === 'shared') {
+      content += `**Shared Mode**: Users @mention you for help. `;
+      content += `In single-user threads, respond to all messages. `;
+      content += `In multi-user threads, only respond when @mentioned. `;
+      content += `Messages are prefixed with [username].\n\n`;
+    } else {
+      content += `**Personal Mode**: You respond to all messages in synced channels.\n\n`;
+    }
+  }
 
   fs.writeFileSync(claudeMdPath, content, 'utf-8');
 }
@@ -156,7 +182,8 @@ export function getChannelMapping(
 
 export async function syncNewChannel(
   channel: TextChannel,
-  basePath: string
+  basePath: string,
+  botConfig?: BotConfig
 ): Promise<ChannelMapping> {
   const channelName = channel.name;
   const folderPath = path.join(basePath, channelName);
@@ -178,7 +205,7 @@ export async function syncNewChannel(
 
   // Create CLAUDE.md
   if (!fs.existsSync(claudeMdPath)) {
-    await createChannelClaudeMd(claudeMdPath, channelName, channel.topic || '');
+    await createChannelClaudeMd(claudeMdPath, channelName, channel.topic || '', botConfig);
     console.log(`📄 Created CLAUDE.md for #${channelName}`);
   }
 
@@ -203,4 +230,86 @@ export async function syncNewChannel(
     claudeMdPath,
     cronPath,
   };
+}
+
+/**
+ * Populate the memory section in CLAUDE.md for a channel
+ * This should be called before each query to ensure memory is up-to-date
+ */
+export async function populateMemorySection(
+  claudeMdPath: string,
+  workspaceRoot: string,
+  channelId: string,
+  memoryContextSize: number,
+  sessionId?: string
+): Promise<void> {
+  // Load memories for this channel
+  const memoryResult = await loadMemoriesForChannel(workspaceRoot, channelId, memoryContextSize);
+
+  // Format memories for CLAUDE.md
+  const memoryContent = formatMemoriesForClaudeMd(memoryResult);
+
+  // Read current CLAUDE.md
+  let content = fs.readFileSync(claudeMdPath, 'utf-8');
+
+  // Check if memory section already exists
+  const memoryStartMarker = '<!-- MEMORY_START -->';
+  const memoryEndMarker = '<!-- MEMORY_END -->';
+
+  if (content.includes(memoryStartMarker) && content.includes(memoryEndMarker)) {
+    // Replace existing memory section
+    const startIndex = content.indexOf(memoryStartMarker);
+    const endIndex = content.indexOf(memoryEndMarker) + memoryEndMarker.length;
+
+    const newMemorySection = `${memoryStartMarker}\n${memoryContent}\n${memoryEndMarker}`;
+    content = content.substring(0, startIndex) + newMemorySection + content.substring(endIndex);
+  } else {
+    // Add new memory section after channel topic
+    const lines = content.split('\n');
+    let insertIndex = 0;
+
+    // Find position after topic (after first heading and optional topic line)
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim().startsWith('#')) {
+        insertIndex = i + 1;
+        // Skip empty line and topic line if they exist
+        if (i + 1 < lines.length && lines[i + 1].trim() === '') {
+          insertIndex++;
+        }
+        if (insertIndex < lines.length && lines[insertIndex].trim().startsWith('>')) {
+          insertIndex++;
+        }
+        break;
+      }
+    }
+
+    // Insert memory section
+    const memorySection = [
+      '',
+      memoryStartMarker,
+      memoryContent,
+      memoryEndMarker,
+      '',
+    ];
+
+    lines.splice(insertIndex, 0, ...memorySection);
+    content = lines.join('\n');
+  }
+
+  // Write updated content
+  fs.writeFileSync(claudeMdPath, content, 'utf-8');
+
+  // Log memory operation
+  await logMemoryLoaded(
+    workspaceRoot,
+    channelId,
+    sessionId || 'unknown',
+    memoryResult.memories.map(m => ({
+      type: m.type,
+      identifier: m.identifier,
+      tokenCount: m.tokenCount,
+    })),
+    memoryResult.totalTokens,
+    memoryResult.budgetUsed
+  );
 }

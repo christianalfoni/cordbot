@@ -191,6 +191,87 @@ export function Documentation() {
         </div>
       </div>
 
+      {/* Memory System */}
+      <div className="border-t border-gray-200 dark:border-white/10 pt-8">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          💾 Long-Term Memory
+        </h3>
+        <div className="prose prose-sm dark:prose-invert max-w-none">
+          <p className="text-gray-600 dark:text-gray-300">
+            Cordbot features an intelligent hierarchical memory system that provides long-term context across all conversations in a channel.
+            This allows Claude to remember and reference past discussions, decisions, and learnings even after thread sessions end.
+          </p>
+
+          <div className="mt-4 space-y-4">
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white text-sm">How It Works</p>
+              <ol className="mt-2 space-y-2 text-sm text-gray-600 dark:text-gray-300 list-decimal list-inside ml-4">
+                <li><strong>Real-time Capture:</strong> Final responses from each conversation are automatically captured</li>
+                <li><strong>Daily Compression:</strong> At midnight, raw messages are compressed into concise daily summaries using Claude</li>
+                <li><strong>Hierarchical Compression:</strong> Daily summaries are progressively compressed into weekly, monthly, and yearly summaries</li>
+              </ol>
+            </div>
+
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white text-sm">Memory Loading</p>
+              <p className="text-gray-600 dark:text-gray-300 text-sm mt-1">
+                Before each query, memories are loaded working backwards from most recent to oldest until the token budget is reached:
+              </p>
+              <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside ml-4">
+                <li>Today's raw messages (full detail)</li>
+                <li>Recent daily summaries</li>
+                <li>Weekly summaries</li>
+                <li>Monthly summaries</li>
+                <li>Yearly summaries</li>
+              </ul>
+            </div>
+
+            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Memory structure per channel:</p>
+              <pre className="text-xs text-gray-700 dark:text-gray-300 font-mono overflow-x-auto">
+{`.claude/memories/[channel-id]/
+  raw/
+    2026-01-31.jsonl      # Today's conversations
+  daily/
+    2026-01-31.md         # Daily summaries
+  weekly/
+    2026-W04.md           # Weekly summaries
+  monthly/
+    2026-01.md            # Monthly summaries
+  yearly/
+    2026.md               # Yearly summaries`}
+              </pre>
+            </div>
+
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white text-sm">Configuration</p>
+              <p className="text-gray-600 dark:text-gray-300 text-sm mt-1">
+                Control the memory depth in the <strong>Memory Settings</strong> section:
+              </p>
+              <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside ml-4">
+                <li><strong>5,000-10,000 tokens:</strong> Recommended for most use cases (recent conversations + key summaries)</li>
+                <li><strong>10,000-25,000 tokens:</strong> Extended memory for long-running projects</li>
+                <li><strong>25,000-100,000 tokens:</strong> Maximum long-term memory with extensive historical context</li>
+              </ul>
+              <p className="text-gray-600 dark:text-gray-300 text-sm mt-2">
+                Higher values increase API costs but provide richer historical context for Claude to draw upon.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
+              💡 Why This Matters
+            </p>
+            <p className="mt-1 text-sm text-blue-800 dark:text-blue-300">
+              Unlike standard chat sessions that forget past conversations, Cordbot's memory system allows Claude to:
+              reference decisions from weeks ago, recall bug fixes and their outcomes, remember project architecture and patterns,
+              and maintain continuity across unlimited conversations.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Cron Jobs */}
       <div className="border-t border-gray-200 dark:border-white/10 pt-8">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">

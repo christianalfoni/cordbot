@@ -186,7 +186,8 @@ export class CronRunner {
           this.sessionManager,
           sessionId,
           folderPath,
-          `⏰ **Scheduled task:** ${job.task}`
+          undefined, // botConfig
+          `⏰ **Scheduled task:** ${job.task}` // messagePrefix
         );
 
         console.log(`✅ Completed scheduled job: ${job.name}`);
