@@ -13,6 +13,14 @@ export const permissionManager = new DiscordPermissionManager();
 // Queue to prevent concurrent processing of messages in the same thread
 const threadLocks = new Map<string, Promise<void>>();
 
+// Buffer for messages that mentioned others (for context in shared mode)
+interface BufferedMessage {
+  author: string;
+  content: string;
+  timestamp: Date;
+}
+const messageBuffers = new Map<string, BufferedMessage[]>();
+
 export function setupEventHandlers(
   client: Client,
   sessionManager: SessionManager,
@@ -245,17 +253,28 @@ async function handleMessage(
         return; // Ignore non-mention messages
       }
     } else {
-      // In thread - smart behavior based on participant count
-      const shouldRespond = await determineShouldRespond(
-        message,
-        message.channel as ThreadChannel
-      );
+      // In thread - new approach: Let Claude handle responses, but buffer messages that mention others
+      const threadId = message.channel.id;
 
-      if (!shouldRespond) {
-        // Track message for context but don't respond
-        console.log(`📝 Tracking message from ${message.author.username} (not responding)`);
+      if (mentionsSomeoneElse(message)) {
+        // Message mentions someone else - buffer it for context but don't respond
+        const displayName = message.member?.displayName || message.author.username;
+        const buffered: BufferedMessage = {
+          author: displayName,
+          content: message.content,
+          timestamp: message.createdAt,
+        };
+
+        const buffer = messageBuffers.get(threadId) || [];
+        buffer.push(buffered);
+        messageBuffers.set(threadId, buffer);
+
+        console.log(`📝 Buffered message from ${displayName} (mentions someone else)`);
         return;
       }
+
+      // Message doesn't mention others - process it (Claude will decide whether to respond)
+      // Note: If bot is mentioned, we'll also process it
     }
   }
 
@@ -370,7 +389,25 @@ async function handleMessage(
       // Prefix with username in shared mode
       if (botConfig?.mode === 'shared') {
         const displayName = message.member?.displayName || message.author.username;
-        userMessage = `[${displayName}]: ${userMessage}`;
+
+        // Include buffered messages as context (messages that mentioned others)
+        const threadId = message.channel.isThread() ? message.channel.id : message.id;
+        const buffer = messageBuffers.get(threadId);
+
+        if (buffer && buffer.length > 0) {
+          // Format buffered messages as context
+          const contextMessages = buffer
+            .map(msg => `[${msg.author}]: ${msg.content}`)
+            .join('\n');
+
+          userMessage = `${contextMessages}\n[${displayName}]: ${userMessage}`;
+
+          // Clear the buffer
+          messageBuffers.delete(threadId);
+          console.log(`📝 Included ${buffer.length} buffered message(s) as context`);
+        } else {
+          userMessage = `[${displayName}]: ${userMessage}`;
+        }
       }
 
       // Populate memory section in CLAUDE.md before query
@@ -485,41 +522,13 @@ async function downloadAttachments(message: Message, workingDir: string): Promis
 }
 
 /**
- * Determine if bot should respond in a thread (for shared mode)
- * - Single participant (thread creator): respond to all messages
- * - Multiple participants: only respond to mentions
+ * Check if message mentions someone other than the bot
  */
-async function determineShouldRespond(
-  message: Message,
-  thread: ThreadChannel
-): Promise<boolean> {
-  const participants = await getThreadParticipants(thread);
+function mentionsSomeoneElse(message: Message): boolean {
+  const botId = message.client.user!.id;
 
-  // Single participant (thread creator) - respond to all
-  if (participants.size === 1) {
-    return true;
-  }
+  // Check for @mentions of other users
+  const mentionsOthers = message.mentions.users.some(user => user.id !== botId && !user.bot);
 
-  // Multiple participants - only respond to mentions
-  return message.mentions.has(message.client.user!);
-}
-
-/**
- * Get unique human participants in a thread (excludes bots)
- */
-async function getThreadParticipants(thread: ThreadChannel): Promise<Set<string>> {
-  const participants = new Set<string>();
-
-  try {
-    const messages = await thread.messages.fetch({ limit: 100 });
-    messages.forEach(msg => {
-      if (!msg.author.bot) {
-        participants.add(msg.author.id);
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching thread participants:', error);
-  }
-
-  return participants;
+  return mentionsOthers;
 }

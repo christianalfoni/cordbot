@@ -1108,6 +1108,12 @@ export const redeployHostedBot = onCall(
         botId,
       });
 
+      // Immediately update status to provisioning so user gets feedback
+      await updateBotDoc(userId, botId, {
+        status: "provisioning" as const,
+        updatedAt: new Date().toISOString(),
+      });
+
       // Step 1: Get bot credentials from bot record
       const botToken = bot.discordBotToken;
       const guildId = bot.discordGuildId;
@@ -1159,7 +1165,7 @@ export const redeployHostedBot = onCall(
         logger.warn(`Failed to list machines: ${error.message}`);
       }
 
-      // Delete all existing machines
+      // Delete all existing machines and wait for them to be fully destroyed
       for (const machine of existingMachines) {
         logger.info(`Force deleting machine ${machine.id} (${machine.name})`);
         try {
@@ -1171,7 +1177,20 @@ export const redeployHostedBot = onCall(
             },
             token
           );
-          logger.info(`Successfully deleted machine ${machine.id}`);
+          logger.info(`Machine ${machine.id} deleted, waiting for destroyed state...`);
+
+          // Use Fly.io's wait endpoint to wait for machine to be destroyed
+          try {
+            await flyRequest(
+              `/apps/${appName}/machines/${machine.id}/wait?state=destroyed&timeout=60`,
+              { method: "GET" },
+              token
+            );
+            logger.info(`Machine ${machine.id} fully destroyed`);
+          } catch (waitError: any) {
+            logger.warn(`Wait endpoint failed for machine ${machine.id}: ${waitError.message}`);
+            // Continue anyway - machine might already be destroyed
+          }
         } catch (error: any) {
           // Only continue if machine doesn't exist (404), otherwise log error
           if (error.message && error.message.includes("404")) {
@@ -1183,8 +1202,9 @@ export const redeployHostedBot = onCall(
         }
       }
 
-      // Wait for machines to be fully deleted
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // Extra safety: wait a moment for volume to be released
+      logger.info(`Waiting 3 seconds for volume to be fully released...`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
       // Step 4: Create new machine with same config
       logger.info(`Creating new machine in region ${region}`);
