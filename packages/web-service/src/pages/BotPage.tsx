@@ -272,13 +272,13 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
                   <div className="flex items-center gap-3">
                     <button
                       onClick={async () => {
-                        if (!confirm('Redeploy the bot with the latest version? This will restart the bot.')) return;
+                        if (!confirm('Update the bot to the latest version? This will restart the bot.')) return;
 
                         try {
-                          const redeployHostedBot = httpsCallable(functions, 'redeployHostedBot');
-                          await redeployHostedBot({ botId: bot.id });
+                          const deployHostedBot = httpsCallable(functions, 'deployHostedBot');
+                          await deployHostedBot({ botId: bot.id, version: 'latest' });
                         } catch (err: any) {
-                          alert(err.message || 'Failed to redeploy bot');
+                          alert(err.message || 'Failed to update bot');
                         }
                       }}
                       className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400"

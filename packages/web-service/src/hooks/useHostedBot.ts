@@ -134,21 +134,6 @@ export function useHostedBot(userData: UserData | null) {
     }
   }, []);
 
-  const redeployBot = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const redeployHostedBot = httpsCallable(functions, 'redeployHostedBot');
-      await redeployHostedBot();
-    } catch (err: any) {
-      setError(err.message || 'Failed to redeploy bot');
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
   const deprovisionBot = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -177,7 +162,6 @@ export function useHostedBot(userData: UserData | null) {
     getLogs,
     restartBot,
     deployUpdate,
-    redeployBot,
     deprovisionBot,
   };
 }

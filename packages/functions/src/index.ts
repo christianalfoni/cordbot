@@ -421,6 +421,5 @@ export {
   getHostedBotLogs,
   restartHostedBot,
   deployHostedBot,
-  redeployHostedBot,
   deprovisionHostedBot,
 } from './fly-hosting.js';
