@@ -19,6 +19,7 @@ interface Bot {
   version?: string;
   provisionedAt?: string;
   lastRestartedAt?: string;
+  errorMessage?: string;
   discordBotToken?: string;
   discordGuildId?: string;
   discordGuildName?: string;

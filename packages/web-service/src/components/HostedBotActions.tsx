@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { UserData } from '../hooks/useAuth';
-import { useHostedBot } from '../hooks/useHostedBot';
+import { useHostedBots } from '../hooks/useHostedBots';
 import { ArrowPathIcon, TrashIcon, RocketLaunchIcon } from '@heroicons/react/24/outline';
 
 interface HostedBotActionsProps {
   userData: UserData;
+  botId: string;
 }
 
-export function HostedBotActions({ userData }: HostedBotActionsProps) {
-  const { restartBot, redeployBot, deprovisionBot, isLoading, error } = useHostedBot(userData);
+export function HostedBotActions({ userData, botId }: HostedBotActionsProps) {
+  const { restartBot, redeployBot, deprovisionBot, isLoading, error } = useHostedBots(userData.id);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showRedeployConfirm, setShowRedeployConfirm] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -18,7 +19,7 @@ export function HostedBotActions({ userData }: HostedBotActionsProps) {
     setActionError(null);
     setActionSuccess(null);
     try {
-      await restartBot();
+      await restartBot(botId);
       setActionSuccess('Bot is restarting...');
       setTimeout(() => setActionSuccess(null), 5000);
     } catch (err: any) {
@@ -30,7 +31,7 @@ export function HostedBotActions({ userData }: HostedBotActionsProps) {
     setActionError(null);
     setActionSuccess(null);
     try {
-      await redeployBot();
+      await redeployBot(botId);
       setShowRedeployConfirm(false);
       setActionSuccess('Bot is redeploying with latest image...');
       setTimeout(() => setActionSuccess(null), 5000);
@@ -44,7 +45,7 @@ export function HostedBotActions({ userData }: HostedBotActionsProps) {
     setActionError(null);
     setActionSuccess(null);
     try {
-      await deprovisionBot();
+      await deprovisionBot(botId);
       setShowDeleteConfirm(false);
       setActionSuccess('Hosted bot deleted successfully');
     } catch (err: any) {
