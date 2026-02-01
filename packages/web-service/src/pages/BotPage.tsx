@@ -8,6 +8,7 @@ import { Bot } from '../hooks/useHostedBots';
 import { BotOnboarding } from '../components/BotOnboarding';
 import { Navigation } from '../components/Navigation';
 import { DeploymentModal } from '../components/DeploymentModal';
+import { HostingBetaApply } from '../components/HostingBetaApply';
 import chatBotLogo from '../chat-bot-logo.svg';
 
 interface BotPageProps {
@@ -191,18 +192,24 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
 
               {bot.status === 'configured' && (
                 <div className="space-y-4">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Deploy your bot to Fly.io to make it available 24/7.
-                  </p>
-                  <button
-                    onClick={() => setShowDeploymentModal(true)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                    Deploy to Fly.io
-                  </button>
+                  {!userData.hostingBetaApproved ? (
+                    <HostingBetaApply userData={userData} />
+                  ) : (
+                    <>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Deploy your bot to Fly.io to make it available 24/7.
+                      </p>
+                      <button
+                        onClick={() => setShowDeploymentModal(true)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        Deploy to Fly.io
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
 
