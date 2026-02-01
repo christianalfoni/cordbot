@@ -6,7 +6,8 @@ import { useGmailAuth } from '../hooks/useGmailAuth';
 export function GmailCallback() {
   const navigate = useNavigate();
   const { user, userData, loading } = useAuth();
-  const gmailAuth = useGmailAuth(userData?.id || '');
+  const [botId, setBotId] = useState<string>('');
+  const gmailAuth = useGmailAuth(userData?.id || '', botId);
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [message, setMessage] = useState('Connecting your Gmail account...');
   const hasExchanged = useRef(false);
@@ -38,10 +39,11 @@ export function GmailCallback() {
 
       console.log('Processing OAuth callback...');
 
-      // Extract authorization code from URL
+      // Extract authorization code and state from URL
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
       const error = params.get('error');
+      const stateParam = params.get('state');
 
       if (error) {
         console.error('OAuth error:', error);
@@ -59,17 +61,51 @@ export function GmailCallback() {
         return;
       }
 
+      if (!stateParam) {
+        console.error('No state parameter in URL');
+        setStatus('error');
+        setMessage('Missing state parameter');
+        setTimeout(() => navigate('/'), 3000);
+        return;
+      }
+
+      // Parse state to get botId
+      let stateBotId: string;
+      let stateUserId: string;
+      try {
+        const state = JSON.parse(stateParam);
+        stateBotId = state.botId;
+        stateUserId = state.userId;
+
+        if (!stateBotId) {
+          throw new Error('botId missing from state');
+        }
+
+        // Verify userId matches
+        if (stateUserId !== userData?.id) {
+          throw new Error('User ID mismatch');
+        }
+
+        setBotId(stateBotId);
+      } catch (err) {
+        console.error('Failed to parse state parameter:', err);
+        setStatus('error');
+        setMessage('Invalid state parameter');
+        setTimeout(() => navigate('/'), 3000);
+        return;
+      }
+
       // Exchange code for tokens
-      const result = await gmailAuth.exchangeToken(code);
+      const result = await gmailAuth.exchangeToken(code, stateBotId);
 
       if (result.success) {
         setStatus('success');
         setMessage(`Gmail connected successfully! (${result.email})`);
-        setTimeout(() => navigate('/'), 2000);
+        setTimeout(() => navigate(`/bots/${stateBotId}`), 2000);
       } else {
         setStatus('error');
         setMessage(result.error || 'Failed to connect Gmail');
-        setTimeout(() => navigate('/'), 3000);
+        setTimeout(() => navigate(`/bots/${stateBotId}`), 3000);
       }
     };
 

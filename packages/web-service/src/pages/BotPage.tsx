@@ -446,7 +446,7 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
                 Connect external services to give your bot additional capabilities.
               </p>
 
-              <GmailIntegration userData={userData} />
+              <GmailIntegration userData={userData} bot={bot} />
             </div>
           </div>
         )}

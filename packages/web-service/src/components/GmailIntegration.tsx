@@ -3,37 +3,39 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useGmailAuth } from '../hooks/useGmailAuth';
 import { UserData } from '../hooks/useAuth';
+import { Bot } from '../hooks/useHostedBots';
 
 interface GmailIntegrationProps {
   userData: UserData;
+  bot: Bot;
 }
 
-export function GmailIntegration({ userData }: GmailIntegrationProps) {
+export function GmailIntegration({ userData, bot }: GmailIntegrationProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { initiateOAuth, disconnect, isConnecting, error } = useGmailAuth(userData.id);
+  const { initiateOAuth, disconnect, isConnecting, error } = useGmailAuth(userData.id, bot.id);
 
-  const gmailConnection = userData.oauthConnections?.gmail;
+  const gmailConnection = bot.oauthConnections?.gmail;
   const isConnected = !!gmailConnection;
 
   // Tool states - check if tool name is in the gmail array
-  const gmailTools = userData.toolsConfig?.gmail ?? [];
+  const gmailTools = bot.toolsConfig?.gmail ?? [];
   const listMessagesEnabled = gmailTools.includes('list_messages');
   const sendEmailEnabled = gmailTools.includes('send_email');
 
   const handleToggleTool = async (toolName: string, currentEnabled: boolean) => {
     if (!isConnected) return;
 
-    const userRef = doc(db, 'users', userData.id);
+    const botRef = doc(db, 'users', userData.id, 'bots', bot.id);
 
     // Get current gmail tools array
-    const currentGmailTools = userData.toolsConfig?.gmail ?? [];
+    const currentGmailTools = bot.toolsConfig?.gmail ?? [];
 
     // Toggle the tool in the array
     const updatedTools = currentEnabled
       ? currentGmailTools.filter(t => t !== toolName) // Remove if currently enabled
       : [...currentGmailTools, toolName]; // Add if currently disabled
 
-    await updateDoc(userRef, {
+    await updateDoc(botRef, {
       'toolsConfig.gmail': updatedTools,
     });
   };
