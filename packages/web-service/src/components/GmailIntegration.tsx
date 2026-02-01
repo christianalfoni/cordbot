@@ -13,6 +13,7 @@ interface GmailIntegrationProps {
 export function GmailIntegration({ userData, bot }: GmailIntegrationProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { initiateOAuth, disconnect, isConnecting, error } = useGmailAuth(userData.id, bot.id);
+  const [isUpdatingTools, setIsUpdatingTools] = useState(false);
 
   const gmailConnection = bot.oauthConnections?.gmail;
   const isConnected = !!gmailConnection;
@@ -23,21 +24,31 @@ export function GmailIntegration({ userData, bot }: GmailIntegrationProps) {
   const sendEmailEnabled = gmailTools.includes('send_email');
 
   const handleToggleTool = async (toolName: string, currentEnabled: boolean) => {
-    if (!isConnected) return;
+    if (!isConnected || isUpdatingTools) return;
 
-    const botRef = doc(db, 'users', userData.id, 'bots', bot.id);
+    setIsUpdatingTools(true);
 
-    // Get current gmail tools array
-    const currentGmailTools = bot.toolsConfig?.gmail ?? [];
+    try {
+      const botRef = doc(db, 'users', userData.id, 'bots', bot.id);
 
-    // Toggle the tool in the array
-    const updatedTools = currentEnabled
-      ? currentGmailTools.filter(t => t !== toolName) // Remove if currently enabled
-      : [...currentGmailTools, toolName]; // Add if currently disabled
+      // Get current gmail tools array
+      const currentGmailTools = bot.toolsConfig?.gmail ?? [];
 
-    await updateDoc(botRef, {
-      'toolsConfig.gmail': updatedTools,
-    });
+      // Toggle the tool in the array
+      const updatedTools = currentEnabled
+        ? currentGmailTools.filter(t => t !== toolName) // Remove if currently enabled
+        : [...currentGmailTools, toolName]; // Add if currently disabled
+
+      await updateDoc(botRef, {
+        'toolsConfig.gmail': updatedTools,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Failed to toggle tool:', err);
+      alert('Failed to update tool configuration');
+    } finally {
+      setIsUpdatingTools(false);
+    }
   };
 
   return (
@@ -136,7 +147,8 @@ export function GmailIntegration({ userData, bot }: GmailIntegrationProps) {
                       type="checkbox"
                       checked={listMessagesEnabled}
                       onChange={() => handleToggleTool('list_messages', listMessagesEnabled)}
-                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:border-gray-600 dark:bg-gray-700 dark:ring-offset-gray-800"
+                      disabled={isUpdatingTools}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:border-gray-600 dark:bg-gray-700 dark:ring-offset-gray-800 disabled:opacity-50"
                     />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -157,7 +169,8 @@ export function GmailIntegration({ userData, bot }: GmailIntegrationProps) {
                       type="checkbox"
                       checked={sendEmailEnabled}
                       onChange={() => handleToggleTool('send_email', sendEmailEnabled)}
-                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:border-gray-600 dark:bg-gray-700 dark:ring-offset-gray-800"
+                      disabled={isUpdatingTools}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:border-gray-600 dark:bg-gray-700 dark:ring-offset-gray-800 disabled:opacity-50"
                     />
                   </div>
                   <div className="flex-1 min-w-0">
