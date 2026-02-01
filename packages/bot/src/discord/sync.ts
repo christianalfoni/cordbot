@@ -1,6 +1,7 @@
 import { Client, TextChannel } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { loadMemoriesForChannel, formatMemoriesForClaudeMd } from '../memory/loader.js';
 import { logMemoryLoaded } from '../memory/logger.js';
@@ -43,25 +44,28 @@ export async function syncChannelsOnStartup(
     channel => channel.isTextBased() && !channel.isThread()
   );
 
+  const homeDir = os.homedir();
+
   for (const [, channel] of channels) {
     if (!(channel instanceof TextChannel)) continue;
 
     const channelName = channel.name;
     const folderPath = path.join(basePath, channelName);
-    const claudeMdPath = path.join(folderPath, 'CLAUDE.md');
-    const cronPath = path.join(folderPath, '.claude-cron');
-    const claudeFolderPath = path.join(folderPath, '.claude');
-    const skillsPath = path.join(claudeFolderPath, 'skills');
 
-    // Create folder structure if it doesn't exist
+    // Centralized channel data directory
+    const channelClaudeDir = path.join(homeDir, '.claude', 'channels', channel.id);
+    const claudeMdPath = path.join(channelClaudeDir, 'CLAUDE.md');
+    const cronPath = path.join(channelClaudeDir, 'cron.yaml');
+
+    // Create channel folder (clean - just for work files)
     if (!fs.existsSync(folderPath)) {
       fs.mkdirSync(folderPath, { recursive: true });
       console.log(`📁 Created folder for #${channelName}`);
     }
 
-    if (!fs.existsSync(skillsPath)) {
-      fs.mkdirSync(skillsPath, { recursive: true });
-      console.log(`📁 Created .claude/skills for #${channelName}`);
+    // Create centralized channel data directory
+    if (!fs.existsSync(channelClaudeDir)) {
+      fs.mkdirSync(channelClaudeDir, { recursive: true });
     }
 
     // Create CLAUDE.md if missing and sync Discord topic to it (one-way sync)
@@ -73,18 +77,10 @@ export async function syncChannelsOnStartup(
       await updateChannelClaudeMdTopic(claudeMdPath, channel.topic || '');
     }
 
-    // Create empty .claude-cron if missing (Claude will manage via skill)
+    // Create empty cron.yaml if missing (Claude will manage via skill)
     if (!fs.existsSync(cronPath)) {
       fs.writeFileSync(cronPath, 'jobs: []\n', 'utf-8');
-      console.log(`⏰ Created .claude-cron for #${channelName}`);
-    }
-
-    // Copy cron management skill to .claude/skills
-    const skillTemplatePath = path.join(__dirname, '..', '..', 'templates', 'cron-skill.md');
-    const skillDestPath = path.join(skillsPath, 'cron.md');
-    if (!fs.existsSync(skillDestPath)) {
-      fs.copyFileSync(skillTemplatePath, skillDestPath);
-      console.log(`🔧 Added cron management skill for #${channelName}`);
+      console.log(`⏰ Created cron.yaml for #${channelName}`);
     }
 
     mappings.push({
@@ -107,25 +103,35 @@ async function createChannelClaudeMd(
   discordTopic: string,
   botConfig?: BotConfig
 ): Promise<void> {
-  // Create CLAUDE.md with Discord topic and bot identity
-  let content = `# ${channelName}\n\n`;
+  // Create CLAUDE.md with default bot instructions and channel-specific section
+  let content = '';
 
+  // General Instructions (merged with intro)
+  content += `## General Instructions\n\n`;
+  content += `You are a coding assistant running on a Discord server with access to a workspace. You help users and communities with whatever they need, including coding tasks, file operations, web searches, scheduling, and general assistance.\n\n`;
+  content += `- You have access to a workspace where you can create, read, and modify files\n`;
+  content += `- Execute tasks using the available tools\n\n`;
+
+  // Communication Style
+  content += `## Communication Style\n\n`;
+  content += `When interacting with Discord users:\n`;
+  content += `- Focus on **what** you're doing, not **how** you're doing it internally\n`;
+  content += `- Do NOT mention specific tool names (Read, Write, Edit, Bash, Glob, Grep, WebFetch, etc.)\n`;
+  content += `- Do NOT explain your internal processes or tool usage\n`;
+  content += `- Simply describe the action in user-friendly terms\n`;
+  content += `  - Instead of: "I'll use the Read tool to check the file"\n`;
+  content += `  - Say: "Let me check that file"\n`;
+  content += `  - Instead of: "I'll use WebSearch to find information"\n`;
+  content += `  - Say: "Let me search for that information"\n`;
+  content += `- Remember that most Discord users are not developers and don't need technical implementation details\n`;
+  content += `- Keep responses conversational and focused on results\n\n`;
+
+  // Channel-specific section
+  content += `## Channel Instructions (#${channelName})\n\n`;
+
+  // Only add topic if it exists
   if (discordTopic) {
     content += `> ${discordTopic}\n\n`;
-  }
-
-  if (botConfig) {
-    content += `## Bot Identity\n\n`;
-    content += `You are **${botConfig.username}**, a Discord bot assistant.\n\n`;
-
-    if (botConfig.mode === 'shared') {
-      content += `**Shared Mode**: Users @mention you for help. `;
-      content += `In single-user threads, respond to all messages. `;
-      content += `In multi-user threads, only respond when @mentioned. `;
-      content += `Messages are prefixed with [username].\n\n`;
-    } else {
-      content += `**Personal Mode**: You respond to all messages in synced channels.\n\n`;
-    }
   }
 
   fs.writeFileSync(claudeMdPath, content, 'utf-8');
@@ -138,33 +144,42 @@ export async function updateChannelClaudeMdTopic(
   const content = fs.readFileSync(claudeMdPath, 'utf-8');
   const lines = content.split('\n');
 
-  // Find or update the topic line (should be after the heading)
+  // Find the "## Channel Instructions" heading and update the topic
   let updatedLines: string[] = [];
-  let foundHeading = false;
-  let foundTopic = false;
+  let foundChannelInstructions = false;
+  let processedTopic = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    if (!foundHeading && line.trim().startsWith('#')) {
+    // Found the Channel Instructions heading
+    if (!foundChannelInstructions && line.trim().startsWith('## Channel Instructions')) {
       updatedLines.push(line);
       updatedLines.push('');
+
+      // Add topic if it exists
       if (discordTopic) {
         updatedLines.push(`> ${discordTopic}`);
         updatedLines.push('');
       }
-      foundHeading = true;
-      foundTopic = true;
+
+      foundChannelInstructions = true;
+      processedTopic = true;
       continue;
     }
 
-    // Skip old topic line
-    if (foundHeading && !foundTopic && line.trim().startsWith('>')) {
-      foundTopic = true;
-      if (discordTopic) {
-        updatedLines.push(`> ${discordTopic}`);
-      }
+    // Skip existing topic line (starts with >) if we just added the heading
+    if (foundChannelInstructions && !processedTopic && line.trim().startsWith('>')) {
+      processedTopic = true;
       continue;
+    }
+
+    // Skip empty lines right after topic was removed/updated
+    if (foundChannelInstructions && !processedTopic && line.trim() === '') {
+      processedTopic = true;
+      if (!discordTopic) {
+        continue; // Skip the empty line if no topic
+      }
     }
 
     updatedLines.push(line);
@@ -185,22 +200,24 @@ export async function syncNewChannel(
   basePath: string,
   botConfig?: BotConfig
 ): Promise<ChannelMapping> {
+  const homeDir = os.homedir();
   const channelName = channel.name;
   const folderPath = path.join(basePath, channelName);
-  const claudeMdPath = path.join(folderPath, 'CLAUDE.md');
-  const cronPath = path.join(folderPath, '.claude-cron');
-  const claudeFolderPath = path.join(folderPath, '.claude');
-  const skillsPath = path.join(claudeFolderPath, 'skills');
 
-  // Create folder structure
+  // Centralized channel data directory
+  const channelClaudeDir = path.join(homeDir, '.claude', 'channels', channel.id);
+  const claudeMdPath = path.join(channelClaudeDir, 'CLAUDE.md');
+  const cronPath = path.join(channelClaudeDir, 'cron.yaml');
+
+  // Create channel folder (clean - just for work files)
   if (!fs.existsSync(folderPath)) {
     fs.mkdirSync(folderPath, { recursive: true });
     console.log(`📁 Created folder for #${channelName}`);
   }
 
-  if (!fs.existsSync(skillsPath)) {
-    fs.mkdirSync(skillsPath, { recursive: true });
-    console.log(`📁 Created .claude/skills for #${channelName}`);
+  // Create centralized channel data directory
+  if (!fs.existsSync(channelClaudeDir)) {
+    fs.mkdirSync(channelClaudeDir, { recursive: true });
   }
 
   // Create CLAUDE.md
@@ -209,18 +226,10 @@ export async function syncNewChannel(
     console.log(`📄 Created CLAUDE.md for #${channelName}`);
   }
 
-  // Create empty .claude-cron
+  // Create empty cron.yaml
   if (!fs.existsSync(cronPath)) {
     fs.writeFileSync(cronPath, 'jobs: []\n', 'utf-8');
-    console.log(`⏰ Created .claude-cron for #${channelName}`);
-  }
-
-  // Copy cron management skill
-  const skillTemplatePath = path.join(__dirname, '..', '..', 'templates', 'cron-skill.md');
-  const skillDestPath = path.join(skillsPath, 'cron.md');
-  if (!fs.existsSync(skillDestPath)) {
-    fs.copyFileSync(skillTemplatePath, skillDestPath);
-    console.log(`🔧 Added cron management skill for #${channelName}`);
+    console.log(`⏰ Created cron.yaml for #${channelName}`);
   }
 
   return {
@@ -238,13 +247,12 @@ export async function syncNewChannel(
  */
 export async function populateMemorySection(
   claudeMdPath: string,
-  workspaceRoot: string,
   channelId: string,
   memoryContextSize: number,
   sessionId?: string
 ): Promise<void> {
   // Load memories for this channel
-  const memoryResult = await loadMemoriesForChannel(workspaceRoot, channelId, memoryContextSize);
+  const memoryResult = await loadMemoriesForChannel(channelId, memoryContextSize);
 
   // Format memories for CLAUDE.md
   const memoryContent = formatMemoriesForClaudeMd(memoryResult);
@@ -252,48 +260,41 @@ export async function populateMemorySection(
   // Read current CLAUDE.md
   let content = fs.readFileSync(claudeMdPath, 'utf-8');
 
-  // Check if memory section already exists
-  const memoryStartMarker = '<!-- MEMORY_START -->';
-  const memoryEndMarker = '<!-- MEMORY_END -->';
+  // Check if memory sections already exist and remove them
+  const hasRecentMemory = content.includes('## Recent Memory');
+  const hasLongTermMemory = content.includes('## Long Term Memory');
 
-  if (content.includes(memoryStartMarker) && content.includes(memoryEndMarker)) {
-    // Replace existing memory section
-    const startIndex = content.indexOf(memoryStartMarker);
-    const endIndex = content.indexOf(memoryEndMarker) + memoryEndMarker.length;
-
-    const newMemorySection = `${memoryStartMarker}\n${memoryContent}\n${memoryEndMarker}`;
-    content = content.substring(0, startIndex) + newMemorySection + content.substring(endIndex);
-  } else {
-    // Add new memory section after channel topic
+  if (hasRecentMemory || hasLongTermMemory) {
+    // Remove existing memory sections
     const lines = content.split('\n');
-    let insertIndex = 0;
+    const filteredLines: string[] = [];
+    let skipUntilNextSection = false;
 
-    // Find position after topic (after first heading and optional topic line)
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].trim().startsWith('#')) {
-        insertIndex = i + 1;
-        // Skip empty line and topic line if they exist
-        if (i + 1 < lines.length && lines[i + 1].trim() === '') {
-          insertIndex++;
-        }
-        if (insertIndex < lines.length && lines[insertIndex].trim().startsWith('>')) {
-          insertIndex++;
-        }
-        break;
+      const line = lines[i];
+
+      // Start skipping when we hit a memory section
+      if (line.trim() === '## Recent Memory' || line.trim() === '## Long Term Memory') {
+        skipUntilNextSection = true;
+        continue;
+      }
+
+      // Stop skipping when we hit another ## section (but not ###)
+      if (skipUntilNextSection && line.trim().startsWith('## ') && !line.trim().startsWith('### ')) {
+        skipUntilNextSection = false;
+      }
+
+      if (!skipUntilNextSection) {
+        filteredLines.push(line);
       }
     }
 
-    // Insert memory section
-    const memorySection = [
-      '',
-      memoryStartMarker,
-      memoryContent,
-      memoryEndMarker,
-      '',
-    ];
+    content = filteredLines.join('\n').trimEnd();
+  }
 
-    lines.splice(insertIndex, 0, ...memorySection);
-    content = lines.join('\n');
+  // Append new memory content at the end if there is any
+  if (memoryContent) {
+    content = content.trimEnd() + '\n\n' + memoryContent;
   }
 
   // Write updated content
@@ -301,7 +302,6 @@ export async function populateMemorySection(
 
   // Log memory operation
   await logMemoryLoaded(
-    workspaceRoot,
     channelId,
     sessionId || 'unknown',
     memoryResult.memories.map(m => ({

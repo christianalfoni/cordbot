@@ -230,7 +230,7 @@ export const getBotManifest = onCall(async (request) => {
   try {
     // Query bot documents across all users using collection group query
     const botsSnapshot = await db.collectionGroup('bots')
-      .where('authToken', '==', botToken)
+      .where('discordBotToken', '==', botToken)
       .limit(1)
       .get();
 
@@ -309,12 +309,12 @@ export const refreshToken = onCall(
     try {
       // Query bot documents across all users using collection group query
       const botsSnapshot = await db.collectionGroup('bots')
-        .where('authToken', '==', botToken)
+        .where('discordBotToken', '==', botToken)
         .limit(1)
         .get();
 
       if (botsSnapshot.empty) {
-        logger.warn('No bot found with provided auth token');
+        logger.warn('No bot found with provided Discord bot token');
         throw new HttpsError(
           'not-found',
           'Invalid bot token'

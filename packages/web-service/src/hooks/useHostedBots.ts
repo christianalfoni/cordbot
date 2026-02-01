@@ -10,7 +10,6 @@ interface Bot {
   botDiscordUsername?: string;
   botDiscordAvatar?: string | null;
   mode: 'personal' | 'shared';
-  authToken?: string; // Token for bot to authenticate to API functions
   appName?: string;
   machineId?: string;
   volumeId?: string;

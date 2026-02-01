@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -55,8 +56,8 @@ export function initializeClaudeFolder(cwd: string): InitResult {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
   }
 
-  // Create root CLAUDE.md if it doesn't exist
-  ensureRootClaudeMd(cwd);
+  // Initialize global skills in ~/.claude/skills/
+  ensureGlobalSkills();
 
   return {
     claudeDir,
@@ -67,17 +68,31 @@ export function initializeClaudeFolder(cwd: string): InitResult {
   };
 }
 
-function ensureRootClaudeMd(cwd: string): void {
-  const claudeMdPath = path.join(cwd, 'CLAUDE.md');
+function ensureGlobalSkills(): void {
+  const homeDir = os.homedir();
+  const claudeDir = path.join(homeDir, '.claude');
+  const globalSkillsDir = path.join(claudeDir, 'skills');
+  const channelsDir = path.join(claudeDir, 'channels');
 
-  if (!fs.existsSync(claudeMdPath)) {
-    const templatePath = path.join(__dirname, '..', 'templates', 'root-CLAUDE.md.template');
-    let template = fs.readFileSync(templatePath, 'utf-8');
+  // Create directories
+  fs.mkdirSync(globalSkillsDir, { recursive: true });
+  fs.mkdirSync(channelsDir, { recursive: true });
 
-    // Replace placeholders
-    template = template.replace(/{{WORKING_DIRECTORY}}/g, cwd);
+  // Copy template skills to subdirectories
+  const skillTemplates = [
+    { src: 'cron-skill.md', dest: 'cron' },
+    { src: 'skill-creator.md', dest: 'skill-creator' }
+  ];
 
-    fs.writeFileSync(claudeMdPath, template, 'utf-8');
-    console.log('📄 Created root CLAUDE.md with Discord bot instructions');
+  for (const { src, dest } of skillTemplates) {
+    const templatePath = path.join(__dirname, '..', 'templates', src);
+    const skillDir = path.join(globalSkillsDir, dest);
+    const destPath = path.join(skillDir, 'SKILL.md');
+
+    if (!fs.existsSync(destPath)) {
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.copyFileSync(templatePath, destPath);
+      console.log(`🔧 Added ${dest}/SKILL.md skill to global skills`);
+    }
   }
 }

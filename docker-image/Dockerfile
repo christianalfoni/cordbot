@@ -5,6 +5,9 @@ RUN apt-get update && apt-get install -y \
     sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
+# Set HOME to workspace for persistent ~/.claude/ directory
+ENV HOME=/workspace
+
 # Accept version as build argument
 ARG CORDBOT_VERSION=latest
 

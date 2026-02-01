@@ -1,9 +1,9 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { parseCronFile, validateCronSchedule } from '../../scheduler/parser.js';
+import { getCronFilePath } from './utils.js';
 import yaml from 'js-yaml';
 import fs from 'fs';
-import path from 'path';
 
 const schema = z.object({
   name: z.string().describe('Unique name for this cron job (e.g., "Daily summary", "Weekly report")'),
@@ -12,7 +12,7 @@ const schema = z.object({
   oneTime: z.boolean().optional().describe('Set to true for one-time tasks that should be removed after execution. Default: false')
 });
 
-export function createTool(getCwd: () => string) {
+export function createTool(getChannelId: () => string) {
   return tool(
     'cron_add_job',
     'Add a new scheduled cron job to this Discord channel. Use this instead of bash cron/at commands - jobs will execute autonomously and post results directly to the Discord channel. Always list jobs first to avoid duplicate names.',
@@ -40,8 +40,8 @@ export function createTool(getCwd: () => string) {
           };
         }
 
-        const cwd = getCwd();
-        const cronPath = path.join(cwd, '.claude-cron');
+        const channelId = getChannelId();
+        const cronPath = getCronFilePath(channelId);
 
         // Read existing jobs
         const config = parseCronFile(cronPath);

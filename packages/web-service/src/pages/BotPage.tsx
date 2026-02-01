@@ -4,11 +4,13 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { UserData } from '../hooks/useAuth';
 import { db, functions } from '../firebase';
-import { Bot } from '../hooks/useHostedBots';
+import { Bot, useHostedBots } from '../hooks/useHostedBots';
 import { BotOnboarding } from '../components/BotOnboarding';
 import { Navigation } from '../components/Navigation';
 import { DeploymentModal } from '../components/DeploymentModal';
 import { HostingBetaApply } from '../components/HostingBetaApply';
+import { CreateBotModal } from '../components/CreateBotModal';
+import { GmailIntegration } from '../components/GmailIntegration';
 import chatBotLogo from '../chat-bot-logo.svg';
 
 interface BotPageProps {
@@ -19,9 +21,11 @@ interface BotPageProps {
 export function BotPage({ userData, onSignOut }: BotPageProps) {
   const { botId } = useParams<{ botId: string }>();
   const navigate = useNavigate();
+  const { bots } = useHostedBots(userData.id);
   const [bot, setBot] = useState<Bot | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeploymentModal, setShowDeploymentModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteStatus, setDeleteStatus] = useState<string>('');
 
@@ -121,10 +125,13 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
         userPhotoURL={userData.photoURL}
         userDisplayName={userData.displayName}
         onSignOut={onSignOut}
+        bots={bots}
+        onCreateBot={() => setShowCreateModal(true)}
       />
 
       {/* Main Content */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="lg:pl-72">
+        <div className="px-4 sm:px-6 lg:px-8 py-8">
         {/* Bot details and hosting controls */}
         {(
           <div className="space-y-8">
@@ -439,38 +446,19 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
                 Connect external services to give your bot additional capabilities.
               </p>
 
-              {/* Gmail Integration */}
-              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-900 dark:text-white">Gmail</h4>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {bot.oauthConnections?.gmail ? 'Connected' : 'Not connected'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    if (bot.oauthConnections?.gmail) {
-                      alert('Gmail already connected');
-                    } else {
-                      alert('Gmail OAuth flow coming soon');
-                    }
-                  }}
-                  className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 font-medium"
-                >
-                  {bot.oauthConnections?.gmail ? 'Disconnect' : 'Connect'}
-                </button>
-              </div>
+              <GmailIntegration userData={userData} />
             </div>
           </div>
         )}
-      </div>
+        </div>
+      </main>
+
+      {showCreateModal && (
+        <CreateBotModal
+          onClose={() => setShowCreateModal(false)}
+          userId={userData.id}
+        />
+      )}
     </div>
   );
 }

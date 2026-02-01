@@ -38,7 +38,6 @@ export interface MemoryLoadResult {
  * until the token budget is exhausted.
  */
 export async function loadMemoriesForChannel(
-  workspaceRoot: string,
   channelId: string,
   tokenBudget: number
 ): Promise<MemoryLoadResult> {
@@ -57,7 +56,7 @@ export async function loadMemoriesForChannel(
 
   // 1. Load today's raw memories (most recent, highest fidelity)
   const today = new Date().toISOString().split('T')[0];
-  const rawEntries = await readRawMemories(workspaceRoot, channelId, today);
+  const rawEntries = await readRawMemories(channelId, today);
 
   if (rawEntries.length > 0) {
     const rawContent = rawEntries.map(e => e.message).join('\n\n');
@@ -88,11 +87,11 @@ export async function loadMemoriesForChannel(
   }
 
   // 2. Load recent daily summaries (last N days)
-  const dailyDates = await listDailyMemories(workspaceRoot, channelId);
+  const dailyDates = await listDailyMemories(channelId);
   for (const date of dailyDates) {
     if (date === today) continue; // Already handled raw for today
 
-    const content = await readDailyMemory(workspaceRoot, channelId, date);
+    const content = await readDailyMemory(channelId, date);
     if (!content) continue;
 
     const memory: LoadedMemory = {
@@ -109,9 +108,9 @@ export async function loadMemoriesForChannel(
 
   // If still have budget, load weekly summaries
   if (totalTokens < tokenBudget) {
-    const weeklyIdentifiers = await listWeeklyMemories(workspaceRoot, channelId);
+    const weeklyIdentifiers = await listWeeklyMemories(channelId);
     for (const weekId of weeklyIdentifiers) {
-      const content = await readWeeklyMemory(workspaceRoot, channelId, weekId);
+      const content = await readWeeklyMemory(channelId, weekId);
       if (!content) continue;
 
       const memory: LoadedMemory = {
@@ -129,9 +128,9 @@ export async function loadMemoriesForChannel(
 
   // If still have budget, load monthly summaries
   if (totalTokens < tokenBudget) {
-    const monthlyIdentifiers = await listMonthlyMemories(workspaceRoot, channelId);
+    const monthlyIdentifiers = await listMonthlyMemories(channelId);
     for (const monthId of monthlyIdentifiers) {
-      const content = await readMonthlyMemory(workspaceRoot, channelId, monthId);
+      const content = await readMonthlyMemory(channelId, monthId);
       if (!content) continue;
 
       const memory: LoadedMemory = {
@@ -149,9 +148,9 @@ export async function loadMemoriesForChannel(
 
   // If still have budget, load yearly summaries
   if (totalTokens < tokenBudget) {
-    const yearlyIdentifiers = await listYearlyMemories(workspaceRoot, channelId);
+    const yearlyIdentifiers = await listYearlyMemories(channelId);
     for (const year of yearlyIdentifiers) {
-      const content = await readYearlyMemory(workspaceRoot, channelId, year);
+      const content = await readYearlyMemory(channelId, year);
       if (!content) continue;
 
       const memory: LoadedMemory = {
@@ -196,11 +195,8 @@ function truncateToTokenBudget(text: string, tokenBudget: number): string {
  */
 export function formatMemoriesForClaudeMd(loadResult: MemoryLoadResult): string {
   if (loadResult.memories.length === 0) {
-    return '# Memory\n\nNo previous memories available.\n';
+    return '';
   }
-
-  let output = '# Memory\n\n';
-  output += `_Using ${loadResult.totalTokens.toLocaleString()} tokens (${Math.round(loadResult.budgetUsed)}% of budget)_\n\n`;
 
   // Group by type
   const rawMemories = loadResult.memories.filter(m => m.type === 'raw');
@@ -209,43 +205,53 @@ export function formatMemoriesForClaudeMd(loadResult: MemoryLoadResult): string 
   const monthlyMemories = loadResult.memories.filter(m => m.type === 'monthly');
   const yearlyMemories = loadResult.memories.filter(m => m.type === 'yearly');
 
-  // Raw (today's activity)
-  if (rawMemories.length > 0) {
-    output += '## Today\n\n';
-    for (const mem of rawMemories) {
-      output += mem.content + '\n\n';
+  let output = '';
+
+  // Recent Memory: Today and recent days
+  const hasRecentMemory = rawMemories.length > 0 || dailyMemories.length > 0;
+  if (hasRecentMemory) {
+    output += '## Recent Memory\n\n';
+
+    // Raw (today's activity)
+    if (rawMemories.length > 0) {
+      output += '### Today\n\n';
+      for (const mem of rawMemories) {
+        output += mem.content + '\n\n';
+      }
+    }
+
+    // Daily summaries
+    if (dailyMemories.length > 0) {
+      for (const mem of dailyMemories) {
+        output += `### ${mem.identifier}\n\n${mem.content}\n\n`;
+      }
     }
   }
 
-  // Daily summaries
-  if (dailyMemories.length > 0) {
-    output += '## Recent Days\n\n';
-    for (const mem of dailyMemories) {
-      output += `### ${mem.identifier}\n\n${mem.content}\n\n`;
-    }
-  }
+  // Long Term Memory: Weeks, months, years
+  const hasLongTermMemory = weeklyMemories.length > 0 || monthlyMemories.length > 0 || yearlyMemories.length > 0;
+  if (hasLongTermMemory) {
+    output += '## Long Term Memory\n\n';
 
-  // Weekly summaries
-  if (weeklyMemories.length > 0) {
-    output += '## Recent Weeks\n\n';
-    for (const mem of weeklyMemories) {
-      output += `### Week ${mem.identifier}\n\n${mem.content}\n\n`;
+    // Weekly summaries
+    if (weeklyMemories.length > 0) {
+      for (const mem of weeklyMemories) {
+        output += `### Week ${mem.identifier}\n\n${mem.content}\n\n`;
+      }
     }
-  }
 
-  // Monthly summaries
-  if (monthlyMemories.length > 0) {
-    output += '## Recent Months\n\n';
-    for (const mem of monthlyMemories) {
-      output += `### ${mem.identifier}\n\n${mem.content}\n\n`;
+    // Monthly summaries
+    if (monthlyMemories.length > 0) {
+      for (const mem of monthlyMemories) {
+        output += `### ${mem.identifier}\n\n${mem.content}\n\n`;
+      }
     }
-  }
 
-  // Yearly summaries
-  if (yearlyMemories.length > 0) {
-    output += '## Past Years\n\n';
-    for (const mem of yearlyMemories) {
-      output += `### ${mem.identifier}\n\n${mem.content}\n\n`;
+    // Yearly summaries
+    if (yearlyMemories.length > 0) {
+      for (const mem of yearlyMemories) {
+        output += `### ${mem.identifier}\n\n${mem.content}\n\n`;
+      }
     }
   }
 

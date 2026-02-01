@@ -80,20 +80,48 @@ For additional capabilities like Gmail and Google Calendar, visit **[cordbot.io]
 
 ## How It Works
 
+### Workspace Structure
+
+When Cordbot starts, it creates a workspace-based architecture:
+
+```
+workspace/                    # Your workspace directory (where the bot runs)
+├── .claude/                 # Bot management folder (created automatically)
+│   ├── config.json          # Bot configuration
+│   ├── storage/             # Session state and mappings
+│   ├── sessions/            # Active conversation sessions
+│   ├── skills/              # Global skills (cron, skill-creator)
+│   │   ├── cron/            # Cron job management skill
+│   │   └── skill-creator/   # Skill creation tool
+│   └── channels/            # Channel-specific data
+│       └── {channel-id}/    # One directory per Discord channel
+│           ├── CLAUDE.md    # Channel-specific instructions
+│           └── cron.yaml    # Scheduled jobs for this channel
+├── channel-name-1/          # Work folder for Discord channel #1
+│   └── (files uploaded to or created for this channel)
+└── channel-name-2/          # Work folder for Discord channel #2
+    └── (files uploaded to or created for this channel)
+```
+
+### How Channels Work
+
 1. **Configure**: Set up your bot on [cordbot.io](https://cordbot.io) and get your credentials
-2. **Channel Sync**: Discord channels are synced to local folders in your workspace directory
-3. **Contextual Instructions**: Each channel folder has a `CLAUDE.md` file providing context to Claude
-4. **Thread Sessions**: Start a conversation in Discord and the bot maintains context throughout the thread
-5. **File Attachments**: Send files to Claude by attaching them to Discord messages, or receive files Claude generates
-6. **Scheduled Jobs**: Configure `.claude-cron` files to run autonomous tasks on a schedule
+2. **Channel Sync**: Each Discord channel gets:
+   - A **work folder** in the workspace (e.g., `workspace/general/`) for files
+   - A **data folder** in `.claude/channels/{channel-id}/` for configuration
+3. **Contextual Instructions**: Each channel's `CLAUDE.md` in `.claude/channels/{channel-id}/` provides context to Claude
+4. **Thread Sessions**: Conversations in Discord threads maintain persistent context stored in `.claude/sessions/`
+5. **File Attachments**: Files attached to Discord messages are saved to the channel's work folder
+6. **Scheduled Jobs**: Configure `cron.yaml` files in `.claude/channels/{channel-id}/` to run autonomous tasks
 7. **Service Tools**: Connected services (Gmail, etc.) become available as tools Claude can use
+8. **Skills**: Global skills in `~/.claude/skills/` are available across all channels
 
 ### Working with Files
 
 **Sending files to Claude:**
 
 - Attach files to any Discord message (images, code, documents, etc.)
-- Files are automatically downloaded to the channel folder
+- Files are automatically downloaded to the channel's work folder
 - Claude can read, edit, and process them using its standard tools
 - Existing files with the same name are overwritten
 

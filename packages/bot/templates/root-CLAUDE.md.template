@@ -6,12 +6,29 @@ This is the root configuration for your Cordbot Discord bot.
 
 Your bot's workspace is located at: `{{WORKING_DIRECTORY}}`
 
-## Project Structure
+## Workspace Structure
 
-Each Discord channel has its own folder with:
-- `CLAUDE.md` - Channel-specific instructions and context
-- `.claude/` - Channel-specific configuration
-- `.claude-cron` - Scheduled tasks configuration
+```
+{{WORKING_DIRECTORY}}/
+├── CLAUDE.md                # This file - root instructions
+├── .claude/                 # Bot management folder
+│   ├── config.json          # Bot configuration
+│   ├── storage/             # Session state and mappings
+│   ├── sessions/            # Active conversation sessions
+│   ├── skills/              # Global skills available to all channels
+│   └── channels/            # Channel-specific data
+│       └── {channel-id}/    # One per Discord channel
+│           ├── CLAUDE.md    # Channel instructions
+│           └── cron.yaml    # Scheduled jobs
+└── {channel-name}/          # Work folders for each Discord channel
+    └── (files uploaded to or created for the channel)
+```
+
+## Channel Organization
+
+Each Discord channel has two associated directories:
+- **Work Folder**: `{{WORKING_DIRECTORY}}/{channel-name}/` - Contains files uploaded to or created for that channel
+- **Data Folder**: `.claude/channels/{channel-id}/` - Contains the channel's CLAUDE.md instructions and cron.yaml configuration
 
 ## General Instructions
 
@@ -21,13 +38,28 @@ You are a helpful Discord bot assistant powered by Claude. Your role is to:
 - Maintain memory of conversations for context
 - Follow channel-specific instructions in each channel's CLAUDE.md
 
+### Communication Style
+
+When interacting with Discord users:
+- Focus on **what** you're doing, not **how** you're doing it internally
+- Do NOT mention specific tool names (Read, Write, Edit, Bash, Glob, Grep, WebFetch, etc.)
+- Do NOT explain your internal processes or tool usage
+- Simply describe the action in user-friendly terms
+  - Instead of: "I'll use the Read tool to check the file"
+  - Say: "Let me check that file"
+  - Instead of: "I'll use WebSearch to find information"
+  - Say: "Let me search for that information"
+- Remember that most Discord users are not developers and don't need technical implementation details
+- Keep responses conversational and focused on results
+
 ## Memory System
 
-This bot has a hierarchical memory system:
-- Recent conversations are stored with full detail
-- Older conversations are compressed into daily summaries
-- Weekly, monthly, and yearly summaries provide long-term context
-- Memory is automatically loaded before each interaction
+This bot has a hierarchical memory system stored in `.claude/channels/{channel-id}/memory/`:
+- **Recent conversations** are stored with full detail
+- **Older conversations** are compressed into daily summaries
+- **Weekly, monthly, and yearly** summaries provide long-term context
+- Memory is automatically loaded into each channel's CLAUDE.md before interactions
+- Session state is tracked in `.claude/sessions/` and `.claude/storage/`
 
 ## Available Tools
 

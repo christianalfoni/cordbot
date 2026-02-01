@@ -214,16 +214,14 @@ export const createBotDocument = onCall(async (request) => {
       );
     }
 
-    // Generate unique bot ID and auth token
+    // Generate unique bot ID
     const botId = crypto.randomUUID();
-    const authToken = crypto.randomUUID(); // Separate token for API authentication
 
     // Create bot document with unconfigured status
     const newBot = {
       botName,
       mode,
       status: "unconfigured" as const,
-      authToken, // Token for bot to authenticate to getBotManifest, refreshToken, etc.
       memoryContextSize: 10000,
       oauthConnections: {}, // Per-bot OAuth connections (gmail, etc.)
       toolsConfig: {}, // Per-bot tools configuration
@@ -494,7 +492,6 @@ export const createHostedBot = onCall(
       }
 
       let botId: string;
-      let authToken: string;
       let finalBotName: string;
       let finalMode: "personal" | "shared";
       let discordBotToken: string;
@@ -508,7 +505,6 @@ export const createHostedBot = onCall(
         }
 
         botId = existingBotId;
-        authToken = existingBot.authToken || crypto.randomUUID();
         finalBotName = existingBot.botName;
         finalMode = existingBot.mode;
         // Use existing bot's Discord credentials or override if provided
@@ -560,7 +556,6 @@ export const createHostedBot = onCall(
         }
 
         botId = crypto.randomUUID();
-        authToken = crypto.randomUUID();
         finalBotName = botName;
         finalMode = mode;
         discordBotToken = providedDiscordBotToken;
@@ -687,7 +682,6 @@ export const createHostedBot = onCall(
         botName: finalBotName,
         botDiscordUsername: botInfo.username,
         mode: finalMode,
-        authToken, // Token for bot to authenticate to getBotManifest, refreshToken, etc.
         appName,
         machineId: machineResponse.id,
         volumeId: volumeResponse.id,

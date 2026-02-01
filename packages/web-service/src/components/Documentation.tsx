@@ -23,25 +23,34 @@ export function Documentation() {
           </p>
 
           <div className="mt-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-mono">Directory structure:</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-mono">Workspace structure:</p>
             <pre className="text-xs text-gray-700 dark:text-gray-300 font-mono">
-{`my-project/
-├── CLAUDE.md                 # Root instructions
-├── general/                  # #general channel
-│   ├── CLAUDE.md            # Channel context
-│   ├── .claude-cron         # Scheduled jobs
-│   └── ... (your files)
-└── backend/                  # #backend channel
-    ├── CLAUDE.md
-    └── ... (your files)`}
+{`workspace/
+├── .claude/                 # Bot management (auto-created)
+│   ├── config.json          # Bot configuration
+│   ├── storage/             # Session state
+│   ├── sessions/            # Active conversations
+│   ├── skills/              # Global skills
+│   └── channels/            # Channel data
+│       ├── 123.../          # Channel ID
+│       │   ├── CLAUDE.md    # Channel instructions
+│       │   └── cron.yaml    # Scheduled jobs
+│       └── 456.../
+│           └── ...
+├── general/                 # #general work folder
+│   └── (your files)
+└── backend/                 # #backend work folder
+    └── (your files)`}
             </pre>
           </div>
 
           <p className="mt-4 text-gray-600 dark:text-gray-300">
-            The <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">CLAUDE.md</code> file
-            in each channel folder provides context to Claude about that specific channel. Use it to describe the
-            purpose of the channel, coding conventions, or any relevant information.
+            Each channel has two locations:
           </p>
+          <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside ml-4">
+            <li><strong>Work folder</strong> (e.g., <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">workspace/general/</code>) - Contains files uploaded to or created for the channel</li>
+            <li><strong>Data folder</strong> (e.g., <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/channels/{'{'}channel-id{'}'}/</code>) - Contains the channel's CLAUDE.md instructions and cron.yaml configuration</li>
+          </ul>
         </div>
       </div>
 
@@ -74,8 +83,8 @@ export function Documentation() {
           </div>
 
           <p className="mt-4 text-gray-600 dark:text-gray-300">
-            Claude has access to the files in the channel's directory and can read, write, and execute commands.
-            The working directory for each conversation is the channel's folder.
+            Claude has access to files in the channel's work folder and can read, write, and execute commands.
+            The working directory for each conversation is the channel's work folder (e.g., <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">workspace/general/</code>).
           </p>
         </div>
       </div>
@@ -97,7 +106,7 @@ export function Documentation() {
                 Simply attach files to your Discord message (images, code, documents, etc.). The bot will:
               </p>
               <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside ml-4">
-                <li>Automatically download attachments to the channel folder</li>
+                <li>Automatically download attachments to the channel's work folder</li>
                 <li>Make files available for Claude to read, edit, and process</li>
                 <li>Overwrite existing files with the same name</li>
               </ul>
@@ -185,8 +194,9 @@ export function Documentation() {
           </div>
 
           <p className="mt-4 text-gray-600 dark:text-gray-300">
-            Sessions are stored locally in the <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/</code> directory
-            and persist across bot restarts. You can archive inactive threads after a configurable number of days.
+            Sessions are stored locally in the <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/sessions/</code> directory
+            with state tracked in <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/storage/</code>.
+            Sessions persist across bot restarts and you can archive inactive threads after a configurable number of days.
           </p>
         </div>
       </div>
@@ -229,7 +239,7 @@ export function Documentation() {
             <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Memory structure per channel:</p>
               <pre className="text-xs text-gray-700 dark:text-gray-300 font-mono overflow-x-auto">
-{`.claude/memories/[channel-id]/
+{`.claude/channels/[channel-id]/memory/
   raw/
     2026-01-31.jsonl      # Today's conversations
   daily/
@@ -279,12 +289,13 @@ export function Documentation() {
         </h3>
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <p className="text-gray-600 dark:text-gray-300">
-            Configure autonomous scheduled tasks using <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude-cron</code> files
-            in each channel folder. Claude will execute these tasks automatically on the specified schedule.
+            Configure autonomous scheduled tasks using <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">cron.yaml</code> files
+            in each channel's data folder (<code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/channels/{'{'}channel-id{'}'}/cron.yaml</code>).
+            Claude will execute these tasks automatically on the specified schedule.
           </p>
 
           <div className="mt-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Example .claude-cron file:</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Example cron.yaml file:</p>
             <pre className="text-xs text-gray-700 dark:text-gray-300 font-mono overflow-x-auto">
 {`jobs:
   - name: "Daily summary"
@@ -375,9 +386,9 @@ export function Documentation() {
               </div>
             </li>
             <li>Navigate to the workspace directory you want to give the agent and run <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">npx @cordbot/agent</code></li>
-            <li>The bot will sync your Discord channels to folders</li>
+            <li>The bot will create a <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/</code> folder and sync your Discord channels to work folders</li>
             <li>Message the bot in Discord to start a conversation</li>
-            <li>Optionally, add <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude-cron</code> files to schedule autonomous tasks</li>
+            <li>Optionally, edit <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">cron.yaml</code> files in <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/channels/{'{'}channel-id{'}'}/</code> to schedule autonomous tasks</li>
           </ol>
 
           <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">

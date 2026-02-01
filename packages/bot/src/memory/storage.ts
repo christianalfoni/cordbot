@@ -1,21 +1,25 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import os from 'os';
 
 /**
  * Memory storage structure:
- * .claude/
- *   memories/
+ * ~/.claude/
+ *   channels/
  *     [channel-id]/
- *       raw/
- *         2026-01-31.jsonl
- *       daily/
- *         2026-01-31.md
- *       weekly/
- *         2026-W04.md
- *       monthly/
- *         2026-01.md
- *       yearly/
- *         2026.md
+ *       CLAUDE.md
+ *       cron.yaml
+ *       memories/
+ *         raw/
+ *           2026-01-31.jsonl
+ *         daily/
+ *           2026-01-31.md
+ *         weekly/
+ *           2026-W04.md
+ *         monthly/
+ *           2026-01.md
+ *         yearly/
+ *           2026.md
  */
 
 export interface RawMemoryEntry {
@@ -28,68 +32,66 @@ export interface RawMemoryEntry {
 /**
  * Get the memories directory path for a channel
  */
-export function getMemoriesPath(workspaceRoot: string, channelId: string): string {
-  return path.join(workspaceRoot, '.claude', 'memories', channelId);
+export function getMemoriesPath(channelId: string): string {
+  const homeDir = os.homedir(); // /workspace (set via ENV HOME=/workspace)
+  return path.join(homeDir, '.claude', 'channels', channelId, 'memories');
 }
 
 /**
  * Get the raw memories directory path
  */
-export function getRawMemoriesPath(workspaceRoot: string, channelId: string): string {
-  return path.join(getMemoriesPath(workspaceRoot, channelId), 'raw');
+export function getRawMemoriesPath(channelId: string): string {
+  return path.join(getMemoriesPath(channelId), 'raw');
 }
 
 /**
  * Get the daily memories directory path
  */
-export function getDailyMemoriesPath(workspaceRoot: string, channelId: string): string {
-  return path.join(getMemoriesPath(workspaceRoot, channelId), 'daily');
+export function getDailyMemoriesPath(channelId: string): string {
+  return path.join(getMemoriesPath(channelId), 'daily');
 }
 
 /**
  * Get the weekly memories directory path
  */
-export function getWeeklyMemoriesPath(workspaceRoot: string, channelId: string): string {
-  return path.join(getMemoriesPath(workspaceRoot, channelId), 'weekly');
+export function getWeeklyMemoriesPath(channelId: string): string {
+  return path.join(getMemoriesPath(channelId), 'weekly');
 }
 
 /**
  * Get the monthly memories directory path
  */
-export function getMonthlyMemoriesPath(workspaceRoot: string, channelId: string): string {
-  return path.join(getMemoriesPath(workspaceRoot, channelId), 'monthly');
+export function getMonthlyMemoriesPath(channelId: string): string {
+  return path.join(getMemoriesPath(channelId), 'monthly');
 }
 
 /**
  * Get the yearly memories directory path
  */
-export function getYearlyMemoriesPath(workspaceRoot: string, channelId: string): string {
-  return path.join(getMemoriesPath(workspaceRoot, channelId), 'yearly');
+export function getYearlyMemoriesPath(channelId: string): string {
+  return path.join(getMemoriesPath(channelId), 'yearly');
 }
 
 /**
  * Initialize memory storage structure for a channel
  */
-export async function initializeMemoryStorage(workspaceRoot: string, channelId: string): Promise<void> {
-  const memoriesPath = getMemoriesPath(workspaceRoot, channelId);
-
+export async function initializeMemoryStorage(channelId: string): Promise<void> {
   // Create all subdirectories
-  await fs.mkdir(getRawMemoriesPath(workspaceRoot, channelId), { recursive: true });
-  await fs.mkdir(getDailyMemoriesPath(workspaceRoot, channelId), { recursive: true });
-  await fs.mkdir(getWeeklyMemoriesPath(workspaceRoot, channelId), { recursive: true });
-  await fs.mkdir(getMonthlyMemoriesPath(workspaceRoot, channelId), { recursive: true });
-  await fs.mkdir(getYearlyMemoriesPath(workspaceRoot, channelId), { recursive: true });
+  await fs.mkdir(getRawMemoriesPath(channelId), { recursive: true });
+  await fs.mkdir(getDailyMemoriesPath(channelId), { recursive: true });
+  await fs.mkdir(getWeeklyMemoriesPath(channelId), { recursive: true });
+  await fs.mkdir(getMonthlyMemoriesPath(channelId), { recursive: true });
+  await fs.mkdir(getYearlyMemoriesPath(channelId), { recursive: true });
 }
 
 /**
  * Append a raw memory entry to today's file
  */
 export async function appendRawMemory(
-  workspaceRoot: string,
   channelId: string,
   entry: RawMemoryEntry
 ): Promise<void> {
-  const rawPath = getRawMemoriesPath(workspaceRoot, channelId);
+  const rawPath = getRawMemoriesPath(channelId);
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   const filePath = path.join(rawPath, `${today}.jsonl`);
 
@@ -105,11 +107,10 @@ export async function appendRawMemory(
  * Read raw memory entries from a specific date
  */
 export async function readRawMemories(
-  workspaceRoot: string,
   channelId: string,
   date: string
 ): Promise<RawMemoryEntry[]> {
-  const filePath = path.join(getRawMemoriesPath(workspaceRoot, channelId), `${date}.jsonl`);
+  const filePath = path.join(getRawMemoriesPath(channelId), `${date}.jsonl`);
 
   try {
     const content = await fs.readFile(filePath, 'utf-8');
@@ -129,12 +130,11 @@ export async function readRawMemories(
  * Write a daily memory summary
  */
 export async function writeDailyMemory(
-  workspaceRoot: string,
   channelId: string,
   date: string,
   content: string
 ): Promise<void> {
-  const dailyPath = getDailyMemoriesPath(workspaceRoot, channelId);
+  const dailyPath = getDailyMemoriesPath(channelId);
   const filePath = path.join(dailyPath, `${date}.md`);
 
   await fs.mkdir(dailyPath, { recursive: true });
@@ -145,11 +145,10 @@ export async function writeDailyMemory(
  * Read a daily memory summary
  */
 export async function readDailyMemory(
-  workspaceRoot: string,
   channelId: string,
   date: string
 ): Promise<string | null> {
-  const filePath = path.join(getDailyMemoriesPath(workspaceRoot, channelId), `${date}.md`);
+  const filePath = path.join(getDailyMemoriesPath(channelId), `${date}.md`);
 
   try {
     return await fs.readFile(filePath, 'utf-8');
@@ -165,10 +164,9 @@ export async function readDailyMemory(
  * List all daily memory files for a channel
  */
 export async function listDailyMemories(
-  workspaceRoot: string,
   channelId: string
 ): Promise<string[]> {
-  const dailyPath = getDailyMemoriesPath(workspaceRoot, channelId);
+  const dailyPath = getDailyMemoriesPath(channelId);
 
   try {
     const files = await fs.readdir(dailyPath);
@@ -189,12 +187,11 @@ export async function listDailyMemories(
  * Write a weekly memory summary
  */
 export async function writeWeeklyMemory(
-  workspaceRoot: string,
   channelId: string,
   weekIdentifier: string, // e.g., "2026-W04"
   content: string
 ): Promise<void> {
-  const weeklyPath = getWeeklyMemoriesPath(workspaceRoot, channelId);
+  const weeklyPath = getWeeklyMemoriesPath(channelId);
   const filePath = path.join(weeklyPath, `${weekIdentifier}.md`);
 
   await fs.mkdir(weeklyPath, { recursive: true });
@@ -205,11 +202,10 @@ export async function writeWeeklyMemory(
  * Read a weekly memory summary
  */
 export async function readWeeklyMemory(
-  workspaceRoot: string,
   channelId: string,
   weekIdentifier: string
 ): Promise<string | null> {
-  const filePath = path.join(getWeeklyMemoriesPath(workspaceRoot, channelId), `${weekIdentifier}.md`);
+  const filePath = path.join(getWeeklyMemoriesPath(channelId), `${weekIdentifier}.md`);
 
   try {
     return await fs.readFile(filePath, 'utf-8');
@@ -225,10 +221,9 @@ export async function readWeeklyMemory(
  * List all weekly memory files for a channel
  */
 export async function listWeeklyMemories(
-  workspaceRoot: string,
   channelId: string
 ): Promise<string[]> {
-  const weeklyPath = getWeeklyMemoriesPath(workspaceRoot, channelId);
+  const weeklyPath = getWeeklyMemoriesPath(channelId);
 
   try {
     const files = await fs.readdir(weeklyPath);
@@ -249,12 +244,11 @@ export async function listWeeklyMemories(
  * Write a monthly memory summary
  */
 export async function writeMonthlyMemory(
-  workspaceRoot: string,
   channelId: string,
   monthIdentifier: string, // e.g., "2026-01"
   content: string
 ): Promise<void> {
-  const monthlyPath = getMonthlyMemoriesPath(workspaceRoot, channelId);
+  const monthlyPath = getMonthlyMemoriesPath(channelId);
   const filePath = path.join(monthlyPath, `${monthIdentifier}.md`);
 
   await fs.mkdir(monthlyPath, { recursive: true });
@@ -265,11 +259,10 @@ export async function writeMonthlyMemory(
  * Read a monthly memory summary
  */
 export async function readMonthlyMemory(
-  workspaceRoot: string,
   channelId: string,
   monthIdentifier: string
 ): Promise<string | null> {
-  const filePath = path.join(getMonthlyMemoriesPath(workspaceRoot, channelId), `${monthIdentifier}.md`);
+  const filePath = path.join(getMonthlyMemoriesPath(channelId), `${monthIdentifier}.md`);
 
   try {
     return await fs.readFile(filePath, 'utf-8');
@@ -285,10 +278,9 @@ export async function readMonthlyMemory(
  * List all monthly memory files for a channel
  */
 export async function listMonthlyMemories(
-  workspaceRoot: string,
   channelId: string
 ): Promise<string[]> {
-  const monthlyPath = getMonthlyMemoriesPath(workspaceRoot, channelId);
+  const monthlyPath = getMonthlyMemoriesPath(channelId);
 
   try {
     const files = await fs.readdir(monthlyPath);
@@ -309,12 +301,11 @@ export async function listMonthlyMemories(
  * Write a yearly memory summary
  */
 export async function writeYearlyMemory(
-  workspaceRoot: string,
   channelId: string,
   year: string, // e.g., "2026"
   content: string
 ): Promise<void> {
-  const yearlyPath = getYearlyMemoriesPath(workspaceRoot, channelId);
+  const yearlyPath = getYearlyMemoriesPath(channelId);
   const filePath = path.join(yearlyPath, `${year}.md`);
 
   await fs.mkdir(yearlyPath, { recursive: true });
@@ -325,11 +316,10 @@ export async function writeYearlyMemory(
  * Read a yearly memory summary
  */
 export async function readYearlyMemory(
-  workspaceRoot: string,
   channelId: string,
   year: string
 ): Promise<string | null> {
-  const filePath = path.join(getYearlyMemoriesPath(workspaceRoot, channelId), `${year}.md`);
+  const filePath = path.join(getYearlyMemoriesPath(channelId), `${year}.md`);
 
   try {
     return await fs.readFile(filePath, 'utf-8');
@@ -345,10 +335,9 @@ export async function readYearlyMemory(
  * List all yearly memory files for a channel
  */
 export async function listYearlyMemories(
-  workspaceRoot: string,
   channelId: string
 ): Promise<string[]> {
-  const yearlyPath = getYearlyMemoriesPath(workspaceRoot, channelId);
+  const yearlyPath = getYearlyMemoriesPath(channelId);
 
   try {
     const files = await fs.readdir(yearlyPath);

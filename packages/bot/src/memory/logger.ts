@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import os from 'os';
 
 /**
  * Memory operation log entry types
@@ -22,24 +23,25 @@ export interface MemoryLogEntry {
 /**
  * Get the memory logs file path
  */
-function getMemoryLogsPath(workspaceRoot: string): string {
-  return path.join(workspaceRoot, '.claude', 'storage', 'memory-logs.jsonl');
+function getMemoryLogsPath(): string {
+  const homeDir = os.homedir(); // /workspace (set via ENV HOME=/workspace)
+  return path.join(homeDir, '.claude', 'storage', 'memory-logs.jsonl');
 }
 
 /**
  * Ensure the logs directory exists
  */
-async function ensureLogsDirectory(workspaceRoot: string): Promise<void> {
-  const logsDir = path.dirname(getMemoryLogsPath(workspaceRoot));
+async function ensureLogsDirectory(): Promise<void> {
+  const logsDir = path.dirname(getMemoryLogsPath());
   await fs.mkdir(logsDir, { recursive: true });
 }
 
 /**
  * Append a log entry to the memory logs file
  */
-async function appendLogEntry(workspaceRoot: string, entry: MemoryLogEntry): Promise<void> {
-  await ensureLogsDirectory(workspaceRoot);
-  const logPath = getMemoryLogsPath(workspaceRoot);
+async function appendLogEntry(entry: MemoryLogEntry): Promise<void> {
+  await ensureLogsDirectory();
+  const logPath = getMemoryLogsPath();
   const line = JSON.stringify(entry) + '\n';
   await fs.appendFile(logPath, line, 'utf-8');
 }
@@ -48,7 +50,6 @@ async function appendLogEntry(workspaceRoot: string, entry: MemoryLogEntry): Pro
  * Log when a raw message is captured
  */
 export async function logRawMemoryCaptured(
-  workspaceRoot: string,
   channelId: string,
   messageLength: number,
   sessionId: string
@@ -63,7 +64,7 @@ export async function logRawMemoryCaptured(
     },
   };
 
-  await appendLogEntry(workspaceRoot, entry);
+  await appendLogEntry(entry);
   console.log(`[Memory] Raw message captured for channel ${channelId} (${messageLength} chars)`);
 }
 
@@ -71,7 +72,6 @@ export async function logRawMemoryCaptured(
  * Log when daily compression is completed
  */
 export async function logDailyCompression(
-  workspaceRoot: string,
   channelId: string,
   date: string,
   rawMessageCount: number,
@@ -90,7 +90,7 @@ export async function logDailyCompression(
     },
   };
 
-  await appendLogEntry(workspaceRoot, entry);
+  await appendLogEntry(entry);
   console.log(
     `[Memory] Daily compression completed for ${channelId} on ${date}: ${rawMessageCount} messages → ${tokenCount} tokens`
   );
@@ -100,7 +100,6 @@ export async function logDailyCompression(
  * Log when weekly compression is completed
  */
 export async function logWeeklyCompression(
-  workspaceRoot: string,
   channelId: string,
   weekIdentifier: string,
   dailySummaryCount: number,
@@ -119,7 +118,7 @@ export async function logWeeklyCompression(
     },
   };
 
-  await appendLogEntry(workspaceRoot, entry);
+  await appendLogEntry(entry);
   console.log(
     `[Memory] Weekly compression completed for ${channelId} (${weekIdentifier}): ${dailySummaryCount} days → ${tokenCount} tokens`
   );
@@ -129,7 +128,6 @@ export async function logWeeklyCompression(
  * Log when monthly compression is completed
  */
 export async function logMonthlyCompression(
-  workspaceRoot: string,
   channelId: string,
   monthIdentifier: string,
   weeklySummaryCount: number,
@@ -148,7 +146,7 @@ export async function logMonthlyCompression(
     },
   };
 
-  await appendLogEntry(workspaceRoot, entry);
+  await appendLogEntry(entry);
   console.log(
     `[Memory] Monthly compression completed for ${channelId} (${monthIdentifier}): ${weeklySummaryCount} weeks → ${tokenCount} tokens`
   );
@@ -158,7 +156,6 @@ export async function logMonthlyCompression(
  * Log when yearly compression is completed
  */
 export async function logYearlyCompression(
-  workspaceRoot: string,
   channelId: string,
   year: string,
   monthlySummaryCount: number,
@@ -177,7 +174,7 @@ export async function logYearlyCompression(
     },
   };
 
-  await appendLogEntry(workspaceRoot, entry);
+  await appendLogEntry(entry);
   console.log(
     `[Memory] Yearly compression completed for ${channelId} (${year}): ${monthlySummaryCount} months → ${tokenCount} tokens`
   );
@@ -187,7 +184,6 @@ export async function logYearlyCompression(
  * Log when memories are loaded for a query
  */
 export async function logMemoryLoaded(
-  workspaceRoot: string,
   channelId: string,
   sessionId: string,
   memoriesLoaded: Array<{ type: string; identifier: string; tokenCount: number }>,
@@ -206,7 +202,7 @@ export async function logMemoryLoaded(
     },
   };
 
-  await appendLogEntry(workspaceRoot, entry);
+  await appendLogEntry(entry);
   console.log(
     `[Memory] Loaded ${memoriesLoaded.length} memories for ${channelId}: ${totalTokens} tokens (${Math.round(budgetUsed)}% of budget)`
   );
@@ -216,10 +212,9 @@ export async function logMemoryLoaded(
  * Read recent memory log entries (last N entries)
  */
 export async function readRecentLogs(
-  workspaceRoot: string,
   limit: number = 100
 ): Promise<MemoryLogEntry[]> {
-  const logPath = getMemoryLogsPath(workspaceRoot);
+  const logPath = getMemoryLogsPath();
 
   try {
     const content = await fs.readFile(logPath, 'utf-8');
@@ -240,7 +235,6 @@ export async function readRecentLogs(
  * Get memory statistics for a channel
  */
 export async function getChannelMemoryStats(
-  workspaceRoot: string,
   channelId: string
 ): Promise<{
   rawMessagesCaptured: number;
@@ -250,7 +244,7 @@ export async function getChannelMemoryStats(
   yearlyCompressionsCount: number;
   memoriesLoadedCount: number;
 }> {
-  const logs = await readRecentLogs(workspaceRoot, 10000); // Read last 10k entries
+  const logs = await readRecentLogs(10000); // Read last 10k entries
   const channelLogs = logs.filter(entry => entry.channelId === channelId);
 
   return {

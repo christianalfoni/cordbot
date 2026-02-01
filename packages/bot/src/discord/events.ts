@@ -279,9 +279,25 @@ async function handleMessage(
   }
 
   try {
+    // Check if user is replying to a bot message (using Discord's reply feature)
+    let replyToSession: any = null;
+    if (!message.channel.isThread() && message.reference) {
+      const referencedMessageId = message.reference.messageId;
+      if (referencedMessageId) {
+        const mapping = sessionManager.db.getMappingByMessageId(referencedMessageId);
+        if (mapping) {
+          replyToSession = {
+            sessionId: mapping.session_id,
+            workingDir: mapping.working_directory,
+          };
+          console.log(`🔗 Detected reply to bot message (session: ${mapping.session_id})`);
+        }
+      }
+    }
+
     // Check if there's a pending cron session for this channel
     let pendingCronSession: any = null;
-    if (!message.channel.isThread()) {
+    if (!message.channel.isThread() && !replyToSession) {
       pendingCronSession = sessionManager.getPendingCronSession(parentChannelId);
     }
 
@@ -305,7 +321,23 @@ async function handleMessage(
     let isNew: boolean;
     let workingDir: string;
 
-    if (pendingCronSession) {
+    if (replyToSession) {
+      // Continue the session from the replied-to message
+      sessionId = replyToSession.sessionId;
+      workingDir = replyToSession.workingDir;
+      isNew = false;
+
+      // Map the thread to the existing session
+      sessionManager.createMappingWithSessionId(
+        threadId,
+        parentChannelId,
+        message.id,
+        sessionId,
+        workingDir
+      );
+
+      console.log(`🔗 Continuing session ${sessionId} from reply in thread ${threadId}`);
+    } else if (pendingCronSession) {
       // Continue the cron session in this new thread
       sessionId = pendingCronSession.sessionId;
       workingDir = pendingCronSession.workingDir;
@@ -356,12 +388,11 @@ async function handleMessage(
         return;
       } else {
         console.log(`✓ Working directory exists: ${workingDir}`);
-        // Check if CLAUDE.md exists
-        const claudeMdPath = path.join(workingDir, 'CLAUDE.md');
-        if (fs.existsSync(claudeMdPath)) {
-          console.log(`✓ CLAUDE.md found in working directory`);
+        // Check if CLAUDE.md exists in centralized location
+        if (fs.existsSync(mapping.claudeMdPath)) {
+          console.log(`✓ CLAUDE.md found at ${mapping.claudeMdPath}`);
         } else {
-          console.log(`⚠️  CLAUDE.md not found in working directory`);
+          console.log(`⚠️  CLAUDE.md not found at ${mapping.claudeMdPath}`);
         }
       }
     }
@@ -375,6 +406,9 @@ async function handleMessage(
 
     // Set working directory context for built-in tools (cron, etc.)
     sessionManager.setWorkingDirContext(sessionId, workingDir);
+
+    // Set channel ID context for cron tools (centralized storage)
+    sessionManager.setChannelIdContext(sessionId, parentChannelId);
 
     try {
       // Handle attachments if present
@@ -410,16 +444,30 @@ async function handleMessage(
         }
       }
 
-      // Populate memory section in CLAUDE.md before query
-      const claudeMdPath = path.join(workingDir, 'CLAUDE.md');
+      // Get CLAUDE.md path from mapping
+      const channelMapping = getChannelMapping(parentChannelId, channelMappings);
+      if (!channelMapping) {
+        console.error(`❌ No channel mapping found for ${parentChannelId}`);
+        return;
+      }
+
+      const claudeMdPath = channelMapping.claudeMdPath;
+      let systemPrompt: string | undefined;
+
       if (fs.existsSync(claudeMdPath)) {
         try {
           await sessionManager.populateMemory(claudeMdPath, parentChannelId, sessionId);
           console.log(`💾 Memory populated for channel ${parentChannelId}`);
+
+          // Read CLAUDE.md to use as system prompt
+          systemPrompt = fs.readFileSync(claudeMdPath, 'utf-8');
+          console.log(`📖 Read CLAUDE.md (${systemPrompt.length} chars)`);
         } catch (memoryError) {
-          console.error('Failed to populate memory:', memoryError);
+          console.error('Failed to populate memory or read CLAUDE.md:', memoryError);
           // Continue anyway - memory is nice-to-have, not critical
         }
+      } else {
+        console.warn(`⚠️  CLAUDE.md not found at ${claudeMdPath}`);
       }
 
       // Create query for Claude
@@ -430,7 +478,8 @@ async function handleMessage(
         queryResult = sessionManager.createQuery(
           userMessage,
           isNew ? null : sessionId,
-          workingDir
+          workingDir,
+          systemPrompt
         );
       } catch (queryError) {
         console.error('Error creating query:', queryError);
@@ -472,6 +521,7 @@ async function handleMessage(
       try {
         sessionManager.clearChannelContext(sessionId);
         sessionManager.clearWorkingDirContext(sessionId);
+        sessionManager.clearChannelIdContext(sessionId);
       } catch (cleanupError) {
         console.error('Error during context cleanup:', cleanupError);
       }

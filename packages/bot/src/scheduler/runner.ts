@@ -170,16 +170,45 @@ export class CronRunner {
       // Set channel and working directory context for tools
       this.sessionManager.setChannelContext(sessionId, channel);
       this.sessionManager.setWorkingDirContext(sessionId, folderPath);
+      this.sessionManager.setChannelIdContext(sessionId, channelId);
 
       try {
-        // Create query for Claude
+        // Get CLAUDE.md path from mapping
+        const mapping = this.channelMappings.get(channelId);
+        if (!mapping) {
+          console.error(`❌ No channel mapping found for ${channelId}`);
+          return;
+        }
+
+        const claudeMdPath = mapping.claudeMdPath;
+        let systemPrompt: string | undefined;
+
+        if (fs.existsSync(claudeMdPath)) {
+          try {
+            // Populate memory before reading
+            await this.sessionManager.populateMemory(claudeMdPath, channelId, sessionId);
+            systemPrompt = fs.readFileSync(claudeMdPath, 'utf-8');
+            console.log(`📖 Read CLAUDE.md for cron job (${systemPrompt.length} chars)`);
+          } catch (error) {
+            console.error('Failed to read CLAUDE.md for cron job:', error);
+          }
+        } else {
+          console.warn(`⚠️  CLAUDE.md not found at ${claudeMdPath}`);
+        }
+
+        // Create query for Claude with special instructions for scheduled tasks
+        const cronTaskPrompt = `Execute this scheduled task. Perform the actions using available tools, then report what was done.
+
+Task: ${job.task}`;
+
         const queryResult = this.sessionManager.createQuery(
-          job.task,
+          cronTaskPrompt,
           null, // New session for each cron job
-          folderPath
+          folderPath,
+          systemPrompt
         );
 
-        // Stream response with trigger message as prefix
+        // Stream response - only send final message for cron jobs
         await streamToDiscord(
           queryResult,
           channel,
@@ -187,13 +216,15 @@ export class CronRunner {
           sessionId,
           folderPath,
           undefined, // botConfig
-          `⏰ **Scheduled task:** ${job.task}` // messagePrefix
+          undefined, // messagePrefix (not used for cron jobs)
+          undefined, // parentChannelId
+          true // isCronJob - only sends final message with clock emoji suffix
         );
 
         console.log(`✅ Completed scheduled job: ${job.name}`);
 
-        // Store the session so the next message in this channel can continue it
-        this.sessionManager.setPendingCronSession(channelId, sessionId, folderPath);
+        // Note: Cron sessions are standalone and not continuable
+        // Each cron job creates a fresh session
 
         // If this is a one-time job, remove it from the cron file
         if (job.oneTime) {
@@ -203,6 +234,7 @@ export class CronRunner {
         // Clear contexts after execution
         this.sessionManager.clearChannelContext(sessionId);
         this.sessionManager.clearWorkingDirContext(sessionId);
+        this.sessionManager.clearChannelIdContext(sessionId);
       }
     } catch (error) {
       console.error(`Failed to execute job "${job.name}":`, error);

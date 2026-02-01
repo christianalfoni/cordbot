@@ -1,9 +1,9 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { parseCronFile, validateCronSchedule } from '../../scheduler/parser.js';
+import { getCronFilePath } from './utils.js';
 import yaml from 'js-yaml';
 import fs from 'fs';
-import path from 'path';
 
 const schema = z.object({
   name: z.string().describe('Name of the cron job to update'),
@@ -12,7 +12,7 @@ const schema = z.object({
   oneTime: z.boolean().optional().describe('Update one-time flag (leave empty to keep current)')
 });
 
-export function createTool(getCwd: () => string) {
+export function createTool(getChannelId: () => string) {
   return tool(
     'cron_update_job',
     'Update an existing cron job\'s schedule, task, or one-time setting. You can update one or more fields. Use cron_list_jobs first to see current job details.',
@@ -39,8 +39,8 @@ export function createTool(getCwd: () => string) {
           };
         }
 
-        const cwd = getCwd();
-        const cronPath = path.join(cwd, '.claude-cron');
+        const channelId = getChannelId();
+        const cronPath = getCronFilePath(channelId);
 
         // Read existing jobs
         const config = parseCronFile(cronPath);

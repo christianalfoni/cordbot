@@ -21,10 +21,13 @@ export function BotsList({ userData, onSignOut }: BotsListProps) {
         userPhotoURL={userData.photoURL}
         userDisplayName={userData.displayName}
         onSignOut={onSignOut}
+        bots={bots}
+        onCreateBot={() => setShowCreateModal(true)}
       />
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="lg:pl-72">
+        <div className="px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
@@ -166,7 +169,8 @@ export function BotsList({ userData, onSignOut }: BotsListProps) {
             </p>
           </div>
         )}
-      </div>
+        </div>
+      </main>
 
       {/* Create Bot Modal */}
       {showCreateModal && (

@@ -124,13 +124,12 @@ Summary:`;
  * Compress yesterday's raw messages into a daily summary
  */
 async function compressDailyMemories(
-  workspaceRoot: string,
   channelId: string,
   date: string
 ): Promise<void> {
   console.log(`[Memory] Compressing daily memories for ${channelId} on ${date}`);
 
-  const rawEntries = await readRawMemories(workspaceRoot, channelId, date);
+  const rawEntries = await readRawMemories(channelId, date);
 
   if (rawEntries.length === 0) {
     console.log(`[Memory] No raw memories to compress for ${date}`);
@@ -149,11 +148,10 @@ async function compressDailyMemories(
   );
 
   // Write daily summary
-  await writeDailyMemory(workspaceRoot, channelId, date, summary);
+  await writeDailyMemory(channelId, date, summary);
 
   // Log compression
   await logDailyCompression(
-    workspaceRoot,
     channelId,
     date,
     rawEntries.length,
@@ -166,14 +164,13 @@ async function compressDailyMemories(
  * Compress last week's daily summaries into a weekly summary
  */
 async function compressWeeklyMemories(
-  workspaceRoot: string,
   channelId: string,
   weekIdentifier: string
 ): Promise<void> {
   console.log(`[Memory] Compressing weekly memories for ${channelId} (${weekIdentifier})`);
 
   // Get all daily summaries from last week
-  const allDailies = await listDailyMemories(workspaceRoot, channelId);
+  const allDailies = await listDailyMemories(channelId);
 
   // Filter to only last week's dates
   const weekPrefix = weekIdentifier.split('-W')[0]; // Get year
@@ -191,7 +188,7 @@ async function compressWeeklyMemories(
   // Combine all daily summaries
   let combinedContent = '';
   for (const date of weeklyDailies) {
-    const daily = await readDailyMemory(workspaceRoot, channelId, date);
+    const daily = await readDailyMemory(channelId, date);
     if (daily) {
       combinedContent += `## ${date}\n\n${daily}\n\n`;
     }
@@ -204,11 +201,10 @@ async function compressWeeklyMemories(
   );
 
   // Write weekly summary
-  await writeWeeklyMemory(workspaceRoot, channelId, weekIdentifier, summary);
+  await writeWeeklyMemory(channelId, weekIdentifier, summary);
 
   // Log compression
   await logWeeklyCompression(
-    workspaceRoot,
     channelId,
     weekIdentifier,
     weeklyDailies.length,
@@ -221,14 +217,13 @@ async function compressWeeklyMemories(
  * Compress last month's weekly summaries into a monthly summary
  */
 async function compressMonthlyMemories(
-  workspaceRoot: string,
   channelId: string,
   monthIdentifier: string
 ): Promise<void> {
   console.log(`[Memory] Compressing monthly memories for ${channelId} (${monthIdentifier})`);
 
   // Get all weekly summaries from last month
-  const allWeeklies = await listWeeklyMemories(workspaceRoot, channelId);
+  const allWeeklies = await listWeeklyMemories(channelId);
 
   // Filter to only last month's weeks
   const [year, month] = monthIdentifier.split('-');
@@ -244,7 +239,7 @@ async function compressMonthlyMemories(
   // Combine all weekly summaries
   let combinedContent = '';
   for (const weekId of monthlyWeeklies) {
-    const weekly = await readWeeklyMemory(workspaceRoot, channelId, weekId);
+    const weekly = await readWeeklyMemory(channelId, weekId);
     if (weekly) {
       combinedContent += `## Week ${weekId}\n\n${weekly}\n\n`;
     }
@@ -257,11 +252,10 @@ async function compressMonthlyMemories(
   );
 
   // Write monthly summary
-  await writeMonthlyMemory(workspaceRoot, channelId, monthIdentifier, summary);
+  await writeMonthlyMemory(channelId, monthIdentifier, summary);
 
   // Log compression
   await logMonthlyCompression(
-    workspaceRoot,
     channelId,
     monthIdentifier,
     monthlyWeeklies.length,
@@ -274,14 +268,13 @@ async function compressMonthlyMemories(
  * Compress last year's monthly summaries into a yearly summary
  */
 async function compressYearlyMemories(
-  workspaceRoot: string,
   channelId: string,
   year: string
 ): Promise<void> {
   console.log(`[Memory] Compressing yearly memories for ${channelId} (${year})`);
 
   // Get all monthly summaries from last year
-  const allMonthlies = await listMonthlyMemories(workspaceRoot, channelId);
+  const allMonthlies = await listMonthlyMemories(channelId);
 
   // Filter to only last year's months
   const yearlyMonthlies = allMonthlies.filter(monthId => monthId.startsWith(year));
@@ -294,7 +287,7 @@ async function compressYearlyMemories(
   // Combine all monthly summaries
   let combinedContent = '';
   for (const monthId of yearlyMonthlies) {
-    const monthly = await readMonthlyMemory(workspaceRoot, channelId, monthId);
+    const monthly = await readMonthlyMemory(channelId, monthId);
     if (monthly) {
       combinedContent += `## ${monthId}\n\n${monthly}\n\n`;
     }
@@ -307,11 +300,10 @@ async function compressYearlyMemories(
   );
 
   // Write yearly summary
-  await writeYearlyMemory(workspaceRoot, channelId, year, summary);
+  await writeYearlyMemory(channelId, year, summary);
 
   // Log compression
   await logYearlyCompression(
-    workspaceRoot,
     channelId,
     year,
     yearlyMonthlies.length,
@@ -324,7 +316,6 @@ async function compressYearlyMemories(
  * Main compression job that runs daily and checks for boundary conditions
  */
 export async function runDailyMemoryCompression(
-  workspaceRoot: string,
   channelIds: string[]
 ): Promise<void> {
   console.log('\n[Memory] Starting daily compression job');
@@ -340,14 +331,14 @@ export async function runDailyMemoryCompression(
   for (const channelId of channelIds) {
     try {
       // Always: Compress yesterday's raw messages
-      await compressDailyMemories(workspaceRoot, channelId, yesterdayStr);
+      await compressDailyMemories(channelId, yesterdayStr);
 
       // If Monday: Compress last week
       if (dateInfo.isMonday) {
         const lastWeek = new Date(today);
         lastWeek.setDate(lastWeek.getDate() - 7);
         const weekIdentifier = getWeekIdentifier(lastWeek);
-        await compressWeeklyMemories(workspaceRoot, channelId, weekIdentifier);
+        await compressWeeklyMemories(channelId, weekIdentifier);
       }
 
       // If 1st of month: Compress last month
@@ -355,7 +346,7 @@ export async function runDailyMemoryCompression(
         const lastMonth = new Date(today);
         lastMonth.setMonth(lastMonth.getMonth() - 1);
         const monthIdentifier = getMonthIdentifier(lastMonth);
-        await compressMonthlyMemories(workspaceRoot, channelId, monthIdentifier);
+        await compressMonthlyMemories(channelId, monthIdentifier);
       }
 
       // If Jan 1st: Compress last year
@@ -363,7 +354,7 @@ export async function runDailyMemoryCompression(
         const lastYear = new Date(today);
         lastYear.setFullYear(lastYear.getFullYear() - 1);
         const yearIdentifier = getYearIdentifier(lastYear);
-        await compressYearlyMemories(workspaceRoot, channelId, yearIdentifier);
+        await compressYearlyMemories(channelId, yearIdentifier);
       }
     } catch (error) {
       console.error(`[Memory] Error compressing memories for channel ${channelId}:`, error);

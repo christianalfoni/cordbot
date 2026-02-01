@@ -1,23 +1,23 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { parseCronFile } from '../../scheduler/parser.js';
+import { getCronFilePath } from './utils.js';
 import yaml from 'js-yaml';
 import fs from 'fs';
-import path from 'path';
 
 const schema = z.object({
   name: z.string().describe('Name of the cron job to remove')
 });
 
-export function createTool(getCwd: () => string) {
+export function createTool(getChannelId: () => string) {
   return tool(
     'cron_remove_job',
     'Remove a scheduled cron job from this Discord channel by name. The job will stop running immediately. Use cron_list_jobs first to see available job names.',
     schema.shape,
     async (params) => {
       try {
-        const cwd = getCwd();
-        const cronPath = path.join(cwd, '.claude-cron');
+        const channelId = getChannelId();
+        const cronPath = getCronFilePath(channelId);
 
         // Read existing jobs
         const config = parseCronFile(cronPath);

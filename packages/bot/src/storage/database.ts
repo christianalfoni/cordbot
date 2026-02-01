@@ -166,6 +166,36 @@ export class SessionDatabase {
   }
 
   /**
+   * Get session mapping by Discord message ID
+   * Useful for detecting replies to bot messages
+   */
+  getMappingByMessageId(messageId: string): SessionMapping | undefined {
+    // Read all session files to find matching message ID
+    const files = fs.readdirSync(this.sessionsDir);
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) {
+        continue;
+      }
+
+      try {
+        const sessionPath = path.join(this.sessionsDir, file);
+        const data = fs.readFileSync(sessionPath, 'utf-8');
+        const mapping = JSON.parse(data) as SessionMapping;
+
+        if (mapping.discord_message_id === messageId && mapping.status === 'active') {
+          return mapping;
+        }
+      } catch {
+        // Skip invalid files
+        continue;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
    * Get all sessions for a channel
    */
   getChannelSessions(channelId: string): SessionMapping[] {

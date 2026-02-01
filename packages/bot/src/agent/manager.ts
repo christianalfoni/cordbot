@@ -9,6 +9,12 @@ import { SERVICE_URL } from "../service/config.js";
 import { TokenManager } from "../service/token-manager.js";
 import { spawn } from "child_process";
 import { populateMemorySection } from "../discord/sync.js";
+import { discoverToolSkills, installGlobalSkills } from "../tools/skill-loader.js";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export interface SessionData {
   sessionId: string;
@@ -32,11 +38,12 @@ export class SessionManager {
   private tokenManager: TokenManager | null = null;
   private currentChannels = new Map<string, ThreadChannel | TextChannel>();
   private currentWorkingDirs = new Map<string, string>();
+  private currentChannelIds = new Map<string, string>(); // sessionId -> channelId
   private filesToShare = new Map<string, string[]>(); // sessionId -> file paths
   private memoryContextSize: number;
 
   constructor(
-    private db: SessionDatabase,
+    public db: SessionDatabase,
     private sessionsDir: string,
     private workspaceRoot: string,
     memoryContextSize: number = 10000
@@ -51,6 +58,11 @@ export class SessionManager {
         // Get the working directory for the currently executing session
         const entries = Array.from(this.currentWorkingDirs.entries());
         return entries.length > 0 ? entries[0][1] : process.cwd();
+      },
+      () => {
+        // Get the channel ID for the currently executing session
+        const entries = Array.from(this.currentChannelIds.entries());
+        return entries.length > 0 ? entries[0][1] : '';
       },
       (filePath: string) => {
         // Queue file for sharing - get current session
@@ -89,6 +101,14 @@ export class SessionManager {
 
       if (dynamicTools.length > 0) {
         console.log(`  ✓ Loaded ${dynamicTools.length} authenticated tools`);
+      }
+
+      // Discover and install tool skills
+      const toolsDir = path.join(__dirname, '..', 'tools');
+      const toolSkills = discoverToolSkills(manifest, toolsDir);
+      if (toolSkills.length > 0) {
+        installGlobalSkills(toolSkills);
+        console.log(`  ✓ Installed ${toolSkills.length} tool skill(s)`);
       }
     } else {
       console.log('ℹ️  No manifest - authenticated tools disabled');
@@ -204,24 +224,41 @@ export class SessionManager {
   }
 
   /**
+   * Set the channel ID for the current session
+   * Must be called before createQuery to enable cron tools with centralized storage
+   */
+  setChannelIdContext(sessionId: string, channelId: string): void {
+    this.currentChannelIds.set(sessionId, channelId);
+  }
+
+  /**
+   * Clear the channel ID context after query execution
+   */
+  clearChannelIdContext(sessionId: string): void {
+    this.currentChannelIds.delete(sessionId);
+  }
+
+  /**
    * Create a query for a user message
    * Automatically resumes session if sessionId exists
    */
   createQuery(
     userMessage: string,
     sessionId: string | null,
-    workingDir: string
+    workingDir: string,
+    systemPrompt?: string
   ): Query {
     console.log(`📝 Creating query with options:`);
     console.log(`   - workingDir: ${workingDir}`);
     console.log(`   - sessionId: ${sessionId || 'new'}`);
+    console.log(`   - systemPrompt: ${systemPrompt ? `${systemPrompt.length} chars` : 'none'}`);
     console.log(`   - dynamicMcpServer: ${this.dynamicMcpServer ? 'yes' : 'no'}`);
 
     const options: any = {
       cwd: workingDir,
       resume: sessionId || undefined, // Resume if existing, else new
       includePartialMessages: true, // Get streaming events
-      settingSources: ["project"], // Load root CLAUDE.md + channel CLAUDE.md files + .claude/skills
+      settingSources: ["user"], // Load ~/.claude/skills (user) only - CLAUDE.md is manually injected as systemPrompt
       allowDangerouslySkipPermissions: true,
       permissionMode: "bypassPermissions",
       tools: { type: "preset", preset: "claude_code" }, // Enable all Claude Code tools
@@ -240,14 +277,42 @@ export class SessionManager {
         // Use full path to node instead of relying on PATH/shell
         const command = spawnOptions.command === 'node' ? '/usr/local/bin/node' : spawnOptions.command;
 
+        console.log(`🔧 Spawning Claude Code process: ${command}`);
+        console.log(`   Args: ${args.join(' ')}`);
+        console.log(`   CWD: ${spawnOptions.cwd}`);
+
         // Spawn without shell to avoid argument parsing issues
         const child = spawn(command, args, {
           ...spawnOptions,
         });
 
+        // Log child process events for debugging
+        child.on('error', (error) => {
+          console.error(`❌ Child process spawn error:`, error);
+        });
+
+        child.on('exit', (code, signal) => {
+          if (signal) {
+            console.error(`⚠️  Child process exited with signal: ${signal}`);
+          } else if (code !== 0) {
+            console.error(`⚠️  Child process exited with code: ${code}`);
+          } else {
+            console.log(`✅ Child process exited successfully`);
+          }
+        });
+
         return child;
       },
     };
+
+    // Add system prompt with CLAUDE.md content appended to Claude Code preset
+    if (systemPrompt) {
+      options.systemPrompt = {
+        type: "preset",
+        preset: "claude_code",
+        append: systemPrompt
+      };
+    }
 
     // Add dynamic MCP server if available
     if (this.dynamicMcpServer) {
@@ -298,7 +363,6 @@ export class SessionManager {
   ): Promise<void> {
     await populateMemorySection(
       claudeMdPath,
-      this.workspaceRoot,
       channelId,
       this.memoryContextSize,
       sessionId

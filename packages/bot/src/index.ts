@@ -10,6 +10,9 @@ import cron from 'node-cron';
 import { runDailyMemoryCompression } from "./memory/compress.js";
 
 export async function startBot(cwd: string): Promise<void> {
+  // Set HOME environment variable to current working directory
+  process.env.HOME = cwd;
+
   console.log("🚀 Initializing Cordbot...\n");
 
   // Initialize .claude folder and storage
@@ -68,7 +71,7 @@ export async function startBot(cwd: string): Promise<void> {
     console.log('\n⏰ Running scheduled memory compression');
     const channelIds = channelMappings.map(m => m.channelId);
     try {
-      await runDailyMemoryCompression(cwd, channelIds);
+      await runDailyMemoryCompression(channelIds);
     } catch (error) {
       console.error('Memory compression failed:', error);
     }

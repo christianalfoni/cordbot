@@ -1,19 +1,19 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { parseCronFile } from '../../scheduler/parser.js';
-import path from 'path';
+import { getCronFilePath } from './utils.js';
 
 const schema = z.object({});
 
-export function createTool(getCwd: () => string) {
+export function createTool(getChannelId: () => string) {
   return tool(
     'cron_list_jobs',
     'List all scheduled cron jobs for this Discord channel. Shows job names, schedules, tasks, and whether they are one-time. Use this to see what jobs are currently configured before adding, updating, or removing jobs.',
     schema.shape,
     async () => {
       try {
-        const cwd = getCwd();
-        const cronPath = path.join(cwd, '.claude-cron');
+        const channelId = getChannelId();
+        const cronPath = getCronFilePath(channelId);
 
         const config = parseCronFile(cronPath);
 

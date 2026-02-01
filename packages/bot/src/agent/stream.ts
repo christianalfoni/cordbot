@@ -15,15 +15,19 @@ interface StreamState {
   progressMessages: Message[];
   planContent: string | null;
   messagePrefix: string | null;
+  messageSuffix: string | null;
   workingDir: string;
   channelId: string;
   sessionId: string;
   workspaceRoot: string;
+  isCronJob: boolean;
   // For lazy thread creation
   threadCreated: boolean;
   originalMessage: Message | null;
   threadName: string | null;
   parentChannel: TextChannel | null;
+  // For cron jobs: collect all messages and only send the last one
+  collectedAssistantMessages: string[];
 }
 
 export async function streamToDiscord(
@@ -34,7 +38,8 @@ export async function streamToDiscord(
   workingDir: string,
   botConfig?: BotConfig,
   messagePrefix?: string,
-  parentChannelId?: string
+  parentChannelId?: string,
+  isCronJob?: boolean
 ): Promise<void> {
   // Prepare for lazy thread creation (don't create yet)
   let channel: TextChannel | ThreadChannel;
@@ -74,15 +79,18 @@ export async function streamToDiscord(
     toolMessages: [],
     progressMessages: [],
     planContent: null,
-    messagePrefix: messagePrefix || null,
+    messagePrefix: isCronJob ? null : (messagePrefix || null),
+    messageSuffix: null,
     workingDir,
     channelId: memoryChannelId, // Use parent channel ID for memory
     sessionId,
     workspaceRoot,
+    isCronJob: isCronJob || false,
     threadCreated,
     originalMessage,
     threadName,
     parentChannel,
+    collectedAssistantMessages: [],
   };
 
   try {
@@ -96,11 +104,40 @@ export async function streamToDiscord(
 
     console.log(`✅ SDK stream completed for session ${sessionId}`);
 
+    // Save only the last assistant message to memory
+    if (state.collectedAssistantMessages.length > 0) {
+      const finalMessage = state.collectedAssistantMessages[state.collectedAssistantMessages.length - 1];
+
+      // For cron jobs, send the final message with shared files attached (non-cron already sent during streaming)
+      if (state.isCronJob) {
+        // Get files to share before sending message
+        const filesToShare = sessionManager.getFilesToShare(sessionId);
+        channel = await sendCompleteMessage(channel, finalMessage, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare);
+      }
+
+      // Capture final message to memory (for both cron and non-cron)
+      try {
+        await appendRawMemory(state.channelId, {
+          timestamp: new Date().toISOString(),
+          message: finalMessage,
+          sessionId: state.sessionId,
+          threadId: channel.id,
+        });
+
+        await logRawMemoryCaptured(
+          state.channelId,
+          finalMessage.length,
+          state.sessionId
+        );
+      } catch (error) {
+        console.error('Failed to capture memory:', error);
+      }
+    }
+
     // Save session ID for resumption
     await sessionManager.updateSession(sessionId, channel.id);
 
-    // Attach any files queued for sharing
-    await attachSharedFiles(channel, sessionManager, sessionId);
+    // Note: Files are now attached inline to messages, not sent separately
   } catch (error) {
     console.error('❌ Stream error:', error);
     console.error('❌ Stream error stack:', error instanceof Error ? error.stack : 'No stack trace');
@@ -131,34 +168,28 @@ async function handleSDKMessage(
       // Final assistant message with complete response
       const content = extractTextFromMessage(message.message);
       if (content) {
-        // Send message (creates thread if needed) and get the actual channel
-        channel = await sendCompleteMessage(channel, content, state.planContent, state.messagePrefix, state);
-        state.planContent = null; // Clear plan after sending
-        state.messagePrefix = null; // Clear prefix after using
+        // Log assistant message (truncated)
+        const preview = content.length > 200 ? content.substring(0, 200) + '...' : content;
+        console.log(`💬 Assistant: ${preview}`);
 
-        // Capture final message to memory
-        try {
-          await appendRawMemory(state.workspaceRoot, state.channelId, {
-            timestamp: new Date().toISOString(),
-            message: content,
-            sessionId: state.sessionId,
-            threadId: channel.id,
-          });
+        // Collect all assistant messages
+        state.collectedAssistantMessages.push(content);
 
-          await logRawMemoryCaptured(
-            state.workspaceRoot,
-            state.channelId,
-            content.length,
-            state.sessionId
-          );
-        } catch (error) {
-          console.error('Failed to capture memory:', error);
+        // For non-cron jobs, send each message immediately (streaming) with any queued files
+        if (!state.isCronJob) {
+          const filesToShare = sessionManager.getFilesToShare(sessionId);
+          channel = await sendCompleteMessage(channel, content, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare);
+          state.planContent = null; // Clear plan after sending
+          state.messagePrefix = null; // Clear prefix after using
+          state.messageSuffix = null; // Clear suffix after using
         }
       }
       break;
 
     case 'stream_event':
       // Partial message during streaming
+      // Always process stream events for logging (including cron jobs)
+      // Just don't send progress messages to Discord for cron jobs
       await handleStreamEvent(message, channel, state);
       break;
 
@@ -244,25 +275,34 @@ async function handleStreamEvent(
             const input = JSON.parse(state.currentToolUse.input);
             if (input.plan) {
               state.planContent = input.plan;
-              // Send notification that plan is ready
-              const msg = await channel.send(
-                '📋 **Plan Generated** - see attachment below'
-              );
-              state.progressMessages.push(msg);
+              // Send notification that plan is ready (but not for cron jobs)
+              if (!state.isCronJob) {
+                const msg = await channel.send(
+                  '📋 **Plan Generated** - see attachment below'
+                );
+                state.progressMessages.push(msg);
+              }
             }
           } catch (e) {
             console.error('Failed to parse ExitPlanMode input:', e);
           }
         } else {
-          // Log tool use message (but don't send to Discord)
-          const shouldShow = shouldShowToolMessage(state.currentToolUse.name, state.currentToolUse.input);
-          if (shouldShow) {
-            const emoji = getToolEmoji(state.currentToolUse.name);
-            const description = getToolDescription(state.currentToolUse.name, state.currentToolUse.input, state.workingDir);
-            // Strip MCP server prefix from tool name for cleaner display
-            const displayName = stripMcpPrefix(state.currentToolUse.name);
-            console.log(`🔧 Tool: ${emoji} ${displayName}: ${description}`);
+          // Log tool usage with input details
+          const displayName = stripMcpPrefix(state.currentToolUse.name);
+          const emoji = getToolEmoji(state.currentToolUse.name);
+
+          // Parse and format input for logging
+          let inputPreview = '';
+          try {
+            const input = JSON.parse(state.currentToolUse.input);
+            const inputStr = JSON.stringify(input);
+            inputPreview = inputStr.length > 200 ? inputStr.substring(0, 200) + '...' : inputStr;
+          } catch (e) {
+            inputPreview = state.currentToolUse.input.substring(0, 200);
           }
+
+          console.log(`🔧 Tool: ${emoji} ${displayName}`);
+          console.log(`   Input: ${inputPreview}`);
         }
         state.currentToolUse = null;
       }
@@ -302,7 +342,9 @@ async function sendCompleteMessage(
   content: string,
   planContent: string | null,
   messagePrefix: string | null,
-  state: StreamState
+  messageSuffix: string | null,
+  state: StreamState,
+  filesToShare: string[] = []
 ): Promise<TextChannel | ThreadChannel> {
   console.log(`📤 Sending message to Discord (${content.length} chars)`);
 
@@ -329,23 +371,42 @@ async function sendCompleteMessage(
     fullContent = `${messagePrefix}\n\n${content}`;
   }
 
+  // Append suffix if provided
+  if (messageSuffix) {
+    fullContent = `${fullContent}${messageSuffix}`;
+  }
+
   // Split message if it exceeds Discord's 2000 character limit
   const chunks = splitMessage(fullContent, 2000);
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
 
-    // Attach plan file only on the last chunk
-    if (i === chunks.length - 1 && planContent) {
-      const attachment = new AttachmentBuilder(Buffer.from(planContent, 'utf-8'), {
-        name: `plan-${Date.now()}.md`,
-        description: 'Claude Code Plan',
-      });
+    // Attach files only on the last chunk
+    if (i === chunks.length - 1 && (planContent || filesToShare.length > 0)) {
+      const attachments: AttachmentBuilder[] = [];
+
+      // Add plan file if exists
+      if (planContent) {
+        attachments.push(new AttachmentBuilder(Buffer.from(planContent, 'utf-8'), {
+          name: `plan-${Date.now()}.md`,
+          description: 'Claude Code Plan',
+        }));
+      }
+
+      // Add shared files if any
+      for (const filePath of filesToShare) {
+        attachments.push(new AttachmentBuilder(filePath));
+      }
 
       await targetChannel.send({
         content: chunk,
-        files: [attachment],
+        files: attachments,
       });
+
+      if (filesToShare.length > 0) {
+        console.log(`📎 Attached ${filesToShare.length} shared file(s) to message`);
+      }
     } else {
       await targetChannel.send(chunk);
     }
