@@ -99,6 +99,7 @@ function generateVolumeName(userId: string, botId: string): string {
  * Helper: Get a bot document from subcollection
  */
 async function getBotDoc(userId: string, botId: string): Promise<any> {
+  // First try to find in bots subcollection (legacy)
   const botDoc = await db
     .collection("users")
     .doc(userId)
@@ -106,11 +107,22 @@ async function getBotDoc(userId: string, botId: string): Promise<any> {
     .doc(botId)
     .get();
 
-  if (!botDoc.exists) {
-    return null;
+  if (botDoc.exists) {
+    return { id: botDoc.id, ...botDoc.data() };
   }
 
-  return { id: botDoc.id, ...botDoc.data() };
+  // If not found, try guilds collection (new OAuth-based model)
+  const guildDoc = await db.collection("guilds").doc(botId).get();
+
+  if (guildDoc.exists) {
+    const guildData = guildDoc.data();
+    // Verify this guild belongs to the user
+    if (guildData?.userId === userId) {
+      return { id: guildDoc.id, ...guildData };
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -121,12 +133,28 @@ async function updateBotDoc(
   botId: string,
   updates: any
 ): Promise<void> {
-  await db
+  // Try to update in bots subcollection first (legacy)
+  const botDoc = await db
     .collection("users")
     .doc(userId)
     .collection("bots")
     .doc(botId)
-    .update(updates);
+    .get();
+
+  if (botDoc.exists) {
+    await botDoc.ref.update(updates);
+    return;
+  }
+
+  // If not found, try guilds collection (new OAuth-based model)
+  const guildDoc = await db.collection("guilds").doc(botId).get();
+
+  if (guildDoc.exists && guildDoc.data()?.userId === userId) {
+    await guildDoc.ref.update(updates);
+    return;
+  }
+
+  throw new Error("Bot or guild not found");
 }
 
 /**
@@ -170,197 +198,6 @@ export const applyForHostingBeta = onCall(async (request) => {
 });
 
 /**
- * Create a bot document without provisioning (for onboarding flow)
- */
-export const createBotDocument = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be authenticated");
-  }
-
-  const userId = request.auth.uid;
-  const { botName, mode = "personal" } = request.data;
-
-  if (!botName) {
-    throw new HttpsError("invalid-argument", "botName is required");
-  }
-
-  if (mode !== "personal" && mode !== "shared") {
-    throw new HttpsError("invalid-argument", 'mode must be "personal" or "shared"');
-  }
-
-  try {
-    // Check if user is approved for beta
-    const userDoc = await db.collection("users").doc(userId).get();
-    const userData = userDoc.data();
-
-    if (!userData?.hostingBetaApproved) {
-      throw new HttpsError(
-        "permission-denied",
-        "User is not approved for hosting beta"
-      );
-    }
-
-    // Check bot limit (max 10 per user)
-    const botsSnapshot = await db
-      .collection("users")
-      .doc(userId)
-      .collection("bots")
-      .get();
-
-    if (botsSnapshot.size >= 10) {
-      throw new HttpsError(
-        "resource-exhausted",
-        "Maximum of 10 bots per user reached"
-      );
-    }
-
-    // Generate unique bot ID
-    const botId = crypto.randomUUID();
-
-    // Create bot document with unconfigured status
-    const newBot = {
-      botName,
-      mode,
-      status: "unconfigured" as const,
-      memoryContextSize: 10000,
-      oauthConnections: {}, // Per-bot OAuth connections (gmail, etc.)
-      toolsConfig: {}, // Per-bot tools configuration
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    await db
-      .collection("users")
-      .doc(userId)
-      .collection("bots")
-      .doc(botId)
-      .set(newBot);
-
-    logger.info(`Created bot document ${botId} for user ${userId}`);
-
-    return {
-      success: true,
-      botId,
-      bot: { id: botId, ...newBot },
-    };
-  } catch (error) {
-    logger.error("Error creating bot document:", error);
-
-    if (error instanceof HttpsError) {
-      throw error;
-    }
-
-    throw new HttpsError(
-      "internal",
-      `Failed to create bot: ${
-        error instanceof Error ? error.message : "Unknown error"
-      }`
-    );
-  }
-});
-
-/**
- * List all hosted bots for a user
- */
-export const listHostedBots = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be authenticated");
-  }
-
-  const userId = request.auth.uid;
-
-  try {
-    const botsSnapshot = await db
-      .collection("users")
-      .doc(userId)
-      .collection("bots")
-      .get();
-
-    const bots = botsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    return {
-      bots,
-      canCreateMore: bots.length < 10,
-    };
-  } catch (error) {
-    logger.error("Error listing hosted bots:", error);
-    throw new HttpsError("internal", "Failed to list hosted bots");
-  }
-});
-
-/**
- * Update bot with Discord configuration (without provisioning)
- * Used during onboarding to save Discord credentials
- */
-export const updateBotDiscordConfig = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be authenticated");
-  }
-
-  const userId = request.auth.uid;
-  const {
-    botId,
-    discordBotToken,
-    discordGuildId,
-    discordGuildName,
-    discordGuildIcon,
-    discordBotUserId,
-    botDiscordUsername,
-    botDiscordAvatar,
-  } = request.data;
-
-  if (!botId || !discordBotToken || !discordGuildId) {
-    throw new HttpsError(
-      "invalid-argument",
-      "botId, discordBotToken, and discordGuildId are required"
-    );
-  }
-
-  try {
-    const bot = await getBotDoc(userId, botId);
-    if (!bot) {
-      throw new HttpsError("not-found", "Bot not found");
-    }
-
-    // Update bot with Discord credentials and change status to 'configured'
-    await updateBotDoc(userId, botId, {
-      discordBotToken,
-      discordGuildId,
-      discordGuildName: discordGuildName || null,
-      discordGuildIcon: discordGuildIcon || null,
-      discordBotUserId: discordBotUserId || null,
-      botDiscordUsername: botDiscordUsername || null,
-      botDiscordAvatar: botDiscordAvatar || null,
-      status: "configured" as const,
-      updatedAt: new Date().toISOString(),
-    });
-
-    logger.info(`Discord config updated for bot ${botId} (user ${userId})`);
-
-    return {
-      success: true,
-      message: "Discord configuration saved",
-    };
-  } catch (error) {
-    logger.error("Error updating bot Discord config:", error);
-
-    if (error instanceof HttpsError) {
-      throw error;
-    }
-
-    throw new HttpsError(
-      "internal",
-      `Failed to update Discord config: ${
-        error instanceof Error ? error.message : "Unknown error"
-      }`
-    );
-  }
-});
-
-/**
  * Poll Fly.io machine status and update bot status to "running" when ready
  */
 async function pollMachineStatusAndUpdateBot(
@@ -394,34 +231,24 @@ async function pollMachineStatusAndUpdateBot(
 
       // Check if machine is running (state: "started")
       if (machine.state === "started") {
-        // Update bot status to running
-        await db
-          .collection("users")
-          .doc(userId)
-          .collection("bots")
-          .doc(botId)
-          .update({
-            status: "running",
-            updatedAt: new Date().toISOString(),
-          });
+        // Update bot/guild status to active (use helper to support both bots and guilds)
+        await updateBotDoc(userId, botId, {
+          status: "active",
+          updatedAt: new Date().toISOString(),
+        });
 
-        logger.info(`Bot ${botId} status updated to running`);
+        logger.info(`Bot/Guild ${botId} status updated to active`);
         return;
       }
 
       // Check for error states
       if (machine.state === "stopped" || machine.state === "failed") {
         logger.error(`Machine ${machineId} in error state: ${machine.state}`);
-        await db
-          .collection("users")
-          .doc(userId)
-          .collection("bots")
-          .doc(botId)
-          .update({
-            status: "error",
-            errorMessage: `Machine failed to start (state: ${machine.state})`,
-            updatedAt: new Date().toISOString(),
-          });
+        await updateBotDoc(userId, botId, {
+          status: "error",
+          error: `Machine failed to start (state: ${machine.state})`,
+          updatedAt: new Date().toISOString(),
+        });
         return;
       }
     } catch (error) {
@@ -1157,3 +984,262 @@ export const deprovisionHostedBot = onCall(
     }
   }
 );
+
+/**
+ * Provision a guild (OAuth-based shared bot model)
+ * Creates Fly.io resources for a guild using shared Discord bot token and Anthropic API key
+ *
+ * Note: This callable function is kept for manual/testing purposes.
+ * In production, guilds are auto-provisioned via Firestore trigger (onGuildCreated).
+ */
+export const provisionGuild = onCall(
+  {
+    secrets: [flyApiToken],
+  },
+  async (request) => {
+    const { guildId, sharedDiscordBotToken, sharedAnthropicApiKey } = request.data;
+
+    if (!guildId || !sharedDiscordBotToken || !sharedAnthropicApiKey) {
+      throw new HttpsError(
+        'invalid-argument',
+        'guildId, sharedDiscordBotToken, and sharedAnthropicApiKey are required'
+      );
+    }
+
+    try {
+      const result = await provisionGuildInternal(
+        guildId,
+        sharedDiscordBotToken,
+        sharedAnthropicApiKey,
+        flyApiToken.value()
+      );
+
+      return {
+        success: true,
+        guildId,
+        appName: result.appName,
+        machineId: result.machineId,
+      };
+    } catch (error) {
+      logger.error('Error provisioning guild via callable function:', error);
+
+      // Update guild status to error
+      try {
+        await db.collection('guilds').doc(guildId).update({
+          status: 'error',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (updateError) {
+        logger.error('Failed to update guild status to error:', updateError);
+      }
+
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+
+      throw new HttpsError(
+        'internal',
+        `Failed to provision guild: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      );
+    }
+  }
+);
+
+/**
+ * Internal provisioning logic (can be called by both callable function and triggers)
+ * This function does the actual work of provisioning a guild
+ */
+export async function provisionGuildInternal(
+  guildId: string,
+  sharedDiscordBotToken: string,
+  sharedAnthropicApiKey: string,
+  flyToken: string
+): Promise<{ appName: string; machineId: string }> {
+  // Check if guild document exists
+  const guildDoc = await db.collection('guilds').doc(guildId).get();
+  if (!guildDoc.exists) {
+    throw new Error('Guild not found');
+  }
+
+  const guildData = guildDoc.data();
+
+  // Check if already provisioned
+  if (guildData?.status === 'active' && guildData?.appName) {
+    throw new Error('Guild is already provisioned');
+  }
+
+  // Generate Fly.io app name: cordbot-guild-{first12ofguildid}
+  const guildPrefix = guildId.substring(0, 12).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const appName = `cordbot-guild-${guildPrefix}`;
+
+  logger.info(`Provisioning guild ${guildId}`, {
+    guildName: guildData?.guildName,
+    appName,
+  });
+
+  // Update status to provisioning
+  await db.collection('guilds').doc(guildId).update({
+    status: 'provisioning',
+    updatedAt: new Date().toISOString(),
+  });
+
+  // Step 1: Create Fly.io app
+  logger.info(`Creating Fly.io app: ${appName}`);
+  await flyRequest(
+    '/apps',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        app_name: appName,
+        org_slug: FLY_ORG,
+      }),
+    },
+    flyToken
+  );
+
+  // Step 2: Create volume
+  const volumeName = `cordbot_vol_${guildId.substring(0, 8)}`;
+  logger.info(`Creating volume: ${volumeName}`);
+  const volumeResponse = await flyRequest(
+    `/apps/${appName}/volumes`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        name: volumeName,
+        region: 'sjc', // Default region
+        size_gb: 1,
+      }),
+    },
+    flyToken
+  );
+
+  // Step 3: Create machine with shared credentials
+  logger.info(`Creating machine for guild ${guildId}`);
+  const machineConfig: FlyMachineConfig = {
+    image: `${DEFAULT_IMAGE}:${DEFAULT_VERSION}`,
+    guest: {
+      cpu_kind: 'shared',
+      cpus: 1,
+      memory_mb: 1024,
+    },
+    env: {
+      DISCORD_BOT_TOKEN: sharedDiscordBotToken,
+      DISCORD_GUILD_ID: guildId,
+      ANTHROPIC_API_KEY: sharedAnthropicApiKey,
+      BOT_MODE: 'shared',
+      BOT_ID: guildId,
+      MEMORY_CONTEXT_SIZE: (guildData?.memoryContextSize || 10000).toString(),
+    },
+    mounts: [
+      {
+        volume: volumeResponse.id,
+        path: '/workspace',
+      },
+    ],
+  };
+
+  const machineResponse = await flyRequest(
+    `/apps/${appName}/machines`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        name: `${appName}-main`,
+        config: machineConfig,
+        region: 'sjc',
+      }),
+    },
+    flyToken
+  );
+
+  // Step 4: Update guild document with Fly.io details
+  await db.collection('guilds').doc(guildId).update({
+    appName,
+    machineId: machineResponse.id,
+    volumeId: volumeResponse.id,
+    region: 'sjc',
+    status: 'provisioning', // Will be updated to 'active' by polling
+    provisionedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  logger.info(`Successfully provisioned guild ${guildId}`, {
+    appName,
+    machineId: machineResponse.id,
+  });
+
+  // Poll machine status in background
+  pollGuildMachineStatus(guildId, appName, machineResponse.id, flyToken).catch(
+    (err) => {
+      logger.error(`Failed to poll machine status for guild ${guildId}:`, err);
+    }
+  );
+
+  return {
+    appName,
+    machineId: machineResponse.id,
+  };
+}
+
+/**
+ * Poll Fly.io machine status for a guild and update status when ready
+ */
+async function pollGuildMachineStatus(
+  guildId: string,
+  appName: string,
+  machineId: string,
+  token: string
+): Promise<void> {
+  const maxAttempts = 60; // Poll for up to 5 minutes
+  const pollInterval = 5000; // 5 seconds
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      }
+
+      const machine = await flyRequest(
+        `/apps/${appName}/machines/${machineId}`,
+        { method: 'GET' },
+        token
+      );
+
+      logger.info(`Guild ${guildId} machine status: ${machine.state}`, {
+        attempt: attempt + 1,
+      });
+
+      if (machine.state === 'started') {
+        await db.collection('guilds').doc(guildId).update({
+          status: 'active',
+          updatedAt: new Date().toISOString(),
+        });
+
+        logger.info(`Guild ${guildId} is now active`);
+        return;
+      }
+
+      if (machine.state === 'stopped' || machine.state === 'failed') {
+        logger.error(`Guild ${guildId} machine in error state: ${machine.state}`);
+        await db.collection('guilds').doc(guildId).update({
+          status: 'error',
+          errorMessage: `Machine failed to start (state: ${machine.state})`,
+          updatedAt: new Date().toISOString(),
+        });
+        return;
+      }
+    } catch (error) {
+      logger.error(`Error polling machine status for guild ${guildId} (attempt ${attempt + 1}):`, error);
+    }
+  }
+
+  // Timeout
+  logger.error(`Guild ${guildId} did not start within timeout`);
+  await db.collection('guilds').doc(guildId).update({
+    status: 'error',
+    errorMessage: 'Machine did not start within 5 minutes',
+    updatedAt: new Date().toISOString(),
+  });
+}

@@ -1,8 +1,6 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { UserData } from '../hooks/useAuth';
 import { useHostedBots } from '../hooks/useHostedBots';
-import { CreateBotModal } from '../components/CreateBotModal';
 import { Navigation } from '../components/Navigation';
 import chatBotLogo from '../chat-bot-logo.svg';
 
@@ -12,8 +10,7 @@ interface BotsListProps {
 }
 
 export function BotsList({ userData, onSignOut }: BotsListProps) {
-  const { bots, isListening, canCreateMore } = useHostedBots(userData.id);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const { bots, isListening } = useHostedBots(userData.id);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -22,7 +19,6 @@ export function BotsList({ userData, onSignOut }: BotsListProps) {
         userDisplayName={userData.displayName}
         onSignOut={onSignOut}
         bots={bots}
-        onCreateBot={() => setShowCreateModal(true)}
       />
 
       {/* Main Content */}
@@ -172,13 +168,6 @@ export function BotsList({ userData, onSignOut }: BotsListProps) {
         </div>
       </main>
 
-      {/* Create Bot Modal */}
-      {showCreateModal && (
-        <CreateBotModal
-          onClose={() => setShowCreateModal(false)}
-          userId={userData.id}
-        />
-      )}
     </div>
   );
 }

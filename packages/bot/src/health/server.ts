@@ -1,12 +1,10 @@
 import express, { Request, Response } from 'express';
 import { Server } from 'http';
-import type { Client } from 'discord.js';
-import type { SessionDatabase } from '../storage/database.js';
+import type { IBotContext } from '../interfaces/core.js';
 
 interface HealthServerConfig {
   port: number;
-  client: Client;
-  db: SessionDatabase;
+  context: IBotContext;
   startTime: Date;
 }
 
@@ -22,8 +20,9 @@ export class HealthServer {
     // Health check endpoint
     this.app.get('/health', (req: Request, res: Response) => {
       const uptime = Math.floor((Date.now() - this.config.startTime.getTime()) / 1000);
-      const isDiscordReady = this.config.client.isReady();
-      const activeSessions = this.config.db.getActiveCount();
+      const isDiscordReady = this.config.context.discord.isReady();
+      const activeSessions = this.config.context.sessionStore.getActiveCount();
+      const user = this.config.context.discord.getUser();
 
       // Return 200 if Discord is connected, 503 if not
       const status = isDiscordReady ? 200 : 503;
@@ -32,7 +31,7 @@ export class HealthServer {
         status: isDiscordReady ? 'healthy' : 'unhealthy',
         discord: {
           connected: isDiscordReady,
-          user: isDiscordReady ? this.config.client.user?.tag : null,
+          user: user ? `${user.username}#${user.discriminator}` : null,
         },
         sessions: {
           active: activeSessions,

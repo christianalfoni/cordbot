@@ -1,14 +1,14 @@
-import { Client, Message, TextChannel, ThreadChannel, GuildChannel, Interaction } from 'discord.js';
+import { Message, TextChannel, ThreadChannel, GuildChannel, Interaction } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
 import { SessionManager } from '../agent/manager.js';
 import { streamToDiscord } from '../agent/stream.js';
 import { ChannelMapping, getChannelMapping, syncNewChannel, updateChannelClaudeMdTopic, BotConfig } from './sync.js';
 import { CronRunner } from '../scheduler/runner.js';
-import { DiscordPermissionManager } from '../permissions/discord.js';
-
-// Global permission manager instance
-export const permissionManager = new DiscordPermissionManager();
+import { trackMessage } from '../message-tracking/tracker.js';
+import type { IBotContext } from '../interfaces/core.js';
+import type { IMessage, ITextChannel } from '../interfaces/discord.js';
+import type { ILogger } from '../interfaces/logger.js';
 
 // Queue to prevent concurrent processing of messages in the same thread
 const threadLocks = new Map<string, Promise<void>>();
@@ -22,20 +22,44 @@ interface BufferedMessage {
 const messageBuffers = new Map<string, BufferedMessage[]>();
 
 export function setupEventHandlers(
-  client: Client,
+  context: IBotContext,
   sessionManager: SessionManager,
   channelMappings: ChannelMapping[],
   basePath: string,
   guildId: string,
   cronRunner: CronRunner,
+  logger: ILogger,
   botConfig?: BotConfig
 ): void {
   // Handle new messages
-  client.on('messageCreate', async (message) => {
+  context.discord.on('messageCreate', async (message) => {
+    // Filter to only our guild
+    if (message.guildId !== guildId) {
+      return;
+    }
+
     try {
-      await handleMessageWithLock(message, sessionManager, channelMappings, botConfig);
+      // NEW: Track ALL public messages (not just bot interactions)
+      if (!message.author.bot && message._raw) {
+        try {
+          // trackMessage expects raw Discord.js Message type
+          // Only track non-thread messages
+          if (!message._raw.channel.isThread()) {
+            await trackMessage(message._raw);
+          }
+        } catch (trackError) {
+          logger.error('Error tracking message:', trackError);
+          // Don't block message processing on tracking failure
+        }
+      }
+
+      // Existing bot interaction logic
+      // handleMessageWithLock expects raw Discord.js Message type
+      if (message._raw) {
+        await handleMessageWithLock(message._raw, sessionManager, channelMappings, logger, botConfig);
+      }
     } catch (error) {
-      console.error('❌ Fatal error in messageCreate handler:', error);
+      logger.error('❌ Fatal error in messageCreate handler:', error);
       // Try to notify the user
       try {
         await message.reply(
@@ -44,19 +68,20 @@ export function setupEventHandlers(
           }`
         );
       } catch (replyError) {
-        console.error('Failed to send error notification:', replyError);
+        logger.error('Failed to send error notification:', replyError);
       }
     }
   });
 
   // Handle new channels being created
-  client.on('channelCreate', async (channel) => {
-    // Only handle text channels in the configured guild
-    if (!(channel instanceof TextChannel)) return;
+  context.discord.on('channelCreate', async (channel) => {
+    // Only handle text channels in the configured guild (type 0 is GuildText)
+    if (channel.type !== 0) return;
     if (channel.guildId !== guildId) return;
+    if (!channel.isTextChannel()) return;
 
     try {
-      console.log(`\n🆕 New channel detected: #${channel.name}`);
+      logger.info(`\n🆕 New channel detected: #${channel.name}`);
 
       // Sync the new channel
       const mapping = await syncNewChannel(channel, basePath, botConfig);
@@ -67,26 +92,26 @@ export function setupEventHandlers(
       // Start watching the cron file for this channel
       cronRunner.addChannel(mapping);
 
-      console.log(`✅ Channel #${channel.name} synced and ready\n`);
+      logger.info(`✅ Channel #${channel.name} synced and ready\n`);
     } catch (error) {
-      console.error(`❌ Error syncing new channel #${channel.name}:`, error);
+      logger.error(`❌ Error syncing new channel #${channel.name}:`, error);
     }
   });
 
   // Handle channels being deleted
-  client.on('channelDelete', async (channel) => {
-    // Only handle text channels in the configured guild
-    if (!(channel instanceof TextChannel)) return;
+  context.discord.on('channelDelete', async (channel) => {
+    // Only handle text channels in the configured guild (type 0 is GuildText)
+    if (channel.type !== 0) return;
     if (channel.guildId !== guildId) return;
 
     try {
-      console.log(`\n🗑️  Channel deleted: #${channel.name}`);
+      logger.info(`\n🗑️  Channel deleted: #${channel.name}`);
 
       // Find the mapping for this channel
       const mappingIndex = channelMappings.findIndex(m => m.channelId === channel.id);
 
       if (mappingIndex === -1) {
-        console.log(`Channel #${channel.name} was not synced, skipping cleanup`);
+        logger.info(`Channel #${channel.name} was not synced, skipping cleanup`);
         return;
       }
 
@@ -101,23 +126,24 @@ export function setupEventHandlers(
       // Delete the folder if it exists
       if (fs.existsSync(mapping.folderPath)) {
         fs.rmSync(mapping.folderPath, { recursive: true, force: true });
-        console.log(`📁 Deleted folder: ${mapping.folderPath}`);
+        logger.info(`📁 Deleted folder: ${mapping.folderPath}`);
       }
 
-      console.log(`✅ Channel #${channel.name} cleanup complete\n`);
+      logger.info(`✅ Channel #${channel.name} cleanup complete\n`);
     } catch (error) {
-      console.error(`❌ Error cleaning up channel #${channel.name}:`, error);
+      logger.error(`❌ Error cleaning up channel #${channel.name}:`, error);
     }
   });
 
   // Handle channel updates (e.g., topic changes)
-  client.on('channelUpdate', async (oldChannel, newChannel) => {
-    // Only handle text channels in the configured guild
-    if (!(newChannel instanceof TextChannel)) return;
+  context.discord.on('channelUpdate', async (oldChannel, newChannel) => {
+    // Only handle text channels in the configured guild (type 0 is GuildText)
+    if (newChannel.type !== 0) return;
     if (newChannel.guildId !== guildId) return;
+    if (!newChannel.isTextChannel() || !oldChannel.isTextChannel()) return;
 
     // Check if topic changed
-    const oldTopic = (oldChannel as TextChannel).topic || '';
+    const oldTopic = oldChannel.topic || '';
     const newTopic = newChannel.topic || '';
 
     if (oldTopic !== newTopic) {
@@ -125,30 +151,28 @@ export function setupEventHandlers(
 
       if (mapping) {
         try {
-          console.log(`\n📝 Topic updated for #${newChannel.name}`);
+          logger.info(`\n📝 Topic updated for #${newChannel.name}`);
           await updateChannelClaudeMdTopic(mapping.claudeMdPath, newTopic);
-          console.log(`✅ Synced topic to CLAUDE.md\n`);
+          logger.info(`✅ Synced topic to CLAUDE.md\n`);
         } catch (error) {
-          console.error(`❌ Error syncing topic for #${newChannel.name}:`, error);
+          logger.error(`❌ Error syncing topic for #${newChannel.name}:`, error);
         }
       }
     }
   });
 
   // Handle errors
-  client.on('error', (error) => {
-    console.error('Discord client error:', error);
+  context.discord.on('error', (error) => {
+    logger.error('Discord client error:', error);
   });
 
   // Handle warnings
-  client.on('warn', (warning) => {
-    console.warn('Discord client warning:', warning);
+  context.discord.on('warn', (warning) => {
+    logger.warn('Discord client warning:', warning);
   });
 
   // Handle button interactions for permissions
-  client.on('interactionCreate', async (interaction: Interaction) => {
-    if (!interaction.isButton()) return;
-
+  context.discord.on('interactionCreate', async (interaction) => {
     const customId = interaction.customId;
 
     if (customId.startsWith('permission_')) {
@@ -159,9 +183,15 @@ export function setupEventHandlers(
       const approved = action === 'approve';
 
       // Try to handle the permission response
-      const handled = permissionManager.handlePermissionResponse(requestId, approved);
+      const userId = interaction.user.id;
 
-      if (handled) {
+      if (context.permissionManager.isPending(requestId)) {
+        if (approved) {
+          context.permissionManager.handleApproval(requestId, userId);
+        } else {
+          context.permissionManager.handleDenial(requestId, userId);
+        }
+
         // Successfully handled - update the message
         await interaction.update({
           content: `${interaction.message.content}\n\n${approved ? '✅ Approved' : '❌ Denied'}`,
@@ -182,6 +212,7 @@ async function handleMessageWithLock(
   message: Message,
   sessionManager: SessionManager,
   channelMappings: ChannelMapping[],
+  logger: ILogger,
   botConfig?: BotConfig
 ): Promise<void> {
   // Determine thread ID for locking
@@ -195,12 +226,12 @@ async function handleMessageWithLock(
     if (existingLock) {
       await existingLock.catch(() => {
         // Ignore errors from previous lock - we'll try again
-        console.log(`Previous lock for ${threadId} failed, continuing anyway`);
+        logger.info(`Previous lock for ${threadId} failed, continuing anyway`);
       });
     }
 
     // Create new lock for this message
-    const newLock = handleMessage(message, sessionManager, channelMappings, botConfig)
+    const newLock = handleMessage(message, sessionManager, channelMappings, logger, botConfig)
       .finally(() => {
         // Remove lock when done
         try {
@@ -208,14 +239,14 @@ async function handleMessageWithLock(
             threadLocks.delete(threadId);
           }
         } catch (error) {
-          console.error('Error removing lock:', error);
+          logger.error('Error removing lock:', error);
         }
       });
 
     threadLocks.set(threadId, newLock);
     await newLock;
   } catch (error) {
-    console.error(`Error in handleMessageWithLock for ${threadId}:`, error);
+    logger.error(`Error in handleMessageWithLock for ${threadId}:`, error);
     throw error; // Re-throw so outer handler can notify user
   }
 }
@@ -224,6 +255,7 @@ async function handleMessage(
   message: Message,
   sessionManager: SessionManager,
   channelMappings: ChannelMapping[],
+  logger: ILogger,
   botConfig?: BotConfig
 ): Promise<void> {
   // Ignore bot messages
@@ -269,7 +301,7 @@ async function handleMessage(
         buffer.push(buffered);
         messageBuffers.set(threadId, buffer);
 
-        console.log(`📝 Buffered message from ${displayName} (mentions someone else)`);
+        logger.info(`📝 Buffered message from ${displayName} (mentions someone else)`);
         return;
       }
 
@@ -284,13 +316,13 @@ async function handleMessage(
     if (!message.channel.isThread() && message.reference) {
       const referencedMessageId = message.reference.messageId;
       if (referencedMessageId) {
-        const mapping = sessionManager.db.getMappingByMessageId(referencedMessageId);
-        if (mapping) {
+        const session = sessionManager.getSessionByMessageId(referencedMessageId);
+        if (session) {
           replyToSession = {
-            sessionId: mapping.session_id,
-            workingDir: mapping.working_directory,
+            sessionId: session.sessionId,
+            workingDir: session.workingDirectory,
           };
-          console.log(`🔗 Detected reply to bot message (session: ${mapping.session_id})`);
+          logger.info(`🔗 Detected reply to bot message (session: ${session.sessionId})`);
         }
       }
     }
@@ -336,7 +368,7 @@ async function handleMessage(
         workingDir
       );
 
-      console.log(`🔗 Continuing session ${sessionId} from reply in thread ${threadId}`);
+      logger.info(`🔗 Continuing session ${sessionId} from reply in thread ${threadId}`);
     } else if (pendingCronSession) {
       // Continue the cron session in this new thread
       sessionId = pendingCronSession.sessionId;
@@ -352,7 +384,7 @@ async function handleMessage(
         workingDir
       );
 
-      console.log(`🔗 Continuing cron session ${sessionId} in thread ${threadId}`);
+      logger.info(`🔗 Continuing cron session ${sessionId} in thread ${threadId}`);
     } else {
       // Normal flow: get or create agent session tied to this thread
       const result = await sessionManager.getOrCreateSession(
@@ -367,15 +399,15 @@ async function handleMessage(
       workingDir = mapping.folderPath;
 
       if (!isNew) {
-        console.log(`📖 Resuming session ${sessionId} for thread ${threadId}`);
+        logger.info(`📖 Resuming session ${sessionId} for thread ${threadId}`);
       } else {
-        console.log(`✨ Created new session ${sessionId} for thread ${threadId}`);
+        logger.info(`✨ Created new session ${sessionId} for thread ${threadId}`);
       }
 
       // Verify working directory exists and is accessible
       if (!fs.existsSync(workingDir)) {
-        console.error(`❌ Working directory does not exist: ${workingDir}`);
-        console.error(`   This likely means the persistent volume is not mounted.`);
+        logger.error(`❌ Working directory does not exist: ${workingDir}`);
+        logger.error(`   This likely means the persistent volume is not mounted.`);
 
         // Send error to the appropriate target
         const errorTarget = targetForStream instanceof Message
@@ -387,12 +419,12 @@ async function handleMessage(
         );
         return;
       } else {
-        console.log(`✓ Working directory exists: ${workingDir}`);
+        logger.info(`✓ Working directory exists: ${workingDir}`);
         // Check if CLAUDE.md exists in centralized location
         if (fs.existsSync(mapping.claudeMdPath)) {
-          console.log(`✓ CLAUDE.md found at ${mapping.claudeMdPath}`);
+          logger.info(`✓ CLAUDE.md found at ${mapping.claudeMdPath}`);
         } else {
-          console.log(`⚠️  CLAUDE.md not found at ${mapping.claudeMdPath}`);
+          logger.info(`⚠️  CLAUDE.md not found at ${mapping.claudeMdPath}`);
         }
       }
     }
@@ -414,7 +446,7 @@ async function handleMessage(
       // Handle attachments if present
       let userMessage = message.content;
       if (message.attachments.size > 0) {
-        const attachmentInfo = await downloadAttachments(message, workingDir);
+        const attachmentInfo = await downloadAttachments(message, workingDir, logger);
         if (attachmentInfo.length > 0) {
           userMessage = `${message.content}\n\n[Files attached and saved to working directory: ${attachmentInfo.join(', ')}]`;
         }
@@ -438,16 +470,44 @@ async function handleMessage(
 
           // Clear the buffer
           messageBuffers.delete(threadId);
-          console.log(`📝 Included ${buffer.length} buffered message(s) as context`);
+          logger.info(`📝 Included ${buffer.length} buffered message(s) as context`);
         } else {
           userMessage = `[${displayName}]: ${userMessage}`;
         }
       }
 
+      // Capture user message to memory (Phase 1: Store ALL messages)
+      // This happens for both personal and shared modes, but shared mode adds username prefix
+      try {
+        const threadId = message.channel.isThread() ? message.channel.id : message.id;
+
+        // Import memory functions at the top of file
+        const { appendRawMemory } = await import('../memory/storage.js');
+        const { logRawMemoryCaptured } = await import('../memory/logger.js');
+
+        await appendRawMemory(parentChannelId, {
+          timestamp: new Date().toISOString(),
+          message: userMessage, // Already has username prefix if in shared mode
+          sessionId: sessionId,
+          threadId: threadId,
+        });
+
+        await logRawMemoryCaptured(
+          parentChannelId,
+          userMessage.length,
+          sessionId
+        );
+
+        logger.info(`[Memory] Captured user message (${userMessage.length} chars)`);
+      } catch (error) {
+        logger.error('[Memory] Failed to capture user message:', error);
+        // Don't block message processing on memory failure
+      }
+
       // Get CLAUDE.md path from mapping
       const channelMapping = getChannelMapping(parentChannelId, channelMappings);
       if (!channelMapping) {
-        console.error(`❌ No channel mapping found for ${parentChannelId}`);
+        logger.error(`❌ No channel mapping found for ${parentChannelId}`);
         return;
       }
 
@@ -457,17 +517,17 @@ async function handleMessage(
       if (fs.existsSync(claudeMdPath)) {
         try {
           await sessionManager.populateMemory(claudeMdPath, parentChannelId, sessionId);
-          console.log(`💾 Memory populated for channel ${parentChannelId}`);
+          logger.info(`💾 Memory populated for channel ${parentChannelId}`);
 
           // Read CLAUDE.md to use as system prompt
           systemPrompt = fs.readFileSync(claudeMdPath, 'utf-8');
-          console.log(`📖 Read CLAUDE.md (${systemPrompt.length} chars)`);
+          logger.info(`📖 Read CLAUDE.md (${systemPrompt.length} chars)`);
         } catch (memoryError) {
-          console.error('Failed to populate memory or read CLAUDE.md:', memoryError);
+          logger.error('Failed to populate memory or read CLAUDE.md:', memoryError);
           // Continue anyway - memory is nice-to-have, not critical
         }
       } else {
-        console.warn(`⚠️  CLAUDE.md not found at ${claudeMdPath}`);
+        logger.warn(`⚠️  CLAUDE.md not found at ${claudeMdPath}`);
       }
 
       // Create query for Claude
@@ -482,7 +542,7 @@ async function handleMessage(
           systemPrompt
         );
       } catch (queryError) {
-        console.error('Error creating query:', queryError);
+        logger.error('Error creating query:', queryError);
         const errorTarget = targetForStream instanceof Message
           ? (targetForStream.channel as TextChannel)
           : targetForStream;
@@ -500,12 +560,13 @@ async function handleMessage(
           sessionManager,
           sessionId,
           workingDir,
+          logger,
           botConfig,
           undefined, // messagePrefix
           parentChannelId // Pass parent channel ID for memory operations
         );
       } catch (streamError) {
-        console.error('Error streaming to Discord:', streamError);
+        logger.error('Error streaming to Discord:', streamError);
 
         // Send error to the appropriate target
         const errorTarget = targetForStream instanceof Message
@@ -523,11 +584,11 @@ async function handleMessage(
         sessionManager.clearWorkingDirContext(sessionId);
         sessionManager.clearChannelIdContext(sessionId);
       } catch (cleanupError) {
-        console.error('Error during context cleanup:', cleanupError);
+        logger.error('Error during context cleanup:', cleanupError);
       }
     }
   } catch (error) {
-    console.error('Error handling message:', error);
+    logger.error('Error handling message:', error);
 
     // Try to send error message to user
     try {
@@ -537,12 +598,12 @@ async function handleMessage(
         }`
       );
     } catch (replyError) {
-      console.error('Failed to send error message to user:', replyError);
+      logger.error('Failed to send error message to user:', replyError);
     }
   }
 }
 
-async function downloadAttachments(message: Message, workingDir: string): Promise<string[]> {
+async function downloadAttachments(message: Message, workingDir: string, logger: ILogger): Promise<string[]> {
   const attachmentNames: string[] = [];
 
   for (const attachment of message.attachments.values()) {
@@ -550,7 +611,7 @@ async function downloadAttachments(message: Message, workingDir: string): Promis
       // Fetch the attachment
       const response = await fetch(attachment.url);
       if (!response.ok) {
-        console.error(`Failed to download attachment ${attachment.name}: ${response.statusText}`);
+        logger.error(`Failed to download attachment ${attachment.name}: ${response.statusText}`);
         continue;
       }
 
@@ -562,9 +623,9 @@ async function downloadAttachments(message: Message, workingDir: string): Promis
       fs.writeFileSync(filePath, buffer);
 
       attachmentNames.push(attachment.name);
-      console.log(`📎 Downloaded attachment: ${attachment.name} (${buffer.length} bytes)`);
+      logger.info(`📎 Downloaded attachment: ${attachment.name} (${buffer.length} bytes)`);
     } catch (error) {
-      console.error(`Failed to download attachment ${attachment.name}:`, error);
+      logger.error(`Failed to download attachment ${attachment.name}:`, error);
     }
   }
 

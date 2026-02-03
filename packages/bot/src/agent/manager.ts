@@ -1,15 +1,15 @@
 import { query, Query, SdkMcpToolDefinition, createSdkMcpServer, McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
-import { ThreadChannel, TextChannel } from 'discord.js';
-import { SessionDatabase } from "../storage/database.js";
 import { randomUUID } from "crypto";
-import { fetchManifest } from "../service/manifest.js";
 import { loadDynamicTools } from "../tools/loader.js";
 import { loadBuiltinTools } from "../tools/builtin-loader.js";
+import { loadDiscordTools } from "../tools/discord/loader.js";
 import { SERVICE_URL } from "../service/config.js";
 import { TokenManager } from "../service/token-manager.js";
 import { spawn } from "child_process";
 import { populateMemorySection } from "../discord/sync.js";
 import { discoverToolSkills, installGlobalSkills } from "../tools/skill-loader.js";
+import type { IBotContext } from "../interfaces/core.js";
+import type { ITextChannel, IThreadChannel } from "../interfaces/discord.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -36,14 +36,14 @@ export class SessionManager {
   private pendingCronSessions = new Map<string, PendingCronSession>();
   private dynamicMcpServer: McpSdkServerConfigWithInstance | null = null;
   private tokenManager: TokenManager | null = null;
-  private currentChannels = new Map<string, ThreadChannel | TextChannel>();
+  private currentChannels = new Map<string, ITextChannel | IThreadChannel>();
   private currentWorkingDirs = new Map<string, string>();
   private currentChannelIds = new Map<string, string>(); // sessionId -> channelId
   private filesToShare = new Map<string, string[]>(); // sessionId -> file paths
   private memoryContextSize: number;
 
   constructor(
-    public db: SessionDatabase,
+    private context: IBotContext,
     private sessionsDir: string,
     private workspaceRoot: string,
     memoryContextSize: number = 10000
@@ -74,48 +74,31 @@ export class SessionManager {
       }
     );
 
-    // Fetch manifest from service for authenticated tools
-    const manifest = await fetchManifest(botToken, SERVICE_URL);
-
+    // Manifest feature is no longer used - authenticated tools disabled
+    const manifest = null;
     let dynamicTools: SdkMcpToolDefinition<any>[] = [];
 
-    if (manifest) {
-      const toolCount = Object.values(manifest.toolsConfig || {}).reduce((sum, tools) => sum + tools.length, 0);
-      console.log(`📦 Manifest loaded: ${toolCount} authenticated tools available`);
+    this.context.logger.info('ℹ️  No manifest - authenticated tools disabled');
 
-      // Create token manager with on-demand refresh (no background polling)
-      this.tokenManager = new TokenManager(botToken, SERVICE_URL, manifest);
-      console.log('🔄 Token refresh: on-demand (tokens will refresh automatically when needed)');
+    // Load Discord tools - get underlying Discord.js client from adapter
+    const discordClient = this.context.discord.getRawClient();
+    const permissionManager = this.context.permissionManager;
 
-      // Load dynamic tools with token manager and channel getter
-      dynamicTools = await loadDynamicTools(
-        manifest,
-        this.tokenManager,
-        () => {
-          // Get the channel for the currently executing session
-          // This will be set before each query execution
-          const entries = Array.from(this.currentChannels.entries());
-          return entries.length > 0 ? entries[0][1] : null;
-        }
-      );
-
-      if (dynamicTools.length > 0) {
-        console.log(`  ✓ Loaded ${dynamicTools.length} authenticated tools`);
+    const discordTools = loadDiscordTools(
+      discordClient,
+      permissionManager,
+      () => {
+        // Get the channel for the currently executing session
+        // loadDiscordTools expects raw Discord.js types
+        const entries = Array.from(this.currentChannels.entries());
+        const channel = entries.length > 0 ? entries[0][1] : null;
+        return channel?._raw || null;
       }
+    );
+    this.context.logger.info(`  ✓ Loaded ${discordTools.length} Discord management tools`);
 
-      // Discover and install tool skills
-      const toolsDir = path.join(__dirname, '..', 'tools');
-      const toolSkills = discoverToolSkills(manifest, toolsDir);
-      if (toolSkills.length > 0) {
-        installGlobalSkills(toolSkills);
-        console.log(`  ✓ Installed ${toolSkills.length} tool skill(s)`);
-      }
-    } else {
-      console.log('ℹ️  No manifest - authenticated tools disabled');
-    }
-
-    // Combine built-in and dynamic tools
-    const allTools = [...builtinTools, ...dynamicTools];
+    // Combine built-in, dynamic, and Discord tools
+    const allTools = [...builtinTools, ...dynamicTools, ...discordTools];
 
     if (allTools.length > 0) {
       // Create SDK MCP server with all tools
@@ -124,7 +107,7 @@ export class SessionManager {
         version: '1.0.0',
         tools: allTools
       });
-      console.log(`✅ Total tools available: ${allTools.length} (${builtinTools.length} built-in + ${dynamicTools.length} authenticated)`);
+      this.context.logger.info(`✅ Total tools available: ${allTools.length} (${builtinTools.length} built-in + ${dynamicTools.length} authenticated + ${discordTools.length} Discord)`);
     }
   }
 
@@ -142,14 +125,14 @@ export class SessionManager {
     isNew: boolean;
   }> {
     // Check database for existing session
-    const existing = this.db.getMapping(threadId);
+    const existing = this.context.sessionStore.getMapping(threadId);
 
     if (existing) {
       // Update last active
-      this.db.updateLastActive(threadId);
+      this.context.sessionStore.updateLastActive(threadId);
 
       return {
-        sessionId: existing.session_id,
+        sessionId: existing.sessionId,
         isNew: false,
       };
     }
@@ -158,13 +141,13 @@ export class SessionManager {
     const sessionId = `sess_${Date.now()}_${randomUUID()}`;
 
     // Store in database
-    this.db.createMapping({
-      discord_thread_id: threadId,
-      discord_channel_id: channelId,
-      discord_message_id: messageId,
-      session_id: sessionId,
-      working_directory: workingDir,
-      status: "active",
+    this.context.sessionStore.createMapping({
+      threadId,
+      channelId,
+      messageId,
+      sessionId,
+      workingDirectory: workingDir,
+      guildId: '', // Will be populated by Discord adapter if needed
     });
 
     return {
@@ -183,21 +166,22 @@ export class SessionManager {
     sessionId: string,
     workingDir: string
   ): void {
-    this.db.createMapping({
-      discord_thread_id: threadId,
-      discord_channel_id: channelId,
-      discord_message_id: messageId,
-      session_id: sessionId,
-      working_directory: workingDir,
-      status: "active",
+    this.context.sessionStore.createMapping({
+      threadId,
+      channelId,
+      messageId,
+      sessionId,
+      workingDirectory: workingDir,
+      guildId: '', // Will be populated by Discord adapter if needed
     });
   }
 
   /**
    * Set the Discord channel for the current session
    * Must be called before createQuery to enable permission requests
+   * Accepts both interface types and raw Discord.js types
    */
-  setChannelContext(sessionId: string, channel: ThreadChannel | TextChannel): void {
+  setChannelContext(sessionId: string, channel: ITextChannel | IThreadChannel | any): void {
     this.currentChannels.set(sessionId, channel);
   }
 
@@ -248,11 +232,11 @@ export class SessionManager {
     workingDir: string,
     systemPrompt?: string
   ): Query {
-    console.log(`📝 Creating query with options:`);
-    console.log(`   - workingDir: ${workingDir}`);
-    console.log(`   - sessionId: ${sessionId || 'new'}`);
-    console.log(`   - systemPrompt: ${systemPrompt ? `${systemPrompt.length} chars` : 'none'}`);
-    console.log(`   - dynamicMcpServer: ${this.dynamicMcpServer ? 'yes' : 'no'}`);
+    this.context.logger.info(`📝 Creating query with options:`);
+    this.context.logger.info(`   - workingDir: ${workingDir}`);
+    this.context.logger.info(`   - sessionId: ${sessionId || 'new'}`);
+    this.context.logger.info(`   - systemPrompt: ${systemPrompt ? `${systemPrompt.length} chars` : 'none'}`);
+    this.context.logger.info(`   - dynamicMcpServer: ${this.dynamicMcpServer ? 'yes' : 'no'}`);
 
     const options: any = {
       cwd: workingDir,
@@ -277,9 +261,9 @@ export class SessionManager {
         // Use full path to node instead of relying on PATH/shell
         const command = spawnOptions.command === 'node' ? '/usr/local/bin/node' : spawnOptions.command;
 
-        console.log(`🔧 Spawning Claude Code process: ${command}`);
-        console.log(`   Args: ${args.join(' ')}`);
-        console.log(`   CWD: ${spawnOptions.cwd}`);
+        this.context.logger.info(`🔧 Spawning Claude Code process: ${command}`);
+        this.context.logger.info(`   Args: ${args.join(' ')}`);
+        this.context.logger.info(`   CWD: ${spawnOptions.cwd}`);
 
         // Spawn without shell to avoid argument parsing issues
         const child = spawn(command, args, {
@@ -288,16 +272,16 @@ export class SessionManager {
 
         // Log child process events for debugging
         child.on('error', (error) => {
-          console.error(`❌ Child process spawn error:`, error);
+          this.context.logger.error(`❌ Child process spawn error:`, error);
         });
 
         child.on('exit', (code, signal) => {
           if (signal) {
-            console.error(`⚠️  Child process exited with signal: ${signal}`);
+            this.context.logger.error(`⚠️  Child process exited with signal: ${signal}`);
           } else if (code !== 0) {
-            console.error(`⚠️  Child process exited with code: ${code}`);
+            this.context.logger.error(`⚠️  Child process exited with code: ${code}`);
           } else {
-            console.log(`✅ Child process exited successfully`);
+            this.context.logger.info(`✅ Child process exited successfully`);
           }
         });
 
@@ -319,25 +303,25 @@ export class SessionManager {
       options.mcpServers = {
         'cordbot-dynamic-tools': this.dynamicMcpServer
       };
-      console.log(`   - MCP tools: ${Object.keys(this.dynamicMcpServer).length}`);
+      this.context.logger.info(`   - MCP tools: ${Object.keys(this.dynamicMcpServer).length}`);
     }
 
     try {
-      console.log(`🎯 Calling SDK query() function...`);
+      this.context.logger.info(`🎯 Calling SDK query() function...`);
       const result = query({
         prompt: userMessage,
         options,
       });
-      console.log(`✅ SDK query() returned successfully`);
+      this.context.logger.info(`✅ SDK query() returned successfully`);
       return result;
     } catch (error) {
-      console.error(`❌ SDK query() threw error:`, error);
+      this.context.logger.error(`❌ SDK query() threw error:`, error);
       throw error;
     }
   }
 
   async updateSession(sessionId: string, threadId: string): Promise<void> {
-    this.db.updateLastActive(threadId);
+    this.context.sessionStore.updateLastActive(threadId);
   }
 
   async updateSessionId(
@@ -346,10 +330,10 @@ export class SessionManager {
     threadId: string
   ): Promise<void> {
     // Update the database mapping with the real SDK session ID
-    const mapping = this.db.getMapping(threadId);
-    if (mapping && mapping.session_id === oldSessionId) {
-      this.db.updateSessionId(threadId, newSessionId);
-      console.log(`📝 Updated session ID: ${oldSessionId} → ${newSessionId}`);
+    const mapping = this.context.sessionStore.getMapping(threadId);
+    if (mapping && mapping.sessionId === oldSessionId) {
+      this.context.sessionStore.updateSessionId(threadId, newSessionId);
+      this.context.logger.info(`📝 Updated session ID: ${oldSessionId} → ${newSessionId}`);
     }
   }
 
@@ -371,33 +355,48 @@ export class SessionManager {
 
   async archiveOldSessions(daysInactive: number): Promise<number> {
     const cutoff = Date.now() - daysInactive * 24 * 60 * 60 * 1000;
-    const oldSessions = this.db.getAllActive().filter((s) => {
-      return new Date(s.last_active_at).getTime() < cutoff;
+    const oldSessions = this.context.sessionStore.getAllActive().filter((s) => {
+      return s.lastActive < cutoff;
     });
 
     for (const session of oldSessions) {
-      this.db.archiveSession(session.discord_thread_id);
+      this.context.sessionStore.archiveSession(session.threadId);
     }
 
     return oldSessions.length;
   }
 
   getActiveSessionCount(): number {
-    return this.db.getActiveCount();
+    return this.context.sessionStore.getActiveCount();
   }
 
   getSessionByThreadId(threadId: string): SessionData | undefined {
-    const mapping = this.db.getMapping(threadId);
+    const mapping = this.context.sessionStore.getMapping(threadId);
     if (!mapping) return undefined;
 
     return {
-      sessionId: mapping.session_id,
-      threadId: mapping.discord_thread_id,
-      channelId: mapping.discord_channel_id,
-      workingDirectory: mapping.working_directory,
-      created: new Date(mapping.created_at),
-      lastActive: new Date(mapping.last_active_at),
-      status: mapping.status,
+      sessionId: mapping.sessionId,
+      threadId: mapping.threadId,
+      channelId: mapping.channelId,
+      workingDirectory: mapping.workingDirectory,
+      created: new Date(mapping.createdAt),
+      lastActive: new Date(mapping.lastActive),
+      status: mapping.archived ? 'archived' : 'active',
+    };
+  }
+
+  getSessionByMessageId(messageId: string): SessionData | undefined {
+    const mapping = this.context.sessionStore.getMappingByMessageId(messageId);
+    if (!mapping) return undefined;
+
+    return {
+      sessionId: mapping.sessionId,
+      threadId: mapping.threadId,
+      channelId: mapping.channelId,
+      workingDirectory: mapping.workingDirectory,
+      created: new Date(mapping.createdAt),
+      lastActive: new Date(mapping.lastActive),
+      status: mapping.archived ? 'archived' : 'active',
     };
   }
 

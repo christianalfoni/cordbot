@@ -3,13 +3,14 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import { useAuth } from './hooks/useAuth';
 import { Login } from './components/Login';
 import { Home } from './pages/Home';
-import { BotsList } from './pages/BotsList';
-import { BotPage } from './pages/BotPage';
+import { GuildPage } from './pages/GuildPage';
 import { GmailCallback } from './pages/GmailCallback';
 import { CliAuth } from './pages/CliAuth';
 import { Privacy } from './pages/Privacy';
 import { Terms } from './pages/Terms';
 import { Docs } from './pages/Docs';
+import { OAuthSuccess } from './pages/OAuthSuccess';
+import { DiscordCallback } from './pages/DiscordCallback';
 import { useEffect } from 'react';
 import chatBotLogo from './chat-bot-logo.svg';
 
@@ -68,9 +69,10 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/" element={<Home userData={userData} onSignOut={signOut} />} />
-      <Route path="/bots" element={<BotsList userData={userData} onSignOut={signOut} />} />
-      <Route path="/bot/:botId" element={<BotPage userData={userData} onSignOut={signOut} />} />
+      <Route path="/guild/:guildId" element={<GuildPage userData={userData} onSignOut={signOut} />} />
       <Route path="/docs" element={<Docs userData={userData} onSignOut={signOut} />} />
+      <Route path="/auth/discord/callback" element={<DiscordCallback userData={userData} />} />
+      <Route path="/guilds/:guildId/setup" element={<OAuthSuccess />} />
       <Route path="/auth/callback/gmail" element={<GmailCallback />} />
       <Route path="/auth/cli" element={<CliAuth />} />
       <Route path="*" element={<Navigate to="/" replace />} />

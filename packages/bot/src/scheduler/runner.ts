@@ -3,11 +3,12 @@ import chokidar from 'chokidar';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { Client, TextChannel } from 'discord.js';
 import { SessionManager } from '../agent/manager.js';
 import { ChannelMapping } from '../discord/sync.js';
 import { parseCronFile, CronJob, validateCronSchedule } from './parser.js';
 import { streamToDiscord } from '../agent/stream.js';
+import type { IDiscordAdapter, ITextChannel, IThreadChannel } from '../interfaces/discord.js';
+import type { ILogger } from '../interfaces/logger.js';
 
 interface ScheduledTask {
   job: CronJob;
@@ -22,22 +23,23 @@ export class CronRunner {
   private channelMappings: Map<string, ChannelMapping> = new Map();
 
   constructor(
-    private client: Client,
-    private sessionManager: SessionManager
+    private discord: IDiscordAdapter,
+    private sessionManager: SessionManager,
+    private logger: ILogger
   ) {}
 
   /**
    * Start watching and scheduling cron jobs for all channels
    */
   start(channelMappings: ChannelMapping[]): void {
-    console.log('⏰ Starting cron scheduler...');
+    this.logger.info('⏰ Starting cron scheduler...');
 
     for (const mapping of channelMappings) {
       this.channelMappings.set(mapping.channelId, mapping);
       this.watchCronFile(mapping);
     }
 
-    console.log(`✅ Watching ${channelMappings.length} cron files`);
+    this.logger.info(`✅ Watching ${channelMappings.length} cron files`);
   }
 
   /**
@@ -46,7 +48,7 @@ export class CronRunner {
   addChannel(mapping: ChannelMapping): void {
     this.channelMappings.set(mapping.channelId, mapping);
     this.watchCronFile(mapping);
-    console.log(`✅ Now watching cron file for #${mapping.channelName}`);
+    this.logger.info(`✅ Now watching cron file for #${mapping.channelName}`);
   }
 
   /**
@@ -66,7 +68,7 @@ export class CronRunner {
     // Remove from channel mappings
     this.channelMappings.delete(channelId);
 
-    console.log(`⏸️  Stopped watching channel ${channelId}`);
+    this.logger.info(`⏸️  Stopped watching channel ${channelId}`);
   }
 
   /**
@@ -85,12 +87,12 @@ export class CronRunner {
     });
 
     watcher.on('change', () => {
-      console.log(`🔄 Cron file changed: ${cronPath}`);
+      this.logger.info(`🔄 Cron file changed: ${cronPath}`);
       this.loadAndScheduleJobs(channelId, cronPath, folderPath);
     });
 
     watcher.on('error', (error) => {
-      console.error(`Failed to watch cron file ${cronPath}:`, error);
+      this.logger.error(`Failed to watch cron file ${cronPath}:`, error);
     });
 
     this.watchers.set(channelId, watcher);
@@ -112,7 +114,7 @@ export class CronRunner {
       const config = parseCronFile(cronPath);
 
       if (config.jobs.length === 0) {
-        console.log(`No jobs configured for channel ${channelId}`);
+        this.logger.info(`No jobs configured for channel ${channelId}`);
         return;
       }
 
@@ -122,7 +124,7 @@ export class CronRunner {
       for (const job of config.jobs) {
         // Validate cron schedule
         if (!validateCronSchedule(job.schedule)) {
-          console.error(
+          this.logger.error(
             `Invalid cron schedule for job "${job.name}": ${job.schedule}`
           );
           continue;
@@ -135,14 +137,14 @@ export class CronRunner {
 
         tasks.push({ job, task, channelId, folderPath });
 
-        console.log(
+        this.logger.info(
           `📅 Scheduled job "${job.name}" for channel ${channelId}: ${job.schedule}`
         );
       }
 
       this.scheduledTasks.set(channelId, tasks);
     } catch (error) {
-      console.error(`Failed to load cron file ${cronPath}:`, error);
+      this.logger.error(`Failed to load cron file ${cronPath}:`, error);
     }
   }
 
@@ -154,13 +156,13 @@ export class CronRunner {
     channelId: string,
     folderPath: string
   ): Promise<void> {
-    console.log(`⏰ Executing scheduled job: ${job.name}`);
+    this.logger.info(`⏰ Executing scheduled job: ${job.name}`);
 
     try {
-      const channel = this.client.channels.cache.get(channelId) as TextChannel;
+      const channel = await this.discord.getChannel(channelId);
 
       if (!channel) {
-        console.error(`Channel ${channelId} not found`);
+        this.logger.error(`Channel ${channelId} not found`);
         return;
       }
 
@@ -168,7 +170,10 @@ export class CronRunner {
       const sessionId = `cron_${Date.now()}_${job.name}`;
 
       // Set channel and working directory context for tools
-      this.sessionManager.setChannelContext(sessionId, channel);
+      // Only set channel context if it's a text or thread channel
+      if (channel.isTextChannel() || channel.isThreadChannel()) {
+        this.sessionManager.setChannelContext(sessionId, channel);
+      }
       this.sessionManager.setWorkingDirContext(sessionId, folderPath);
       this.sessionManager.setChannelIdContext(sessionId, channelId);
 
@@ -176,7 +181,7 @@ export class CronRunner {
         // Get CLAUDE.md path from mapping
         const mapping = this.channelMappings.get(channelId);
         if (!mapping) {
-          console.error(`❌ No channel mapping found for ${channelId}`);
+          this.logger.error(`❌ No channel mapping found for ${channelId}`);
           return;
         }
 
@@ -188,12 +193,12 @@ export class CronRunner {
             // Populate memory before reading
             await this.sessionManager.populateMemory(claudeMdPath, channelId, sessionId);
             systemPrompt = fs.readFileSync(claudeMdPath, 'utf-8');
-            console.log(`📖 Read CLAUDE.md for cron job (${systemPrompt.length} chars)`);
+            this.logger.info(`📖 Read CLAUDE.md for cron job (${systemPrompt.length} chars)`);
           } catch (error) {
-            console.error('Failed to read CLAUDE.md for cron job:', error);
+            this.logger.error('Failed to read CLAUDE.md for cron job:', error);
           }
         } else {
-          console.warn(`⚠️  CLAUDE.md not found at ${claudeMdPath}`);
+          this.logger.warn(`⚠️  CLAUDE.md not found at ${claudeMdPath}`);
         }
 
         // Create query for Claude with special instructions for scheduled tasks
@@ -209,19 +214,33 @@ Task: ${job.task}`;
         );
 
         // Stream response - only send final message for cron jobs
+        // Cron jobs should only run on text or thread channels, not forum channels
+        if (!(channel.isTextChannel() || channel.isThreadChannel())) {
+          this.logger.error('Cron jobs can only run on text or thread channels');
+          return;
+        }
+
+        // streamToDiscord expects raw Discord.js types (TextChannel or ThreadChannel only)
+        const rawChannel = channel._raw;
+        if (!rawChannel) {
+          this.logger.error('Channel does not have raw Discord.js type');
+          return;
+        }
+
         await streamToDiscord(
           queryResult,
-          channel,
+          rawChannel as import('discord.js').TextChannel | import('discord.js').ThreadChannel,
           this.sessionManager,
           sessionId,
           folderPath,
+          this.logger,
           undefined, // botConfig
           undefined, // messagePrefix (not used for cron jobs)
           undefined, // parentChannelId
           true // isCronJob - only sends final message with clock emoji suffix
         );
 
-        console.log(`✅ Completed scheduled job: ${job.name}`);
+        this.logger.info(`✅ Completed scheduled job: ${job.name}`);
 
         // Note: Cron sessions are standalone and not continuable
         // Each cron job creates a fresh session
@@ -237,7 +256,7 @@ Task: ${job.task}`;
         this.sessionManager.clearChannelIdContext(sessionId);
       }
     } catch (error) {
-      console.error(`Failed to execute job "${job.name}":`, error);
+      this.logger.error(`Failed to execute job "${job.name}":`, error);
     }
   }
 
@@ -250,7 +269,7 @@ Task: ${job.task}`;
     if (tasks) {
       for (const { task, job } of tasks) {
         task.stop();
-        console.log(`⏸️  Stopped job: ${job.name}`);
+        this.logger.info(`⏸️  Stopped job: ${job.name}`);
       }
 
       this.scheduledTasks.delete(channelId);
@@ -268,7 +287,7 @@ Task: ${job.task}`;
     try {
       const mapping = this.channelMappings.get(channelId);
       if (!mapping) {
-        console.error(`Cannot find channel mapping for ${channelId}`);
+        this.logger.error(`Cannot find channel mapping for ${channelId}`);
         return;
       }
 
@@ -284,9 +303,9 @@ Task: ${job.task}`;
       const yamlContent = yaml.dump({ jobs: updatedJobs });
       fs.writeFileSync(cronPath, yamlContent, 'utf-8');
 
-      console.log(`🗑️  Removed one-time job: ${jobName}`);
+      this.logger.info(`🗑️  Removed one-time job: ${jobName}`);
     } catch (error) {
-      console.error(`Failed to remove one-time job "${jobName}":`, error);
+      this.logger.error(`Failed to remove one-time job "${jobName}":`, error);
     }
   }
 
@@ -294,7 +313,7 @@ Task: ${job.task}`;
    * Stop all scheduled tasks and watchers
    */
   stop(): void {
-    console.log('⏸️  Stopping cron scheduler...');
+    this.logger.info('⏸️  Stopping cron scheduler...');
 
     // Stop all scheduled tasks
     for (const [channelId, tasks] of this.scheduledTasks) {
@@ -304,10 +323,10 @@ Task: ${job.task}`;
     // Stop all watchers
     for (const [channelId, watcher] of this.watchers) {
       watcher.close();
-      console.log(`⏸️  Stopped watching channel ${channelId}`);
+      this.logger.info(`⏸️  Stopped watching channel ${channelId}`);
     }
 
     this.watchers.clear();
-    console.log('✅ Cron scheduler stopped');
+    this.logger.info('✅ Cron scheduler stopped');
   }
 }

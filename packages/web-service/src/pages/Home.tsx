@@ -1,38 +1,49 @@
 import { UserData } from '../hooks/useAuth';
 import { Navigation } from '../components/Navigation';
-import { useHostedBots } from '../hooks/useHostedBots';
-import { useState } from 'react';
-import { CreateBotModal } from '../components/CreateBotModal';
-import { SparklesIcon, BoltIcon, ShieldCheckIcon, CodeBracketIcon, UserIcon, UsersIcon, PuzzlePieceIcon } from '@heroicons/react/24/outline';
+import { useGuilds } from '../hooks/useGuilds';
+import { SparklesIcon, BoltIcon, ShieldCheckIcon, CodeBracketIcon } from '@heroicons/react/24/outline';
 
 interface HomeProps {
   userData: UserData;
   onSignOut: () => void;
 }
 
+// Discord OAuth configuration
+const DISCORD_CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID || '';
+const REDIRECT_URI = import.meta.env.VITE_DISCORD_REDIRECT_URI ||
+  `${window.location.origin}/auth/discord/callback`;
+
 export function Home({ userData, onSignOut }: HomeProps) {
-  const { bots } = useHostedBots(userData.id);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const { guilds } = useGuilds(userData.id);
+
+  const handleAddToDiscord = () => {
+    // Build Discord OAuth URL
+    // Scopes: bot (add bot), applications.commands (slash commands), guilds (read guild info)
+    const oauthUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&permissions=277025508352&scope=bot%20applications.commands%20guilds&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+
+    // Navigate to Discord OAuth in same tab
+    window.location.href = oauthUrl;
+  };
 
   const features = [
     {
-      name: 'AI-Powered Conversations',
-      description: 'Leverage Claude\'s advanced AI capabilities to create intelligent, context-aware Discord bots that understand and respond naturally.',
+      name: 'Remembers Everything',
+      description: 'Your bot builds context from every conversation, so it can reference past discussions and understand your community over time.',
       icon: SparklesIcon,
     },
     {
-      name: 'Lightning Fast Setup',
-      description: 'Get your bot running in minutes. No complex configuration or server management required.',
+      name: 'Ready in 30 Seconds',
+      description: 'One click to add to your server. No API keys, no configuration—your bot is online and ready to help immediately.',
       icon: BoltIcon,
     },
     {
-      name: 'Secure & Reliable',
-      description: 'Built with security in mind. Your bot credentials and data are encrypted and protected.',
+      name: 'Always Available',
+      description: 'Your bot never goes offline. It\'s there 24/7 to answer questions, help moderate, and keep conversations flowing.',
       icon: ShieldCheckIcon,
     },
     {
-      name: 'Open Source & Free',
-      description: 'Fully open source for those who want to host their own bot. Self-hosting is completely free.',
+      name: 'Free to Try',
+      description: 'Start with a free trial to test CordBot in your server. Open source and available for self-hosting if you prefer.',
       icon: CodeBracketIcon,
     },
   ];
@@ -43,8 +54,7 @@ export function Home({ userData, onSignOut }: HomeProps) {
         userPhotoURL={userData.photoURL}
         userDisplayName={userData.displayName}
         onSignOut={onSignOut}
-        bots={bots}
-        onCreateBot={() => setShowCreateModal(true)}
+        guilds={guilds}
       />
 
       <main className="lg:pl-72">
@@ -52,24 +62,54 @@ export function Home({ userData, onSignOut }: HomeProps) {
           {/* Hero Section */}
           <div className="text-center mb-16">
             <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-6xl">
-              Deploy Intelligent Discord Bots
+              AI Community Bot for Discord
             </h1>
             <p className="mt-6 text-lg leading-8 text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-              Deploy powerful AI-powered Discord bots using Claude. Perfect for communities, support channels, or just having fun.
+              Add an AI bot to your Discord server that remembers conversations, answers questions, and helps you manage your community—all with one click.
             </p>
-            <div className="mt-10 flex items-center justify-center gap-x-6">
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="rounded-lg bg-indigo-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:bg-indigo-500 dark:hover:bg-indigo-400"
-              >
-                Create Your First Bot
-              </button>
-              <a
-                href="/docs"
-                className="text-base font-semibold leading-7 text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400"
-              >
-                Learn more <span aria-hidden="true">→</span>
-              </a>
+            <div className="mt-10 flex flex-col items-center justify-center gap-4">
+              {userData.hostingBetaApproved ? (
+                <div className="flex items-center gap-x-6">
+                  <button
+                    onClick={handleAddToDiscord}
+                    className="rounded-lg bg-indigo-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                  >
+                    Add to Discord Server
+                  </button>
+                  <a
+                    href="/docs"
+                    className="text-base font-semibold leading-7 text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400"
+                  >
+                    Learn more <span aria-hidden="true">→</span>
+                  </a>
+                </div>
+              ) : (
+                <div className="max-w-2xl">
+                  <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 p-6 border border-yellow-200 dark:border-yellow-800">
+                    <div className="flex items-start gap-3">
+                      <svg className="h-6 w-6 text-yellow-600 dark:text-yellow-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      </svg>
+                      <div className="flex-1">
+                        <h3 className="text-base font-semibold text-yellow-800 dark:text-yellow-300 mb-2">
+                          Beta Access Required
+                        </h3>
+                        <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                          CordBot is currently in private beta. Request access to start adding bots to your Discord servers.
+                        </p>
+                        <div className="mt-4 flex gap-4">
+                          <a
+                            href="/docs"
+                            className="text-sm font-semibold text-yellow-800 dark:text-yellow-300 hover:text-yellow-900 dark:hover:text-yellow-200"
+                          >
+                            Learn more →
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -97,127 +137,8 @@ export function Home({ userData, onSignOut }: HomeProps) {
               ))}
             </div>
           </div>
-
-          {/* Bot Modes Section */}
-          <div className="mt-20 mx-auto max-w-7xl">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-4xl">
-                Choose Your Bot Mode
-              </h2>
-              <p className="mt-4 text-lg text-gray-600 dark:text-gray-400">
-                Create bots tailored to your needs
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Personal Bot */}
-              <div className="relative bg-white dark:bg-gray-800 p-8 rounded-lg border-2 border-blue-200 dark:border-blue-800">
-                <div className="flex items-center gap-x-3 mb-4">
-                  <UserIcon className="h-8 w-8 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    Personal Bot
-                  </h3>
-                </div>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  Your private AI assistant that only responds to you. Perfect for personal productivity, note-taking, and private conversations.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                  <li className="flex items-start gap-x-2">
-                    <span className="text-blue-600 dark:text-blue-400">•</span>
-                    <span>Responds only to your messages</span>
-                  </li>
-                  <li className="flex items-start gap-x-2">
-                    <span className="text-blue-600 dark:text-blue-400">•</span>
-                    <span>Private conversation history</span>
-                  </li>
-                  <li className="flex items-start gap-x-2">
-                    <span className="text-blue-600 dark:text-blue-400">•</span>
-                    <span>Ideal for personal servers</span>
-                  </li>
-                </ul>
-              </div>
-
-              {/* Shared Bot */}
-              <div className="relative bg-white dark:bg-gray-800 p-8 rounded-lg border-2 border-purple-200 dark:border-purple-800">
-                <div className="flex items-center gap-x-3 mb-4">
-                  <UsersIcon className="h-8 w-8 text-purple-600 dark:text-purple-400" aria-hidden="true" />
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    Shared Bot
-                  </h3>
-                </div>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  A community assistant available to everyone in your server. Great for support, moderation, and engaging with your community.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                  <li className="flex items-start gap-x-2">
-                    <span className="text-purple-600 dark:text-purple-400">•</span>
-                    <span>Responds to all server members</span>
-                  </li>
-                  <li className="flex items-start gap-x-2">
-                    <span className="text-purple-600 dark:text-purple-400">•</span>
-                    <span>Shared conversation context</span>
-                  </li>
-                  <li className="flex items-start gap-x-2">
-                    <span className="text-purple-600 dark:text-purple-400">•</span>
-                    <span>Perfect for communities</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          {/* Integrations Section */}
-          <div className="mt-20 mx-auto max-w-7xl">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-4xl">
-                Powerful Integrations
-              </h2>
-              <p className="mt-4 text-lg text-gray-600 dark:text-gray-400">
-                Connect your bot to external services for enhanced capabilities
-              </p>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 p-8 rounded-lg border border-gray-200 dark:border-gray-700">
-              <div className="flex items-center gap-x-3 mb-6">
-                <PuzzlePieceIcon className="h-8 w-8 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  Available Integrations
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                  <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Gmail</h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Send and read emails directly from Discord
-                  </p>
-                </div>
-
-                <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                  <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Google Calendar</h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Manage events and schedule meetings
-                  </p>
-                </div>
-
-                <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                  <h4 className="font-semibold text-gray-900 dark:text-white mb-2">More Coming Soon</h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    We're constantly adding new integrations
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </main>
-
-      {showCreateModal && (
-        <CreateBotModal
-          onClose={() => setShowCreateModal(false)}
-          userId={userData.id}
-        />
-      )}
     </div>
   );
 }

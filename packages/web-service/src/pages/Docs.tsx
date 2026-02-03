@@ -1,9 +1,7 @@
 import { UserData } from '../hooks/useAuth';
 import { Navigation } from '../components/Navigation';
 import { Documentation } from '../components/Documentation';
-import { useHostedBots } from '../hooks/useHostedBots';
-import { useState } from 'react';
-import { CreateBotModal } from '../components/CreateBotModal';
+import { useGuilds } from '../hooks/useGuilds';
 
 interface DocsProps {
   userData: UserData;
@@ -11,8 +9,7 @@ interface DocsProps {
 }
 
 export function Docs({ userData, onSignOut }: DocsProps) {
-  const { bots } = useHostedBots(userData.id);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const { guilds } = useGuilds(userData.id);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -20,8 +17,7 @@ export function Docs({ userData, onSignOut }: DocsProps) {
         userPhotoURL={userData.photoURL}
         userDisplayName={userData.displayName}
         onSignOut={onSignOut}
-        bots={bots}
-        onCreateBot={() => setShowCreateModal(true)}
+        guilds={guilds}
       />
 
       {/* Main Content */}
@@ -30,13 +26,6 @@ export function Docs({ userData, onSignOut }: DocsProps) {
           <Documentation />
         </div>
       </main>
-
-      {showCreateModal && (
-        <CreateBotModal
-          onClose={() => setShowCreateModal(false)}
-          userId={userData.id}
-        />
-      )}
     </div>
   );
 }

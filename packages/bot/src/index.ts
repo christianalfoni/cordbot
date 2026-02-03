@@ -1,19 +1,30 @@
 import { initializeClaudeFolder } from "./init.js";
-import { createDiscordClient } from "./discord/client.js";
+import { createProductionBotContext } from "./implementations/factory.js";
 import { syncChannelsOnStartup } from "./discord/sync.js";
 import { setupEventHandlers } from "./discord/events.js";
-import { SessionDatabase } from "./storage/database.js";
 import { SessionManager } from "./agent/manager.js";
 import { CronRunner } from "./scheduler/runner.js";
 import { HealthServer } from "./health/server.js";
 import cron from 'node-cron';
 import { runDailyMemoryCompression } from "./memory/compress.js";
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import type { IBotContext } from "./interfaces/core.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export async function startBot(cwd: string): Promise<void> {
   // Set HOME environment variable to current working directory
   process.env.HOME = cwd;
 
-  console.log("🚀 Initializing Cordbot...\n");
+  // Read version from package.json
+  const packageJsonPath = path.join(__dirname, '..', 'package.json');
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+  const version = packageJson.version || 'unknown';
+
+  console.log(`🚀 Initializing Cordbot v${version}...\n`);
 
   // Initialize .claude folder and storage
   const { storageDir, sessionsDir, claudeDir, isFirstRun } = initializeClaudeFolder(cwd);
@@ -44,25 +55,32 @@ export async function startBot(cwd: string): Promise<void> {
 
   const botConfig = { mode: botMode, id: botId, username: botUsername };
 
-  // Initialize storage
-  const db = new SessionDatabase(storageDir);
-  console.log(`📊 Active sessions: ${db.getActiveCount()}\n`);
+  // Create bot context with all dependencies
+  console.log("🔌 Initializing bot context...\n");
+  const context: IBotContext = await createProductionBotContext({
+    discordToken: token,
+    anthropicApiKey: apiKey,
+    guildId,
+    workingDirectory: cwd,
+    memoryContextSize,
+    serviceUrl: process.env.SERVICE_URL,
+  });
 
-  // Initialize session manager
-  const sessionManager = new SessionManager(db, sessionsDir, cwd, memoryContextSize);
+  // Check active sessions
+  const activeSessions = context.sessionStore.getAllActive();
+  console.log(`📊 Active sessions: ${activeSessions.length}\n`);
+
+  // Initialize session manager with context
+  const sessionManager = new SessionManager(context, sessionsDir, cwd, memoryContextSize);
   await sessionManager.initialize(token);
   console.log("");
 
-  // Connect to Discord
-  console.log("🔌 Connecting to Discord...\n");
-  const client = await createDiscordClient({ token, guildId });
-
   // Sync channels with folders
-  const channelMappings = await syncChannelsOnStartup(client, guildId, cwd, botConfig);
+  const channelMappings = await syncChannelsOnStartup(context.discord, guildId, cwd, botConfig);
   console.log("");
 
   // Start cron scheduler
-  const cronRunner = new CronRunner(client, sessionManager);
+  const cronRunner = new CronRunner(context.discord, sessionManager, context.logger);
   cronRunner.start(channelMappings);
   console.log("");
 
@@ -80,15 +98,14 @@ export async function startBot(cwd: string): Promise<void> {
   console.log("");
 
   // Setup event handlers (after cron runner is initialized)
-  setupEventHandlers(client, sessionManager, channelMappings, cwd, guildId, cronRunner, botConfig);
+  setupEventHandlers(context, sessionManager, channelMappings, cwd, guildId, cronRunner, context.logger, botConfig);
   console.log("✅ Event handlers registered\n");
 
   // Start health check server (if port is configured)
   const healthPort = parseInt(process.env.HEALTH_PORT || "8080");
   const healthServer = new HealthServer({
     port: healthPort,
-    client,
-    db,
+    context,
     startTime: new Date(),
   });
   healthServer.start();
@@ -109,13 +126,16 @@ export async function startBot(cwd: string): Promise<void> {
     // Stop token refresh
     sessionManager.shutdown();
 
-    // Close database
-    db.close();
-    console.log("🗄️  Database closed");
+    // Stop scheduler
+    context.scheduler.stopAll();
+    console.log("🗄️  Scheduler stopped");
 
     // Destroy Discord client
-    client.destroy();
-    console.log("🔌 Discord client disconnected");
+    const discordClient = context.discord.getRawClient();
+    if (discordClient && discordClient.destroy) {
+      discordClient.destroy();
+      console.log("🔌 Discord client disconnected");
+    }
 
     console.log("\n👋 Cordbot stopped");
     process.exit(0);

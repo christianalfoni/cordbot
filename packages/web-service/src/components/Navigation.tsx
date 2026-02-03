@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from '@headlessui/react';
-import { Bars3Icon, XMarkIcon, HomeIcon, DocumentTextIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, XMarkIcon, HomeIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import { Link, useLocation } from 'react-router-dom';
 import chatBotLogo from '../chat-bot-logo.svg';
 
@@ -8,15 +8,14 @@ interface NavigationProps {
   userPhotoURL?: string | null;
   userDisplayName?: string | null;
   onSignOut: () => void;
-  bots?: Array<{ id: string; botName: string }>;
-  onCreateBot?: () => void;
+  guilds?: Array<{ id: string; guildName: string; guildIcon: string | null }>;
 }
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(' ');
 }
 
-export function Navigation({ userPhotoURL, userDisplayName, onSignOut, bots = [], onCreateBot }: NavigationProps) {
+export function Navigation({ userPhotoURL, userDisplayName, onSignOut, guilds = [] }: NavigationProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
@@ -57,20 +56,6 @@ export function Navigation({ userPhotoURL, userDisplayName, onSignOut, bots = []
                 <ul role="list" className="flex flex-1 flex-col gap-y-7">
                   <li>
                     <ul role="list" className="-mx-2 space-y-1">
-                      {onCreateBot && (
-                        <li className="mb-4 flex justify-center">
-                          <button
-                            onClick={() => {
-                              setSidebarOpen(false);
-                              onCreateBot();
-                            }}
-                            className="inline-flex items-center gap-x-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:bg-indigo-500 dark:shadow-none dark:hover:bg-indigo-400 dark:focus-visible:outline-indigo-500"
-                          >
-                            <PlusIcon aria-hidden="true" className="-ml-0.5 size-5" />
-                            Create Bot
-                          </button>
-                        </li>
-                      )}
                       {navigation.map((item) => (
                         <li key={item.name}>
                           <Link
@@ -98,33 +83,41 @@ export function Navigation({ userPhotoURL, userDisplayName, onSignOut, bots = []
                       ))}
                     </ul>
                   </li>
-                  {bots.length > 0 && (
+                  {guilds.length > 0 && (
                     <li>
-                      <div className="text-xs/6 font-semibold text-gray-400">Your Bots</div>
+                      <div className="text-xs/6 font-semibold text-gray-400">Your Guilds</div>
                       <ul role="list" className="-mx-2 mt-2 space-y-1">
-                        {bots.map((bot) => (
-                          <li key={bot.id}>
+                        {guilds.map((guild) => (
+                          <li key={guild.id}>
                             <Link
-                              to={`/bot/${bot.id}`}
+                              to={`/guild/${guild.id}`}
                               onClick={() => setSidebarOpen(false)}
                               className={classNames(
-                                location.pathname === `/bot/${bot.id}`
+                                location.pathname === `/guild/${guild.id}`
                                   ? 'bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white'
                                   : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
                                 'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
                               )}
                             >
-                              <span
-                                className={classNames(
-                                  location.pathname === `/bot/${bot.id}`
-                                    ? 'border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white'
-                                    : 'border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white',
-                                  'flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5',
-                                )}
-                              >
-                                {bot.botName.charAt(0).toUpperCase()}
-                              </span>
-                              <span className="truncate">{bot.botName}</span>
+                              {guild.guildIcon ? (
+                                <img
+                                  src={`https://cdn.discordapp.com/icons/${guild.id}/${guild.guildIcon}.png`}
+                                  alt=""
+                                  className="size-6 shrink-0 rounded-lg"
+                                />
+                              ) : (
+                                <span
+                                  className={classNames(
+                                    location.pathname === `/guild/${guild.id}`
+                                      ? 'border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white'
+                                      : 'border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white',
+                                    'flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5',
+                                  )}
+                                >
+                                  {guild.guildName.charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                              <span className="truncate">{guild.guildName}</span>
                             </Link>
                           </li>
                         ))}
@@ -149,17 +142,6 @@ export function Navigation({ userPhotoURL, userDisplayName, onSignOut, bots = []
             <ul role="list" className="flex flex-1 flex-col gap-y-7">
               <li>
                 <ul role="list" className="-mx-2 space-y-1">
-                  {onCreateBot && (
-                    <li className="mb-4 flex justify-center">
-                      <button
-                        onClick={onCreateBot}
-                        className="inline-flex items-center gap-x-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:bg-indigo-500 dark:shadow-none dark:hover:bg-indigo-400 dark:focus-visible:outline-indigo-500"
-                      >
-                        <PlusIcon aria-hidden="true" className="-ml-0.5 size-5" />
-                        Create Bot
-                      </button>
-                    </li>
-                  )}
                   {navigation.map((item) => (
                     <li key={item.name}>
                       <Link
@@ -186,32 +168,40 @@ export function Navigation({ userPhotoURL, userDisplayName, onSignOut, bots = []
                   ))}
                 </ul>
               </li>
-              {bots.length > 0 && (
+              {guilds.length > 0 && (
                 <li>
-                  <div className="text-xs/6 font-semibold text-gray-400">Your Bots</div>
+                  <div className="text-xs/6 font-semibold text-gray-400">Your Guilds</div>
                   <ul role="list" className="-mx-2 mt-2 space-y-1">
-                    {bots.map((bot) => (
-                      <li key={bot.id}>
+                    {guilds.map((guild) => (
+                      <li key={guild.id}>
                         <Link
-                          to={`/bot/${bot.id}`}
+                          to={`/guild/${guild.id}`}
                           className={classNames(
-                            location.pathname === `/bot/${bot.id}`
+                            location.pathname === `/guild/${guild.id}`
                               ? 'bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white'
                               : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
                             'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
                           )}
                         >
-                          <span
-                            className={classNames(
-                              location.pathname === `/bot/${bot.id}`
-                                ? 'border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white'
-                                : 'border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white',
-                              'flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5',
-                            )}
-                          >
-                            {bot.botName.charAt(0).toUpperCase()}
-                          </span>
-                          <span className="truncate">{bot.botName}</span>
+                          {guild.guildIcon ? (
+                            <img
+                              src={`https://cdn.discordapp.com/icons/${guild.id}/${guild.guildIcon}.png`}
+                              alt=""
+                              className="size-6 shrink-0 rounded-lg"
+                            />
+                          ) : (
+                            <span
+                              className={classNames(
+                                location.pathname === `/guild/${guild.id}`
+                                  ? 'border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white'
+                                  : 'border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white',
+                                'flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5',
+                              )}
+                            >
+                              {guild.guildName.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                          <span className="truncate">{guild.guildName}</span>
                         </Link>
                       </li>
                     ))}

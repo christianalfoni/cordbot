@@ -8,9 +8,10 @@ export interface BotConfig {
 export async function createDiscordClient(config: BotConfig): Promise<Client> {
   const client = new Client({
     intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.Guilds,              // Guild/channel info
+      GatewayIntentBits.GuildMessages,       // Message events
+      GatewayIntentBits.MessageContent,      // Message content (PRIVILEGED)
+      GatewayIntentBits.GuildMembers,        // Member list/info (PRIVILEGED)
     ],
   });
 

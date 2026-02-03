@@ -9,7 +9,6 @@ import { BotOnboarding } from '../components/BotOnboarding';
 import { Navigation } from '../components/Navigation';
 import { DeploymentModal } from '../components/DeploymentModal';
 import { HostingBetaApply } from '../components/HostingBetaApply';
-import { CreateBotModal } from '../components/CreateBotModal';
 import { GmailIntegration } from '../components/GmailIntegration';
 import chatBotLogo from '../chat-bot-logo.svg';
 
@@ -25,7 +24,6 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
   const [bot, setBot] = useState<Bot | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeploymentModal, setShowDeploymentModal] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteStatus, setDeleteStatus] = useState<string>('');
 
@@ -126,7 +124,6 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
         userDisplayName={userData.displayName}
         onSignOut={onSignOut}
         bots={bots}
-        onCreateBot={() => setShowCreateModal(true)}
       />
 
       {/* Main Content */}
@@ -452,13 +449,6 @@ export function BotPage({ userData, onSignOut }: BotPageProps) {
         )}
         </div>
       </main>
-
-      {showCreateModal && (
-        <CreateBotModal
-          onClose={() => setShowCreateModal(false)}
-          userId={userData.id}
-        />
-      )}
     </div>
   );
 }

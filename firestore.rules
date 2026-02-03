@@ -40,6 +40,15 @@ service cloud.firestore {
       }
     }
 
+    // Guilds collection (OAuth-based shared bot model)
+    match /guilds/{guildId} {
+      // Anyone can read guild info (for display purposes)
+      allow read: if true;
+
+      // Only Cloud Functions can create/update/delete guilds
+      allow create, update, delete: if false;
+    }
+
     // Deny all other access
     match /{document=**} {
       allow read, write: if false;

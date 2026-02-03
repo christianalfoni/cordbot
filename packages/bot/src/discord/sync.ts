@@ -1,10 +1,10 @@
-import { Client, TextChannel } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import { loadMemoriesForChannel, formatMemoriesForClaudeMd } from '../memory/loader.js';
 import { logMemoryLoaded } from '../memory/logger.js';
+import type { IDiscordAdapter, ITextChannel } from '../interfaces/discord.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,12 +24,12 @@ export interface BotConfig {
 }
 
 export async function syncChannelsOnStartup(
-  client: Client,
+  discord: IDiscordAdapter,
   guildId: string,
   basePath: string,
   botConfig?: BotConfig
 ): Promise<ChannelMapping[]> {
-  const guild = client.guilds.cache.get(guildId);
+  const guild = await discord.getGuild(guildId);
 
   if (!guild) {
     throw new Error(`Guild ${guildId} not found. Make sure the bot is added to the server.`);
@@ -40,14 +40,17 @@ export async function syncChannelsOnStartup(
   const mappings: ChannelMapping[] = [];
 
   // Fetch all text channels
-  const channels = guild.channels.cache.filter(
-    channel => channel.isTextBased() && !channel.isThread()
-  );
+  const channels = await discord.listChannels(guildId);
+  const textChannels = channels.filter(ch => {
+    // Filter for text channels only (type 0 is GuildText)
+    return ch.type === 0;
+  });
 
   const homeDir = os.homedir();
 
-  for (const [, channel] of channels) {
-    if (!(channel instanceof TextChannel)) continue;
+  for (const channel of textChannels) {
+    // Type guard ensures this is ITextChannel
+    if (!channel.isTextChannel()) continue;
 
     const channelName = channel.name;
     const folderPath = path.join(basePath, channelName);
@@ -103,36 +106,109 @@ async function createChannelClaudeMd(
   discordTopic: string,
   botConfig?: BotConfig
 ): Promise<void> {
-  // Create CLAUDE.md with default bot instructions and channel-specific section
+  // Create CLAUDE.md with community assistant system prompt
   let content = '';
 
-  // General Instructions (merged with intro)
-  content += `## General Instructions\n\n`;
-  content += `You are a coding assistant running on a Discord server with access to a workspace. You help users and communities with whatever they need, including coding tasks, file operations, web searches, scheduling, and general assistance.\n\n`;
-  content += `- You have access to a workspace where you can create, read, and modify files\n`;
-  content += `- Execute tasks using the available tools\n\n`;
+  // Header
+  content += `# CordBot - Discord Community Assistant\n\n`;
+  content += `You are CordBot, an AI assistant designed to help manage and support Discord communities.\n\n`;
+
+  // Core Capabilities
+  content += `## Your Core Capabilities\n\n`;
+
+  // 1. Community Understanding
+  content += `### 1. Community Understanding\n`;
+  content += `- You track all public messages in this server\n`;
+  content += `- You have access to recent message history per channel\n`;
+  content += `- You can answer questions about recent discussions and activity patterns\n`;
+  content += `- Ask you: "What have people been discussing?" or "Summarize today's activity"\n\n`;
+
+  // 2. Discord Server Management
+  content += `### 2. Discord Server Management\n`;
+  content += `You have access to Discord management tools:\n\n`;
+
+  content += `**Channels:**\n`;
+  content += `- \`discord_list_channels\` - See all channels\n`;
+  content += `- \`discord_send_message\` - Send message to any channel\n`;
+  content += `- \`discord_create_channel\` - Create new channel\n`;
+  content += `- \`discord_delete_channel\` - Delete channel (asks permission)\n\n`;
+
+  content += `**Members:**\n`;
+  content += `- \`discord_list_members\` - List server members\n`;
+  content += `- \`discord_get_member\` - Get member info and roles\n`;
+  content += `- \`discord_kick_member\` - Kick member (asks permission)\n`;
+  content += `- \`discord_ban_member\` - Ban member (asks permission)\n\n`;
+
+  content += `**Roles:**\n`;
+  content += `- \`discord_list_roles\` - See all roles\n`;
+  content += `- \`discord_assign_role\` - Assign role to member\n`;
+  content += `- \`discord_remove_role\` - Remove role from member\n`;
+  content += `- \`discord_create_role\` - Create new role\n\n`;
+
+  content += `**Events:**\n`;
+  content += `- \`discord_create_event\` - Schedule community events\n`;
+  content += `- \`discord_list_events\` - See upcoming events\n`;
+  content += `- \`discord_get_event\` - Get event details\n`;
+  content += `- \`discord_delete_event\` - Cancel events (asks permission)\n`;
+  content += `- \`discord_get_event_users\` - See who's attending\n\n`;
+
+  content += `**Polls:**\n`;
+  content += `- \`discord_create_poll\` - Create polls for decisions\n`;
+  content += `- \`discord_get_poll_results\` - View poll results\n\n`;
+
+  content += `**Forums:**\n`;
+  content += `- \`discord_create_forum_channel\` - Create forum channels\n`;
+  content += `- \`discord_list_forum_posts\` - List forum posts\n`;
+  content += `- \`discord_create_forum_post\` - Create new forum posts\n`;
+  content += `- \`discord_delete_forum_post\` - Delete forum posts (asks permission)\n\n`;
+
+  content += `**Permission System:** You'll always ask for approval before:\n`;
+  content += `- Creating or deleting channels\n`;
+  content += `- Kicking or banning members\n`;
+  content += `- Managing roles\n`;
+  content += `- Creating or deleting events\n`;
+  content += `- Creating polls or forum channels\n`;
+  content += `- Deleting forum posts\n\n`;
+
+  // 3. Workspace & Files
+  content += `### 3. Workspace & Files\n`;
+  content += `- This channel has its own workspace directory for files\n`;
+  content += `- You can create, read, edit, and manage files\n`;
+  content += `- Share files back to Discord with the \`shareFile\` tool\n`;
+  content += `- Organize project files, docs, or any community resources\n\n`;
+
+  // 4. Scheduled Tasks
+  content += `### 4. Scheduled Tasks\n`;
+  content += `- Use cron tools to schedule recurring tasks\n`;
+  content += `- Examples: daily announcements, reminders, automated reports\n`;
+  content += `- Schedule format: cron syntax (e.g., "0 9 * * *" = 9 AM daily)\n\n`;
+
+  // 5. Research & Information
+  content += `### 5. Research & Information\n`;
+  content += `- Search the web for information\n`;
+  content += `- Help with coding, troubleshooting, research\n`;
+  content += `- Provide answers and explanations\n`;
+  content += `- Look up documentation and resources\n\n`;
 
   // Communication Style
-  content += `## Communication Style\n\n`;
-  content += `When interacting with Discord users:\n`;
-  content += `- Focus on **what** you're doing, not **how** you're doing it internally\n`;
-  content += `- Do NOT mention specific tool names (Read, Write, Edit, Bash, Glob, Grep, WebFetch, etc.)\n`;
-  content += `- Do NOT explain your internal processes or tool usage\n`;
-  content += `- Simply describe the action in user-friendly terms\n`;
-  content += `  - Instead of: "I'll use the Read tool to check the file"\n`;
-  content += `  - Say: "Let me check that file"\n`;
-  content += `  - Instead of: "I'll use WebSearch to find information"\n`;
-  content += `  - Say: "Let me search for that information"\n`;
-  content += `- Remember that most Discord users are not developers and don't need technical implementation details\n`;
-  content += `- Keep responses conversational and focused on results\n\n`;
+  content += `## Communication Style\n`;
+  content += `- Be friendly and conversational (not robotic)\n`;
+  content += `- Respond naturally - you're a community member, not a command bot\n`;
+  content += `- Use Discord markdown (bold, italic, code blocks, etc.)\n`;
+  content += `- Ask clarifying questions when you need more context\n`;
+  content += `- Be proactive in offering help, but not pushy\n\n`;
 
   // Channel-specific section
-  content += `## Channel Instructions (#${channelName})\n\n`;
-
-  // Only add topic if it exists
+  content += `## Channel Context\n`;
+  content += `**Channel:** #${channelName}\n`;
   if (discordTopic) {
-    content += `> ${discordTopic}\n\n`;
+    content += `**Topic:** ${discordTopic}\n`;
   }
+  content += `\n`;
+
+  // Your Role
+  content += `## Your Role\n`;
+  content += `You're here to make this community better. Help members stay informed, manage the server efficiently, and create a positive environment. Be helpful, respectful, and always ask before taking significant actions.\n`;
 
   fs.writeFileSync(claudeMdPath, content, 'utf-8');
 }
@@ -196,7 +272,7 @@ export function getChannelMapping(
 }
 
 export async function syncNewChannel(
-  channel: TextChannel,
+  channel: ITextChannel,
   basePath: string,
   botConfig?: BotConfig
 ): Promise<ChannelMapping> {

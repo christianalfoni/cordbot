@@ -76,12 +76,11 @@ export function validateCronSchedule(schedule: string): boolean {
   }
 
   // Each part should be either:
-  // - A number
-  // - An asterisk (*)
-  // - A range (e.g., 1-5)
-  // - A list (e.g., 1,3,5)
-  // - A step (e.g., */2)
-  const cronPartRegex = /^(\*|(\d+(-\d+)?(,\d+(-\d+)?)*)(\/\d+)?)$/;
+  // - An asterisk (*) with optional step (e.g., */5)
+  // - A number with optional step (e.g., 5/2)
+  // - A range with optional step (e.g., 1-5, 1-5/2)
+  // - A list with optional step (e.g., 1,3,5)
+  const cronPartRegex = /^(\*|\d+(-\d+)?(,\d+(-\d+)?)*)(\/\d+)?$/;
 
   return parts.every(part => cronPartRegex.test(part));
 }

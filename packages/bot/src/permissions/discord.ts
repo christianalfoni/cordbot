@@ -6,6 +6,43 @@ interface PendingRequest {
   messageId: string;
 }
 
+export enum PermissionLevel {
+  LOW = 'low',       // read-only: list, get, send_message
+  MEDIUM = 'medium', // modify: create, assign
+  HIGH = 'high',     // destructive: delete, kick, ban
+}
+
+export const TOOL_PERMISSIONS: Record<string, PermissionLevel> = {
+  // No permission needed (read-only)
+  'discord_list_channels': PermissionLevel.LOW,
+  'discord_list_members': PermissionLevel.LOW,
+  'discord_list_roles': PermissionLevel.LOW,
+  'discord_get_member': PermissionLevel.LOW,
+  'discord_send_message': PermissionLevel.LOW,
+  'discord_list_events': PermissionLevel.LOW,
+  'discord_get_event': PermissionLevel.LOW,
+  'discord_get_event_users': PermissionLevel.LOW,
+  'discord_get_poll_results': PermissionLevel.LOW,
+  'discord_list_forum_posts': PermissionLevel.LOW,
+  'discord_create_forum_post': PermissionLevel.LOW,
+
+  // Ask permission (modifications)
+  'discord_create_channel': PermissionLevel.MEDIUM,
+  'discord_assign_role': PermissionLevel.MEDIUM,
+  'discord_remove_role': PermissionLevel.MEDIUM,
+  'discord_create_role': PermissionLevel.MEDIUM,
+  'discord_create_event': PermissionLevel.MEDIUM,
+  'discord_create_poll': PermissionLevel.MEDIUM,
+  'discord_create_forum_channel': PermissionLevel.MEDIUM,
+
+  // Ask permission + log (destructive)
+  'discord_delete_channel': PermissionLevel.HIGH,
+  'discord_kick_member': PermissionLevel.HIGH,
+  'discord_ban_member': PermissionLevel.HIGH,
+  'discord_delete_event': PermissionLevel.HIGH,
+  'discord_delete_forum_post': PermissionLevel.HIGH,
+};
+
 export class DiscordPermissionManager {
   private pendingRequests = new Map<string, PendingRequest>();
 

@@ -8,6 +8,7 @@ import { SessionManager } from './manager.js';
 import { BotConfig } from '../discord/sync.js';
 import { appendRawMemory } from '../memory/storage.js';
 import { logRawMemoryCaptured } from '../memory/logger.js';
+import { ILogger } from '../interfaces/logger.js';
 
 interface StreamState {
   currentToolUse: { name: string; input: string; id: string } | null;
@@ -36,6 +37,7 @@ export async function streamToDiscord(
   sessionManager: SessionManager,
   sessionId: string,
   workingDir: string,
+  logger: ILogger,
   botConfig?: BotConfig,
   messagePrefix?: string,
   parentChannelId?: string,
@@ -51,8 +53,9 @@ export async function streamToDiscord(
   if (target instanceof Message) {
     // Store info for lazy thread creation (create when first message is ready)
     originalMessage = target;
-    parentChannel = target.channel as TextChannel;
-    channel = parentChannel; // Temporarily use parent channel
+    // Discord.js Message.channel is guaranteed to be a TextChannel when not in thread
+    parentChannel = target.channel.isThread() ? null : (target.channel as TextChannel);
+    channel = target.channel as TextChannel | ThreadChannel; // Temporarily use current channel
 
     // Clean the message content by removing Discord mentions
     const cleanContent = target.content.replace(/<@!?\d+>/g, '').trim();
@@ -94,15 +97,15 @@ export async function streamToDiscord(
   };
 
   try {
-    console.log(`🚀 Starting SDK stream for session ${sessionId}`);
-    console.log(`📁 Working directory: ${workingDir}`);
+    logger.info(`🚀 Starting SDK stream for session ${sessionId}`);
+    logger.info(`📁 Working directory: ${workingDir}`);
 
     // Iterate through SDK messages
     for await (const message of queryResult) {
-      channel = await handleSDKMessage(message, channel, state, sessionManager, sessionId);
+      channel = await handleSDKMessage(message, channel, state, sessionManager, sessionId, logger);
     }
 
-    console.log(`✅ SDK stream completed for session ${sessionId}`);
+    logger.info(`✅ SDK stream completed for session ${sessionId}`);
 
     // Save only the last assistant message to memory
     if (state.collectedAssistantMessages.length > 0) {
@@ -112,7 +115,7 @@ export async function streamToDiscord(
       if (state.isCronJob) {
         // Get files to share before sending message
         const filesToShare = sessionManager.getFilesToShare(sessionId);
-        channel = await sendCompleteMessage(channel, finalMessage, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare);
+        channel = await sendCompleteMessage(channel, finalMessage, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare, logger);
       }
 
       // Capture final message to memory (for both cron and non-cron)
@@ -130,7 +133,7 @@ export async function streamToDiscord(
           state.sessionId
         );
       } catch (error) {
-        console.error('Failed to capture memory:', error);
+        logger.error('Failed to capture memory:', error);
       }
     }
 
@@ -139,16 +142,16 @@ export async function streamToDiscord(
 
     // Note: Files are now attached inline to messages, not sent separately
   } catch (error) {
-    console.error('❌ Stream error:', error);
-    console.error('❌ Stream error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    console.error('❌ Stream error type:', error instanceof Error ? error.constructor.name : typeof error);
+    logger.error('❌ Stream error:', error);
+    logger.error('❌ Stream error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    logger.error('❌ Stream error type:', error instanceof Error ? error.constructor.name : typeof error);
 
     try {
       await channel.send(
         `❌ Failed to process: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     } catch (sendError) {
-      console.error('Failed to send error message to Discord:', sendError);
+      logger.error('Failed to send error message to Discord:', sendError);
     }
 
     // Re-throw to let outer handler deal with it
@@ -161,7 +164,8 @@ async function handleSDKMessage(
   channel: TextChannel | ThreadChannel,
   state: StreamState,
   sessionManager: SessionManager,
-  sessionId: string
+  sessionId: string,
+  logger: ILogger
 ): Promise<TextChannel | ThreadChannel> {
   switch (message.type) {
     case 'assistant':
@@ -170,7 +174,7 @@ async function handleSDKMessage(
       if (content) {
         // Log assistant message (truncated)
         const preview = content.length > 200 ? content.substring(0, 200) + '...' : content;
-        console.log(`💬 Assistant: ${preview}`);
+        logger.info(`💬 Assistant: ${preview}`);
 
         // Collect all assistant messages
         state.collectedAssistantMessages.push(content);
@@ -178,7 +182,7 @@ async function handleSDKMessage(
         // For non-cron jobs, send each message immediately (streaming) with any queued files
         if (!state.isCronJob) {
           const filesToShare = sessionManager.getFilesToShare(sessionId);
-          channel = await sendCompleteMessage(channel, content, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare);
+          channel = await sendCompleteMessage(channel, content, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare, logger);
           state.planContent = null; // Clear plan after sending
           state.messagePrefix = null; // Clear prefix after using
           state.messageSuffix = null; // Clear suffix after using
@@ -190,7 +194,7 @@ async function handleSDKMessage(
       // Partial message during streaming
       // Always process stream events for logging (including cron jobs)
       // Just don't send progress messages to Discord for cron jobs
-      await handleStreamEvent(message, channel, state);
+      await handleStreamEvent(message, channel, state, logger);
       break;
 
     case 'user':
@@ -200,13 +204,13 @@ async function handleSDKMessage(
     case 'system':
       // System initialization message
       if (message.subtype === 'init') {
-        console.log(
+        logger.info(
           `Session ${message.session_id} initialized with model ${message.model}`
         );
         // Update database with real SDK session ID
         await sessionManager.updateSessionId(sessionId, message.session_id, channel.id);
       } else if (message.subtype === 'compact_boundary') {
-        console.log(`Conversation compacted: ${message.compact_metadata.trigger}`);
+        logger.info(`Conversation compacted: ${message.compact_metadata.trigger}`);
         await channel.send(
           `🗜️ Conversation history compacted (${message.compact_metadata.pre_tokens} tokens)`
         );
@@ -216,7 +220,7 @@ async function handleSDKMessage(
     case 'result':
       // Final result message
       if (message.subtype === 'success') {
-        console.log(
+        logger.info(
           `✅ Session completed: ${message.num_turns} turns, $${message.total_cost_usd.toFixed(4)}`
         );
       } else {
@@ -234,7 +238,8 @@ async function handleSDKMessage(
 async function handleStreamEvent(
   message: SDKPartialAssistantMessage,
   channel: TextChannel | ThreadChannel,
-  state: StreamState
+  state: StreamState,
+  logger: ILogger
 ): Promise<void> {
   const event = message.event;
 
@@ -284,7 +289,7 @@ async function handleStreamEvent(
               }
             }
           } catch (e) {
-            console.error('Failed to parse ExitPlanMode input:', e);
+            logger.error('Failed to parse ExitPlanMode input:', e);
           }
         } else {
           // Log tool usage with input details
@@ -301,8 +306,8 @@ async function handleStreamEvent(
             inputPreview = state.currentToolUse.input.substring(0, 200);
           }
 
-          console.log(`🔧 Tool: ${emoji} ${displayName}`);
-          console.log(`   Input: ${inputPreview}`);
+          logger.info(`🔧 Tool: ${emoji} ${displayName}`);
+          logger.info(`   Input: ${inputPreview}`);
         }
         state.currentToolUse = null;
       }
@@ -344,14 +349,15 @@ async function sendCompleteMessage(
   messagePrefix: string | null,
   messageSuffix: string | null,
   state: StreamState,
-  filesToShare: string[] = []
+  filesToShare: string[] = [],
+  logger: ILogger
 ): Promise<TextChannel | ThreadChannel> {
-  console.log(`📤 Sending message to Discord (${content.length} chars)`);
+  logger.info(`📤 Sending message to Discord (${content.length} chars)`);
 
   // Create thread now if needed (lazy thread creation)
   let targetChannel = channel;
   if (!state.threadCreated && state.originalMessage && state.parentChannel && state.threadName) {
-    console.log(`✨ Creating thread: ${state.threadName}`);
+    logger.info(`✨ Creating thread: ${state.threadName}`);
     const thread = await state.parentChannel.threads.create({
       name: state.threadName,
       autoArchiveDuration: 1440,
@@ -405,7 +411,7 @@ async function sendCompleteMessage(
       });
 
       if (filesToShare.length > 0) {
-        console.log(`📎 Attached ${filesToShare.length} shared file(s) to message`);
+        logger.info(`📎 Attached ${filesToShare.length} shared file(s) to message`);
       }
     } else {
       await targetChannel.send(chunk);
@@ -611,30 +617,3 @@ function getToolDescription(toolName: string, input: string, workingDir: string)
   }
 }
 
-async function attachSharedFiles(
-  channel: TextChannel | ThreadChannel,
-  sessionManager: SessionManager,
-  sessionId: string
-): Promise<void> {
-  const filesToShare = sessionManager.getFilesToShare(sessionId);
-
-  if (filesToShare.length === 0) {
-    return;
-  }
-
-  try {
-    const attachments = filesToShare.map(filePath => new AttachmentBuilder(filePath));
-
-    await channel.send({
-      content: '📎 Shared files:',
-      files: attachments
-    });
-
-    console.log(`📎 Attached ${filesToShare.length} shared file(s)`);
-  } catch (error) {
-    console.error('Failed to attach shared files:', error);
-    await channel.send(
-      `❌ Failed to attach shared files: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
-  }
-}

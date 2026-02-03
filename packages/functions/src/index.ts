@@ -12,89 +12,6 @@ const googleClientId = defineSecret("GOOGLE_CLIENT_ID");
 const googleClientSecret = defineSecret("GOOGLE_CLIENT_SECRET");
 
 /**
- * Validate a user's bot token and fetch bot information
- * This is used when a user provides their own bot token
- */
-export const validateBotToken = onCall(async (request) => {
-  // Verify the user is authenticated
-  if (!request.auth) {
-    throw new HttpsError(
-      'unauthenticated',
-      'User must be authenticated to validate bot token'
-    );
-  }
-
-  const { botToken } = request.data;
-
-  if (!botToken) {
-    throw new HttpsError(
-      'invalid-argument',
-      'botToken is required'
-    );
-  }
-
-  try {
-    // Validate token by fetching bot user info
-    const userResponse = await fetch('https://discord.com/api/v10/users/@me', {
-      headers: {
-        Authorization: `Bot ${botToken}`,
-      },
-    });
-
-    if (!userResponse.ok) {
-      if (userResponse.status === 401) {
-        return {
-          valid: false,
-          error: 'Invalid bot token. Please check and try again.',
-        };
-      } else {
-        return {
-          valid: false,
-          error: 'Failed to validate bot token. Please try again.',
-        };
-      }
-    }
-
-    const botInfo = await userResponse.json();
-
-    // Get guilds the bot is in
-    const guildsResponse = await fetch('https://discord.com/api/v10/users/@me/guilds', {
-      headers: {
-        Authorization: `Bot ${botToken}`,
-      },
-    });
-
-    let guilds: any[] = [];
-    if (guildsResponse.ok) {
-      guilds = await guildsResponse.json();
-    }
-
-    return {
-      valid: true,
-      bot: {
-        id: botInfo.id,
-        username: botInfo.username,
-        discriminator: botInfo.discriminator,
-        avatar: botInfo.avatar,
-      },
-      guilds: guilds.map(guild => ({
-        id: guild.id,
-        name: guild.name,
-        icon: guild.icon,
-        owner: guild.owner || false,
-        permissions: guild.permissions,
-      })),
-    };
-  } catch (error) {
-    logger.error('Error validating bot token:', error);
-    return {
-      valid: false,
-      error: 'An error occurred while validating the token.',
-    };
-  }
-});
-
-/**
  * Exchange Google OAuth code for tokens and store in bot's profile
  */
 export const exchangeGmailToken = onCall(
@@ -413,13 +330,18 @@ export const refreshToken = onCall(
 // Export Fly.io hosting functions
 export {
   applyForHostingBeta,
-  createBotDocument,
-  updateBotDiscordConfig,
   createHostedBot,
-  listHostedBots,
   getHostedBotStatus,
   getHostedBotLogs,
   restartHostedBot,
   deployHostedBot,
   deprovisionHostedBot,
+  provisionGuild,
 } from './fly-hosting.js';
+
+// Export Discord OAuth handlers
+export { handleDiscordOAuth } from './discord-oauth.js';
+export { processDiscordOAuth } from './process-oauth.js';
+
+// Export Firestore triggers
+export { onGuildCreated } from './guild-triggers.js';
