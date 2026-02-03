@@ -8,6 +8,7 @@ import type {
   IPermissionManager,
   ITokenProvider,
   ILogger,
+  IFileStore,
   IMessage,
   IUser,
   ITextChannel,
@@ -74,6 +75,11 @@ export class MockDiscordAdapter implements IDiscordAdapter {
 
   getUser(): IUser | null {
     return this.user;
+  }
+
+  destroy(): void {
+    this.ready = false;
+    this.user = null;
   }
 
   async sendMessage(channelId: string, content: string | any): Promise<IMessage> {
@@ -207,10 +213,6 @@ export class MockDiscordAdapter implements IDiscordAdapter {
     return this.guilds.get(guildId) || null;
   }
 
-  getRawClient(): any {
-    return null;
-  }
-
   on(event: string, handler: any): void {
     switch (event) {
       case 'messageCreate':
@@ -294,6 +296,9 @@ export class MockDiscordAdapter implements IDiscordAdapter {
   }
 
   private createMockMessage(partial: Partial<IMessage>): IMessage {
+    const timestamp = partial.createdTimestamp || Date.now();
+    const channel = partial.channel || this.createMockTextChannel({});
+
     const msg: IMessage = {
       id: partial.id || `msg-${Date.now()}`,
       content: partial.content || '',
@@ -301,7 +306,20 @@ export class MockDiscordAdapter implements IDiscordAdapter {
       guildId: partial.guildId,
       authorId: partial.authorId || 'user-id',
       author: partial.author || this.createMockUser({}),
-      createdTimestamp: partial.createdTimestamp || Date.now(),
+      createdTimestamp: timestamp,
+      createdAt: new Date(timestamp),
+      channel,
+      attachments: partial.attachments || new Map(),
+      reference: partial.reference || null,
+      member: partial.member || null,
+      mentions: partial.mentions || {
+        users: [],
+        has: () => false
+      },
+      embeds: partial.embeds || [],
+      client: {
+        user: this.user,
+      },
       async edit(content: string | any) {
         msg.content = typeof content === 'string' ? content : content.content || msg.content;
         return msg;
@@ -322,10 +340,21 @@ export class MockDiscordAdapter implements IDiscordAdapter {
       type: 0, // ChannelType.GuildText
       guildId: partial.guildId || 'guild-id',
       topic: partial.topic || null,
+      threads: {
+        async create(options: any): Promise<IThreadChannel> {
+          return self.createMockThreadChannel({
+            name: options.name,
+            parentId: channel.id,
+          });
+        },
+      },
       isTextChannel(): this is ITextChannel {
         return true;
       },
       isThreadChannel(): this is IThreadChannel {
+        return false;
+      },
+      isThread(): this is IThreadChannel {
         return false;
       },
       isForumChannel(): this is IForumChannel {
@@ -358,6 +387,9 @@ export class MockDiscordAdapter implements IDiscordAdapter {
         return false;
       },
       isThreadChannel(): this is IThreadChannel {
+        return true;
+      },
+      isThread(): this is IThreadChannel {
         return true;
       },
       isForumChannel(): this is IForumChannel {
@@ -774,6 +806,111 @@ export class MockLogger implements ILogger {
 }
 
 /**
+ * Mock File Store
+ */
+export class MockFileStore implements IFileStore {
+  private files = new Map<string, string | Buffer>();
+  private directories = new Set<string>();
+
+  exists(path: string): boolean {
+    return this.files.has(path) || this.directories.has(path);
+  }
+
+  readFile(path: string, encoding?: BufferEncoding): string {
+    const content = this.files.get(path);
+    if (!content) {
+      throw new Error(`File not found: ${path}`);
+    }
+    if (Buffer.isBuffer(content)) {
+      return content.toString(encoding || 'utf-8');
+    }
+    return content;
+  }
+
+  writeFile(path: string, content: string | Buffer, encoding?: BufferEncoding): void {
+    this.files.set(path, content);
+  }
+
+  appendFile(path: string, content: string, encoding?: BufferEncoding): void {
+    const existing = this.files.get(path);
+    if (existing) {
+      if (Buffer.isBuffer(existing)) {
+        this.files.set(path, Buffer.concat([existing, Buffer.from(content, encoding)]));
+      } else {
+        this.files.set(path, existing + content);
+      }
+    } else {
+      this.files.set(path, content);
+    }
+  }
+
+  deleteFile(path: string): void {
+    this.files.delete(path);
+  }
+
+  deleteDirectory(path: string): void {
+    this.directories.delete(path);
+    // Delete all files in the directory
+    for (const filePath of this.files.keys()) {
+      if (filePath.startsWith(path + '/')) {
+        this.files.delete(filePath);
+      }
+    }
+  }
+
+  createDirectory(path: string): void {
+    this.directories.add(path);
+  }
+
+  readDirectory(path: string): string[] {
+    const entries: string[] = [];
+    // Add files in this directory
+    for (const filePath of this.files.keys()) {
+      if (filePath.startsWith(path + '/')) {
+        const relativePath = filePath.slice(path.length + 1);
+        const firstPart = relativePath.split('/')[0];
+        if (!entries.includes(firstPart)) {
+          entries.push(firstPart);
+        }
+      }
+    }
+    // Add subdirectories
+    for (const dirPath of this.directories) {
+      if (dirPath.startsWith(path + '/')) {
+        const relativePath = dirPath.slice(path.length + 1);
+        const firstPart = relativePath.split('/')[0];
+        if (!entries.includes(firstPart)) {
+          entries.push(firstPart);
+        }
+      }
+    }
+    return entries;
+  }
+
+  getStats(path: string): { isFile: boolean; isDirectory: boolean; size: number; mtime: Date } {
+    const isFile = this.files.has(path);
+    const isDirectory = this.directories.has(path);
+
+    let size = 0;
+    if (isFile) {
+      const content = this.files.get(path);
+      if (Buffer.isBuffer(content)) {
+        size = content.length;
+      } else if (typeof content === 'string') {
+        size = Buffer.byteLength(content);
+      }
+    }
+
+    return {
+      isFile,
+      isDirectory,
+      size,
+      mtime: new Date(),
+    };
+  }
+}
+
+/**
  * Create a complete mock bot context for testing
  */
 export function createMockContext(): IBotContext & {
@@ -786,6 +923,7 @@ export function createMockContext(): IBotContext & {
   permissionManager: MockPermissionManager;
   tokenProvider: MockTokenProvider;
   logger: MockLogger;
+  fileStore: MockFileStore;
 } {
   return {
     discord: new MockDiscordAdapter(),
@@ -796,5 +934,6 @@ export function createMockContext(): IBotContext & {
     permissionManager: new MockPermissionManager(),
     tokenProvider: new MockTokenProvider(),
     logger: new MockLogger(),
+    fileStore: new MockFileStore(),
   };
 }

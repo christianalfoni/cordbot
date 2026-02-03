@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits } from 'discord.js';
+import type { SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk';
 import type { IBotContext, BotContextConfig } from '../interfaces/core.js';
 import { DiscordJsAdapter } from './discord/adapter.js';
 import { ClaudeSDKQueryExecutor } from './query/claude-sdk.js';
@@ -8,14 +9,20 @@ import { NodeCronScheduler } from './scheduler/node-cron.js';
 import { DiscordPermissionManager } from './permission/discord-permission.js';
 import { ServiceTokenProvider } from './token/service-token.js';
 import { ConsoleLogger } from './logger.js';
+import { NodeFileStore } from './file/node-fs.js';
 import { TokenManager } from '../service/token-manager.js';
+import { loadDiscordTools } from '../tools/discord/loader.js';
 import path from 'path';
 import os from 'os';
 
 /**
  * Create a production bot context with all real implementations
+ * Returns both the context and Discord tools (tools need raw Discord client)
  */
-export async function createProductionBotContext(config: BotContextConfig): Promise<IBotContext> {
+export async function createProductionBotContext(config: BotContextConfig): Promise<{
+  context: IBotContext;
+  discordTools: SdkMcpToolDefinition<any>[];
+}> {
   // Create Discord client
   const discordClient = new Client({
     intents: [
@@ -68,7 +75,21 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
   // Create logger
   const logger = new ConsoleLogger();
 
-  return {
+  // Create file store
+  const fileStore = new NodeFileStore();
+
+  // Load Discord tools (needs raw Discord client, so must happen in implementation layer)
+  const discordTools = loadDiscordTools(
+    discordClient,
+    permissionManager,
+    () => {
+      // Get the channel for the currently executing session
+      // Discord tools have access to the raw client and can fetch channels themselves
+      return null;
+    }
+  );
+
+  const context: IBotContext = {
     discord,
     queryExecutor,
     sessionStore,
@@ -77,6 +98,12 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
     permissionManager,
     tokenProvider,
     logger,
+    fileStore,
+  };
+
+  return {
+    context,
+    discordTools,
   };
 }
 

@@ -1,13 +1,9 @@
-import { query, Query, SdkMcpToolDefinition, createSdkMcpServer, McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
+import type { Query, SdkMcpToolDefinition, McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "crypto";
-import { loadDynamicTools } from "../tools/loader.js";
 import { loadBuiltinTools } from "../tools/builtin-loader.js";
-import { loadDiscordTools } from "../tools/discord/loader.js";
-import { SERVICE_URL } from "../service/config.js";
-import { TokenManager } from "../service/token-manager.js";
 import { spawn } from "child_process";
 import { populateMemorySection } from "../discord/sync.js";
-import { discoverToolSkills, installGlobalSkills } from "../tools/skill-loader.js";
 import type { IBotContext } from "../interfaces/core.js";
 import type { ITextChannel, IThreadChannel } from "../interfaces/discord.js";
 import path from "path";
@@ -35,7 +31,6 @@ interface PendingCronSession {
 export class SessionManager {
   private pendingCronSessions = new Map<string, PendingCronSession>();
   private dynamicMcpServer: McpSdkServerConfigWithInstance | null = null;
-  private tokenManager: TokenManager | null = null;
   private currentChannels = new Map<string, ITextChannel | IThreadChannel>();
   private currentWorkingDirs = new Map<string, string>();
   private currentChannelIds = new Map<string, string>(); // sessionId -> channelId
@@ -46,12 +41,13 @@ export class SessionManager {
     private context: IBotContext,
     private sessionsDir: string,
     private workspaceRoot: string,
-    memoryContextSize: number = 10000
+    memoryContextSize: number = 10000,
+    private discordTools: SdkMcpToolDefinition<any>[] = []
   ) {
     this.memoryContextSize = memoryContextSize;
   }
 
-  async initialize(botToken: string): Promise<void> {
+  async initialize(): Promise<void> {
     // Load built-in tools (always available, no auth needed)
     const builtinTools = loadBuiltinTools(
       () => {
@@ -74,31 +70,8 @@ export class SessionManager {
       }
     );
 
-    // Manifest feature is no longer used - authenticated tools disabled
-    const manifest = null;
-    let dynamicTools: SdkMcpToolDefinition<any>[] = [];
-
-    this.context.logger.info('ℹ️  No manifest - authenticated tools disabled');
-
-    // Load Discord tools - get underlying Discord.js client from adapter
-    const discordClient = this.context.discord.getRawClient();
-    const permissionManager = this.context.permissionManager;
-
-    const discordTools = loadDiscordTools(
-      discordClient,
-      permissionManager,
-      () => {
-        // Get the channel for the currently executing session
-        // loadDiscordTools expects raw Discord.js types
-        const entries = Array.from(this.currentChannels.entries());
-        const channel = entries.length > 0 ? entries[0][1] : null;
-        return channel?._raw || null;
-      }
-    );
-    this.context.logger.info(`  ✓ Loaded ${discordTools.length} Discord management tools`);
-
-    // Combine built-in, dynamic, and Discord tools
-    const allTools = [...builtinTools, ...dynamicTools, ...discordTools];
+    // Combine built-in and Discord tools (Discord tools passed via constructor)
+    const allTools = [...builtinTools, ...this.discordTools];
 
     if (allTools.length > 0) {
       // Create SDK MCP server with all tools
@@ -107,7 +80,7 @@ export class SessionManager {
         version: '1.0.0',
         tools: allTools
       });
-      this.context.logger.info(`✅ Total tools available: ${allTools.length} (${builtinTools.length} built-in + ${dynamicTools.length} authenticated + ${discordTools.length} Discord)`);
+      this.context.logger.info(`✅ Total tools available: ${allTools.length} (${builtinTools.length} built-in + ${this.discordTools.length} Discord)`);
     }
   }
 
@@ -238,84 +211,80 @@ export class SessionManager {
     this.context.logger.info(`   - systemPrompt: ${systemPrompt ? `${systemPrompt.length} chars` : 'none'}`);
     this.context.logger.info(`   - dynamicMcpServer: ${this.dynamicMcpServer ? 'yes' : 'no'}`);
 
-    const options: any = {
-      cwd: workingDir,
-      resume: sessionId || undefined, // Resume if existing, else new
-      includePartialMessages: true, // Get streaming events
-      settingSources: ["user"], // Load ~/.claude/skills (user) only - CLAUDE.md is manually injected as systemPrompt
-      allowDangerouslySkipPermissions: true,
-      permissionMode: "bypassPermissions",
-      tools: { type: "preset", preset: "claude_code" }, // Enable all Claude Code tools
-      verbose: true, // Required for stream-json output format in Claude Code 2.1.x
-      // Custom spawn function to fix fly.io issues
-      // 1. Use full path to node (instead of shell:true which breaks arg parsing)
-      // 2. --print flag - Required to output to stdout instead of opening editor
-      spawnClaudeCodeProcess: (spawnOptions: any) => {
-        // Add --print flag after the script path (first arg)
-        let args = [...spawnOptions.args];
-        if (!args.includes('--print')) {
-          // Insert --print after the first argument (the script path)
-          args = [args[0], '--print', ...args.slice(1)];
-        }
+    // Build MCP servers object if dynamic server is available
+    const mcpServers = this.dynamicMcpServer
+      ? { 'cordbot-dynamic-tools': this.dynamicMcpServer }
+      : undefined;
 
-        // Use full path to node instead of relying on PATH/shell
-        const command = spawnOptions.command === 'node' ? '/usr/local/bin/node' : spawnOptions.command;
-
-        this.context.logger.info(`🔧 Spawning Claude Code process: ${command}`);
-        this.context.logger.info(`   Args: ${args.join(' ')}`);
-        this.context.logger.info(`   CWD: ${spawnOptions.cwd}`);
-
-        // Spawn without shell to avoid argument parsing issues
-        const child = spawn(command, args, {
-          ...spawnOptions,
-        });
-
-        // Log child process events for debugging
-        child.on('error', (error) => {
-          this.context.logger.error(`❌ Child process spawn error:`, error);
-        });
-
-        child.on('exit', (code, signal) => {
-          if (signal) {
-            this.context.logger.error(`⚠️  Child process exited with signal: ${signal}`);
-          } else if (code !== 0) {
-            this.context.logger.error(`⚠️  Child process exited with code: ${code}`);
-          } else {
-            this.context.logger.info(`✅ Child process exited successfully`);
-          }
-        });
-
-        return child;
-      },
-    };
-
-    // Add system prompt with CLAUDE.md content appended to Claude Code preset
-    if (systemPrompt) {
-      options.systemPrompt = {
-        type: "preset",
-        preset: "claude_code",
-        append: systemPrompt
-      };
-    }
-
-    // Add dynamic MCP server if available
-    if (this.dynamicMcpServer) {
-      options.mcpServers = {
-        'cordbot-dynamic-tools': this.dynamicMcpServer
-      };
-      this.context.logger.info(`   - MCP tools: ${Object.keys(this.dynamicMcpServer).length}`);
+    if (mcpServers) {
+      this.context.logger.info(`   - MCP tools: ${Object.keys(this.dynamicMcpServer!).length}`);
     }
 
     try {
-      this.context.logger.info(`🎯 Calling SDK query() function...`);
-      const result = query({
+      this.context.logger.info(`🎯 Calling context.queryExecutor.createQuery()...`);
+
+      const result = this.context.queryExecutor.createQuery({
         prompt: userMessage,
-        options,
+        workingDirectory: workingDir,
+        resume: sessionId || undefined,
+        includePartialMessages: true,
+        settingSources: ["user"], // Load ~/.claude/skills (user) only - CLAUDE.md is manually injected as systemPrompt
+        allowDangerouslySkipPermissions: true,
+        permissionMode: "bypassPermissions",
+        tools: { type: "preset", preset: "claude_code" }, // Enable all Claude Code tools
+        verbose: true, // Required for stream-json output format in Claude Code 2.1.x
+        systemPrompt: systemPrompt ? {
+          type: "preset",
+          preset: "claude_code",
+          append: systemPrompt
+        } : undefined,
+        mcpServers,
+        // Custom spawn function to fix fly.io issues
+        // 1. Use full path to node (instead of shell:true which breaks arg parsing)
+        // 2. --print flag - Required to output to stdout instead of opening editor
+        spawnClaudeCodeProcess: (spawnOptions: any) => {
+          // Add --print flag after the script path (first arg)
+          let args = [...spawnOptions.args];
+          if (!args.includes('--print')) {
+            // Insert --print after the first argument (the script path)
+            args = [args[0], '--print', ...args.slice(1)];
+          }
+
+          // Use full path to node instead of relying on PATH/shell
+          const command = spawnOptions.command === 'node' ? '/usr/local/bin/node' : spawnOptions.command;
+
+          this.context.logger.info(`🔧 Spawning Claude Code process: ${command}`);
+          this.context.logger.info(`   Args: ${args.join(' ')}`);
+          this.context.logger.info(`   CWD: ${spawnOptions.cwd}`);
+
+          // Spawn without shell to avoid argument parsing issues
+          const child = spawn(command, args, {
+            ...spawnOptions,
+          });
+
+          // Log child process events for debugging
+          child.on('error', (error) => {
+            this.context.logger.error(`❌ Child process spawn error:`, error);
+          });
+
+          child.on('exit', (code, signal) => {
+            if (signal) {
+              this.context.logger.error(`⚠️  Child process exited with signal: ${signal}`);
+            } else if (code !== 0) {
+              this.context.logger.error(`⚠️  Child process exited with code: ${code}`);
+            } else {
+              this.context.logger.info(`✅ Child process exited successfully`);
+            }
+          });
+
+          return child;
+        },
       });
-      this.context.logger.info(`✅ SDK query() returned successfully`);
+
+      this.context.logger.info(`✅ context.queryExecutor.createQuery() returned successfully`);
       return result;
     } catch (error) {
-      this.context.logger.error(`❌ SDK query() threw error:`, error);
+      this.context.logger.error(`❌ context.queryExecutor.createQuery() threw error:`, error);
       throw error;
     }
   }

@@ -57,7 +57,7 @@ export async function startBot(cwd: string): Promise<void> {
 
   // Create bot context with all dependencies
   console.log("🔌 Initializing bot context...\n");
-  const context: IBotContext = await createProductionBotContext({
+  const { context, discordTools } = await createProductionBotContext({
     discordToken: token,
     anthropicApiKey: apiKey,
     guildId,
@@ -70,9 +70,9 @@ export async function startBot(cwd: string): Promise<void> {
   const activeSessions = context.sessionStore.getAllActive();
   console.log(`📊 Active sessions: ${activeSessions.length}\n`);
 
-  // Initialize session manager with context
-  const sessionManager = new SessionManager(context, sessionsDir, cwd, memoryContextSize);
-  await sessionManager.initialize(token);
+  // Initialize session manager with context and Discord tools
+  const sessionManager = new SessionManager(context, sessionsDir, cwd, memoryContextSize, discordTools);
+  await sessionManager.initialize();
   console.log("");
 
   // Sync channels with folders
@@ -80,7 +80,7 @@ export async function startBot(cwd: string): Promise<void> {
   console.log("");
 
   // Start cron scheduler
-  const cronRunner = new CronRunner(context.discord, sessionManager, context.logger);
+  const cronRunner = new CronRunner(context.discord, sessionManager, context.logger, context.scheduler, context.fileStore);
   cronRunner.start(channelMappings);
   console.log("");
 
@@ -131,11 +131,8 @@ export async function startBot(cwd: string): Promise<void> {
     console.log("🗄️  Scheduler stopped");
 
     // Destroy Discord client
-    const discordClient = context.discord.getRawClient();
-    if (discordClient && discordClient.destroy) {
-      discordClient.destroy();
-      console.log("🔌 Discord client disconnected");
-    }
+    context.discord.destroy();
+    console.log("🔌 Discord client disconnected");
 
     console.log("\n👋 Cordbot stopped");
     process.exit(0);

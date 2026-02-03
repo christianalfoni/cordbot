@@ -64,13 +64,6 @@ export class DiscordPermissionManager implements IPermissionManager {
     message: string,
     requestId: string
   ): Promise<PermissionResult> {
-    // Get the underlying Discord channel
-    const discordChannel = channel._raw as ThreadChannel | TextChannel;
-
-    if (!discordChannel) {
-      throw new Error('Discord channel not available');
-    }
-
     // Create Approve/Deny buttons
     const approveButton = new ButtonBuilder()
       .setCustomId(`permission_approve_${requestId}`)
@@ -84,8 +77,8 @@ export class DiscordPermissionManager implements IPermissionManager {
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(approveButton, denyButton);
 
-    // Send permission request message
-    const permissionMsg = await discordChannel.send({
+    // Send permission request message using interface method
+    const permissionMsg = await channel.send({
       content: `🔐 **Permission Required**\n${message}`,
       components: [row],
     });

@@ -1,6 +1,4 @@
-import cron from 'node-cron';
 import chokidar from 'chokidar';
-import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { SessionManager } from '../agent/manager.js';
@@ -9,10 +7,12 @@ import { parseCronFile, CronJob, validateCronSchedule } from './parser.js';
 import { streamToDiscord } from '../agent/stream.js';
 import type { IDiscordAdapter, ITextChannel, IThreadChannel } from '../interfaces/discord.js';
 import type { ILogger } from '../interfaces/logger.js';
+import type { IScheduler } from '../interfaces/scheduler.js';
+import type { IFileStore } from '../interfaces/file.js';
 
 interface ScheduledTask {
   job: CronJob;
-  task: cron.ScheduledTask;
+  taskId: string; // Scheduler task ID instead of direct cron.ScheduledTask
   channelId: string;
   folderPath: string;
 }
@@ -25,7 +25,9 @@ export class CronRunner {
   constructor(
     private discord: IDiscordAdapter,
     private sessionManager: SessionManager,
-    private logger: ILogger
+    private logger: ILogger,
+    private scheduler: IScheduler,
+    private fileStore: IFileStore
   ) {}
 
   /**
@@ -131,11 +133,14 @@ export class CronRunner {
         }
 
         // Schedule the job
-        const task = cron.schedule(job.schedule, async () => {
+        const taskId = this.scheduler.schedule(job.schedule, async () => {
           await this.executeJob(job, channelId, folderPath);
+        }, {
+          name: job.name,
+          channelId,
         });
 
-        tasks.push({ job, task, channelId, folderPath });
+        tasks.push({ job, taskId, channelId, folderPath });
 
         this.logger.info(
           `📅 Scheduled job "${job.name}" for channel ${channelId}: ${job.schedule}`
@@ -188,11 +193,11 @@ export class CronRunner {
         const claudeMdPath = mapping.claudeMdPath;
         let systemPrompt: string | undefined;
 
-        if (fs.existsSync(claudeMdPath)) {
+        if (this.fileStore.exists(claudeMdPath)) {
           try {
             // Populate memory before reading
             await this.sessionManager.populateMemory(claudeMdPath, channelId, sessionId);
-            systemPrompt = fs.readFileSync(claudeMdPath, 'utf-8');
+            systemPrompt = this.fileStore.readFile(claudeMdPath, 'utf-8');
             this.logger.info(`📖 Read CLAUDE.md for cron job (${systemPrompt.length} chars)`);
           } catch (error) {
             this.logger.error('Failed to read CLAUDE.md for cron job:', error);
@@ -220,16 +225,10 @@ Task: ${job.task}`;
           return;
         }
 
-        // streamToDiscord expects raw Discord.js types (TextChannel or ThreadChannel only)
-        const rawChannel = channel._raw;
-        if (!rawChannel) {
-          this.logger.error('Channel does not have raw Discord.js type');
-          return;
-        }
-
+        // Pass channel to streamToDiscord (already interface type)
         await streamToDiscord(
           queryResult,
-          rawChannel as import('discord.js').TextChannel | import('discord.js').ThreadChannel,
+          channel,
           this.sessionManager,
           sessionId,
           folderPath,
@@ -267,8 +266,8 @@ Task: ${job.task}`;
     const tasks = this.scheduledTasks.get(channelId);
 
     if (tasks) {
-      for (const { task, job } of tasks) {
-        task.stop();
+      for (const { taskId, job } of tasks) {
+        this.scheduler.remove(taskId);
         this.logger.info(`⏸️  Stopped job: ${job.name}`);
       }
 
@@ -301,7 +300,7 @@ Task: ${job.task}`;
 
       // Write back to file
       const yamlContent = yaml.dump({ jobs: updatedJobs });
-      fs.writeFileSync(cronPath, yamlContent, 'utf-8');
+      this.fileStore.writeFile(cronPath, yamlContent, 'utf-8');
 
       this.logger.info(`🗑️  Removed one-time job: ${jobName}`);
     } catch (error) {

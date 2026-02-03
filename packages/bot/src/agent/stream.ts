@@ -3,17 +3,17 @@ import {
   SDKMessage,
   SDKPartialAssistantMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import { AttachmentBuilder, TextChannel, ThreadChannel, Message } from 'discord.js';
 import { SessionManager } from './manager.js';
 import { BotConfig } from '../discord/sync.js';
 import { appendRawMemory } from '../memory/storage.js';
 import { logRawMemoryCaptured } from '../memory/logger.js';
-import { ILogger } from '../interfaces/logger.js';
+import type { ILogger } from '../interfaces/logger.js';
+import type { IMessage, ITextChannel, IThreadChannel, IAttachment } from '../interfaces/discord.js';
 
 interface StreamState {
   currentToolUse: { name: string; input: string; id: string } | null;
-  toolMessages: Message[];
-  progressMessages: Message[];
+  toolMessages: IMessage[];
+  progressMessages: IMessage[];
   planContent: string | null;
   messagePrefix: string | null;
   messageSuffix: string | null;
@@ -24,16 +24,16 @@ interface StreamState {
   isCronJob: boolean;
   // For lazy thread creation
   threadCreated: boolean;
-  originalMessage: Message | null;
+  originalMessage: IMessage | null;
   threadName: string | null;
-  parentChannel: TextChannel | null;
+  parentChannel: ITextChannel | null;
   // For cron jobs: collect all messages and only send the last one
   collectedAssistantMessages: string[];
 }
 
 export async function streamToDiscord(
   queryResult: Query,
-  target: TextChannel | ThreadChannel | Message,
+  target: ITextChannel | IThreadChannel | IMessage,
   sessionManager: SessionManager,
   sessionId: string,
   workingDir: string,
@@ -44,28 +44,34 @@ export async function streamToDiscord(
   isCronJob?: boolean
 ): Promise<void> {
   // Prepare for lazy thread creation (don't create yet)
-  let channel: TextChannel | ThreadChannel;
+  let channel: ITextChannel | IThreadChannel;
   let threadCreated = false;
-  let originalMessage: Message | null = null;
+  let originalMessage: IMessage | null = null;
   let threadName: string | null = null;
-  let parentChannel: TextChannel | null = null;
+  let parentChannel: ITextChannel | null = null;
 
-  if (target instanceof Message) {
-    // Store info for lazy thread creation (create when first message is ready)
-    originalMessage = target;
-    // Discord.js Message.channel is guaranteed to be a TextChannel when not in thread
-    parentChannel = target.channel.isThread() ? null : (target.channel as TextChannel);
-    channel = target.channel as TextChannel | ThreadChannel; // Temporarily use current channel
+  // Check if target is a message by checking for message-specific properties
+  const isMessage = 'author' in target && 'content' in target;
+
+  if (isMessage) {
+    // Target is IMessage - store info for lazy thread creation
+    const message = target as IMessage;
+    originalMessage = message;
+
+    // Get channel from message
+    const messageChannel = message.channel;
+    parentChannel = messageChannel.isThreadChannel() ? null : (messageChannel as ITextChannel);
+    channel = messageChannel;
 
     // Clean the message content by removing Discord mentions
-    const cleanContent = target.content.replace(/<@!?\d+>/g, '').trim();
+    const cleanContent = message.content.replace(/<@!?\d+>/g, '').trim();
 
     threadName = botConfig?.mode === 'shared'
       ? `${cleanContent.slice(0, 80)}${cleanContent.length > 80 ? '...' : ''}`
-      : `${target.author.username}: ${cleanContent.slice(0, 80)}${cleanContent.length > 80 ? '...' : ''}`;
+      : `${message.author.username}: ${cleanContent.slice(0, 80)}${cleanContent.length > 80 ? '...' : ''}`;
   } else {
     // Already in a thread or channel
-    channel = target;
+    channel = target as ITextChannel | IThreadChannel;
     threadCreated = true; // No need to create
   }
 
@@ -161,12 +167,12 @@ export async function streamToDiscord(
 
 async function handleSDKMessage(
   message: SDKMessage,
-  channel: TextChannel | ThreadChannel,
+  channel: ITextChannel | IThreadChannel,
   state: StreamState,
   sessionManager: SessionManager,
   sessionId: string,
   logger: ILogger
-): Promise<TextChannel | ThreadChannel> {
+): Promise<ITextChannel | IThreadChannel> {
   switch (message.type) {
     case 'assistant':
       // Final assistant message with complete response
@@ -237,7 +243,7 @@ async function handleSDKMessage(
 
 async function handleStreamEvent(
   message: SDKPartialAssistantMessage,
-  channel: TextChannel | ThreadChannel,
+  channel: ITextChannel | IThreadChannel,
   state: StreamState,
   logger: ILogger
 ): Promise<void> {
@@ -343,7 +349,7 @@ function extractTextFromMessage(message: any): string {
 }
 
 async function sendCompleteMessage(
-  channel: TextChannel | ThreadChannel,
+  channel: ITextChannel | IThreadChannel,
   content: string,
   planContent: string | null,
   messagePrefix: string | null,
@@ -351,7 +357,7 @@ async function sendCompleteMessage(
   state: StreamState,
   filesToShare: string[] = [],
   logger: ILogger
-): Promise<TextChannel | ThreadChannel> {
+): Promise<ITextChannel | IThreadChannel> {
   logger.info(`📤 Sending message to Discord (${content.length} chars)`);
 
   // Create thread now if needed (lazy thread creation)
@@ -390,19 +396,20 @@ async function sendCompleteMessage(
 
     // Attach files only on the last chunk
     if (i === chunks.length - 1 && (planContent || filesToShare.length > 0)) {
-      const attachments: AttachmentBuilder[] = [];
+      const attachments: IAttachment[] = [];
 
       // Add plan file if exists
       if (planContent) {
-        attachments.push(new AttachmentBuilder(Buffer.from(planContent, 'utf-8'), {
+        attachments.push({
+          buffer: Buffer.from(planContent, 'utf-8'),
           name: `plan-${Date.now()}.md`,
           description: 'Claude Code Plan',
-        }));
+        });
       }
 
       // Add shared files if any
       for (const filePath of filesToShare) {
-        attachments.push(new AttachmentBuilder(filePath));
+        attachments.push({ filePath });
       }
 
       await targetChannel.send({

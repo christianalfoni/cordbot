@@ -1,4 +1,27 @@
 import type { Query, SDKMessage, SDKPartialAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { ChildProcess, SpawnOptions } from 'child_process';
+
+/**
+ * System prompt configuration
+ */
+export interface SystemPromptConfig {
+  type: 'preset';
+  preset: 'claude_code';
+  append?: string;
+}
+
+/**
+ * Tools configuration
+ */
+export interface ToolsConfig {
+  type: 'preset';
+  preset: 'claude_code';
+}
+
+/**
+ * Custom spawn function for Claude Code process
+ */
+export type SpawnClaudeCodeProcess = (options: SpawnOptions & { command: string; args: string[] }) => ChildProcess;
 
 /**
  * Query options for creating a new query
@@ -8,12 +31,16 @@ export interface QueryOptions {
   workingDirectory: string;
   sessionId?: string;
   resume?: string;
+  systemPrompt?: SystemPromptConfig;
   systemPromptAppend?: string;
-  tools?: any[];
-  mcpServers?: any[];
+  tools?: ToolsConfig;
+  mcpServers?: Record<string, any>;
   permissionMode?: 'bypassPermissions' | 'requestPermissions';
   allowDangerouslySkipPermissions?: boolean;
   includePartialMessages?: boolean;
+  settingSources?: string[];
+  verbose?: boolean;
+  spawnClaudeCodeProcess?: SpawnClaudeCodeProcess;
 }
 
 /**

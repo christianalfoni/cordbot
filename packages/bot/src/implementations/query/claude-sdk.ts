@@ -14,7 +14,11 @@ export class ClaudeSDKQueryExecutor implements IQueryExecutor {
       allowDangerouslySkipPermissions: options.allowDangerouslySkipPermissions ?? true,
     };
 
-    if (options.systemPromptAppend) {
+    // System prompt configuration
+    if (options.systemPrompt) {
+      sdkOptions.systemPrompt = options.systemPrompt;
+    } else if (options.systemPromptAppend) {
+      // Legacy support for systemPromptAppend
       sdkOptions.systemPrompt = {
         type: 'preset',
         preset: 'claude_code',
@@ -22,12 +26,29 @@ export class ClaudeSDKQueryExecutor implements IQueryExecutor {
       };
     }
 
+    // Tools configuration
     if (options.tools) {
       sdkOptions.tools = options.tools;
     }
 
+    // MCP servers
     if (options.mcpServers) {
       sdkOptions.mcpServers = options.mcpServers;
+    }
+
+    // Setting sources
+    if (options.settingSources) {
+      sdkOptions.settingSources = options.settingSources;
+    }
+
+    // Verbose mode
+    if (options.verbose !== undefined) {
+      sdkOptions.verbose = options.verbose;
+    }
+
+    // Custom spawn function
+    if (options.spawnClaudeCodeProcess) {
+      sdkOptions.spawnClaudeCodeProcess = options.spawnClaudeCodeProcess;
     }
 
     return query({

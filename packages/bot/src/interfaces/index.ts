@@ -21,3 +21,6 @@ export * from './token.js';
 
 // Logger
 export * from './logger.js';
+
+// File
+export * from './file.js';

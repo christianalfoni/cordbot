@@ -1,5 +1,5 @@
 import { SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk';
-import { ThreadChannel, TextChannel } from 'discord.js';
+import type { ITextChannel, IThreadChannel } from '../interfaces/discord.js';
 import { ToolManifest, ToolContext } from '../service/types.js';
 import { TokenManager } from '../service/token-manager.js';
 import { nanoid } from 'nanoid';
@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 export async function loadDynamicTools(
   manifest: ToolManifest,
   tokenManager: TokenManager,
-  getCurrentChannel: () => ThreadChannel | TextChannel | null,
+  getCurrentChannel: () => ITextChannel | IThreadChannel | null,
   permissionManager: any
 ): Promise<SdkMcpToolDefinition<any>[]> {
   const tools: SdkMcpToolDefinition<any>[] = [];

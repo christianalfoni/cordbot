@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import type { Message } from 'discord.js';
+import type { IMessage } from '../interfaces/discord.js';
 
 export interface TrackedMessage {
   messageId: string;
@@ -20,11 +20,9 @@ export interface TrackedMessage {
  * Track a public message from Discord
  * Stores in ~/.claude/channels/{channelId}/messages/raw/{date}.jsonl
  */
-export async function trackMessage(message: Message): Promise<void> {
+export async function trackMessage(message: IMessage): Promise<void> {
   const homeDir = os.homedir();
-  const channelName = message.channel.isTextBased() && 'name' in message.channel
-    ? message.channel.name
-    : 'unknown';
+  const channelName = message.channel.name;
 
   const record: TrackedMessage = {
     messageId: message.id,

@@ -14,6 +14,22 @@ import type {
   Poll as DiscordPoll,
 } from 'discord.js';
 
+// File attachment type
+export interface IAttachment {
+  buffer?: Buffer;
+  filePath?: string;
+  name?: string;
+  description?: string;
+}
+
+// Send message options
+export interface ISendMessageOptions {
+  content?: string;
+  embeds?: any[];
+  files?: IAttachment[];
+  components?: any[];
+}
+
 // Message types
 export interface IMessage {
   id: string;
@@ -23,13 +39,44 @@ export interface IMessage {
   authorId: string;
   author: IUser;
   createdTimestamp: number;
+  createdAt: Date;
+  channel: ITextChannel | IThreadChannel;
+  attachments: Map<string, IMessageAttachment>;
+  reference: IMessageReference | null;
+  member: IMember | null;
+  mentions: {
+    users: IUser[];
+    has(userId: string): boolean;
+  };
+  embeds: IMessageEmbed[];
+  client: {
+    user: IUser | null;
+  };
 
-  edit(content: string | { content?: string; embeds?: any[] }): Promise<IMessage>;
+  edit(content: string | ISendMessageOptions): Promise<IMessage>;
   delete(): Promise<void>;
-  reply(content: string | { content?: string; components?: any[] }): Promise<IMessage>;
+  reply(content: string | ISendMessageOptions): Promise<IMessage>;
+}
 
-  // Access to underlying Discord.js message for advanced operations
-  _raw?: DiscordMessage;
+export interface IMessageAttachment {
+  id: string;
+  url: string;
+  name: string;
+  size: number;
+  contentType?: string;
+}
+
+export interface IMessageReference {
+  messageId: string;
+  channelId: string;
+  guildId?: string;
+}
+
+export interface IMessageEmbed {
+  title?: string;
+  description?: string;
+  url?: string;
+  color?: number;
 }
 
 // User types
@@ -39,7 +86,6 @@ export interface IUser {
   bot: boolean;
   discriminator: string;
 
-  _raw?: DiscordUser;
 }
 
 // Member types
@@ -47,6 +93,7 @@ export interface IMember {
   id: string;
   user: IUser;
   nickname: string | null;
+  displayName: string;
   roles: IRole[];
   joinedTimestamp: number | null;
 
@@ -54,7 +101,6 @@ export interface IMember {
   ban(options?: { reason?: string; deleteMessageSeconds?: number }): Promise<void>;
   timeout(duration: number, reason?: string): Promise<void>;
 
-  _raw?: DiscordGuildMember;
 }
 
 // Role types
@@ -66,7 +112,6 @@ export interface IRole {
   permissions: bigint;
   mentionable: boolean;
 
-  _raw?: DiscordRole;
 }
 
 // Channel types
@@ -90,19 +135,28 @@ export interface IChannel {
   // Type guards
   isTextChannel(): this is ITextChannel;
   isThreadChannel(): this is IThreadChannel;
+  isThread(): this is IThreadChannel;  // Alias for isThreadChannel
   isForumChannel(): this is IForumChannel;
 
-  _raw?: any; // Allow any Discord channel type
 }
 
 export interface ITextChannel extends IChannel {
   topic: string | null;
 
-  send(content: string | { content?: string; embeds?: any[]; files?: any[] }): Promise<IMessage>;
+  send(content: string | ISendMessageOptions): Promise<IMessage>;
   bulkDelete(messages: number | string[]): Promise<void>;
   setTopic(topic: string): Promise<ITextChannel>;
 
-  _raw?: DiscordTextChannel;
+  // Thread creation
+  threads: {
+    create(options: {
+      name: string;
+      autoArchiveDuration?: number;
+      reason?: string;
+      startMessage?: IMessage;
+    }): Promise<IThreadChannel>;
+  };
+
 }
 
 export interface IThreadChannel extends IChannel {
@@ -111,11 +165,10 @@ export interface IThreadChannel extends IChannel {
   archived: boolean;
   locked: boolean;
 
-  send(content: string | { content?: string; embeds?: any[]; files?: any[] }): Promise<IMessage>;
+  send(content: string | ISendMessageOptions): Promise<IMessage>;
   setArchived(archived: boolean): Promise<IThreadChannel>;
   setLocked(locked: boolean): Promise<IThreadChannel>;
 
-  _raw?: DiscordThreadChannel | DiscordAnyThreadChannel;
 }
 
 export interface IForumChannel extends IChannel {
@@ -129,7 +182,6 @@ export interface IForumChannel extends IChannel {
     }): Promise<IThreadChannel>;
   };
 
-  _raw?: DiscordForumChannel;
 }
 
 export interface IForumTag {
@@ -227,6 +279,7 @@ export interface IDiscordAdapter {
   login(token: string): Promise<void>;
   isReady(): boolean;
   getUser(): IUser | null;
+  destroy(): void;
 
   // Message operations
   sendMessage(channelId: string, content: string | MessageOptions): Promise<IMessage>;
@@ -290,9 +343,6 @@ export interface IDiscordAdapter {
 
   // Guild operations
   getGuild(guildId: string): Promise<IGuild | null>;
-
-  // Raw client access (for tools that need Discord.js types)
-  getRawClient(): any;
 
   // Event handlers
   on(event: 'messageCreate', handler: MessageHandler): void;

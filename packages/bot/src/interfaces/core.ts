@@ -5,6 +5,7 @@ import type { IScheduler } from './scheduler';
 import type { IPermissionManager } from './permission';
 import type { ITokenProvider } from './token';
 import type { ILogger } from './logger';
+import type { IFileStore } from './file';
 
 /**
  * Bot context - central dependency injection container
@@ -53,6 +54,11 @@ export interface IBotContext {
    * Logger for all logging operations
    */
   logger: ILogger;
+
+  /**
+   * File system operations
+   */
+  fileStore: IFileStore;
 }
 
 /**

@@ -1,5 +1,3 @@
-import { Message, TextChannel, ThreadChannel, GuildChannel, Interaction } from 'discord.js';
-import fs from 'fs';
 import path from 'path';
 import { SessionManager } from '../agent/manager.js';
 import { streamToDiscord } from '../agent/stream.js';
@@ -7,7 +5,7 @@ import { ChannelMapping, getChannelMapping, syncNewChannel, updateChannelClaudeM
 import { CronRunner } from '../scheduler/runner.js';
 import { trackMessage } from '../message-tracking/tracker.js';
 import type { IBotContext } from '../interfaces/core.js';
-import type { IMessage, ITextChannel } from '../interfaces/discord.js';
+import type { IMessage, ITextChannel, IThreadChannel, IChannel } from '../interfaces/discord.js';
 import type { ILogger } from '../interfaces/logger.js';
 
 // Queue to prevent concurrent processing of messages in the same thread
@@ -40,12 +38,11 @@ export function setupEventHandlers(
 
     try {
       // NEW: Track ALL public messages (not just bot interactions)
-      if (!message.author.bot && message._raw) {
+      if (!message.author.bot) {
         try {
-          // trackMessage expects raw Discord.js Message type
           // Only track non-thread messages
-          if (!message._raw.channel.isThread()) {
-            await trackMessage(message._raw);
+          if (!message.channel.isThreadChannel()) {
+            await trackMessage(message);
           }
         } catch (trackError) {
           logger.error('Error tracking message:', trackError);
@@ -54,10 +51,7 @@ export function setupEventHandlers(
       }
 
       // Existing bot interaction logic
-      // handleMessageWithLock expects raw Discord.js Message type
-      if (message._raw) {
-        await handleMessageWithLock(message._raw, sessionManager, channelMappings, logger, botConfig);
-      }
+      await handleMessageWithLock(message, context, sessionManager, channelMappings, logger, botConfig);
     } catch (error) {
       logger.error('❌ Fatal error in messageCreate handler:', error);
       // Try to notify the user
@@ -124,8 +118,8 @@ export function setupEventHandlers(
       channelMappings.splice(mappingIndex, 1);
 
       // Delete the folder if it exists
-      if (fs.existsSync(mapping.folderPath)) {
-        fs.rmSync(mapping.folderPath, { recursive: true, force: true });
+      if (context.fileStore.exists(mapping.folderPath)) {
+        context.fileStore.deleteDirectory(mapping.folderPath);
         logger.info(`📁 Deleted folder: ${mapping.folderPath}`);
       }
 
@@ -209,14 +203,15 @@ export function setupEventHandlers(
 }
 
 async function handleMessageWithLock(
-  message: Message,
+  message: IMessage,
+  context: IBotContext,
   sessionManager: SessionManager,
   channelMappings: ChannelMapping[],
   logger: ILogger,
   botConfig?: BotConfig
 ): Promise<void> {
   // Determine thread ID for locking
-  const threadId = message.channel.isThread()
+  const threadId = message.channel.isThreadChannel()
     ? message.channel.id
     : message.id; // For new threads, use message ID temporarily
 
@@ -231,7 +226,7 @@ async function handleMessageWithLock(
     }
 
     // Create new lock for this message
-    const newLock = handleMessage(message, sessionManager, channelMappings, logger, botConfig)
+    const newLock = handleMessage(message, context, sessionManager, channelMappings, logger, botConfig)
       .finally(() => {
         // Remove lock when done
         try {
@@ -252,7 +247,8 @@ async function handleMessageWithLock(
 }
 
 async function handleMessage(
-  message: Message,
+  message: IMessage,
+  context: IBotContext,
   sessionManager: SessionManager,
   channelMappings: ChannelMapping[],
   logger: ILogger,
@@ -280,7 +276,11 @@ async function handleMessage(
   if (botConfig?.mode === 'shared') {
     if (!message.channel.isThread()) {
       // In channel - only respond to mentions
-      const botMentioned = message.mentions.has(message.client.user!);
+      const botUser = message.client.user;
+      if (!botUser) {
+        return; // Bot user not available
+      }
+      const botMentioned = message.mentions.has(botUser.id);
       if (!botMentioned) {
         return; // Ignore non-mention messages
       }
@@ -335,17 +335,20 @@ async function handleMessage(
 
     // Determine thread context
     let threadId: string;
-    let targetForStream: ThreadChannel | TextChannel | Message;
+    let targetForStream: IMessage | ITextChannel | IThreadChannel;
+    let isTargetMessage: boolean;
 
-    if (message.channel.isThread()) {
+    if (message.channel.isThreadChannel()) {
       // User is replying in an existing thread
       threadId = message.channel.id;
-      targetForStream = message.channel as ThreadChannel;
+      targetForStream = message.channel;
+      isTargetMessage = false;
     } else {
       // User is writing in the channel - defer thread creation
       // Pass message to streamToDiscord for lazy creation
       threadId = `pending-${message.id}`;
       targetForStream = message;
+      isTargetMessage = true;
     }
 
     // Determine session ID and working directory
@@ -405,14 +408,14 @@ async function handleMessage(
       }
 
       // Verify working directory exists and is accessible
-      if (!fs.existsSync(workingDir)) {
+      if (!context.fileStore.exists(workingDir)) {
         logger.error(`❌ Working directory does not exist: ${workingDir}`);
         logger.error(`   This likely means the persistent volume is not mounted.`);
 
         // Send error to the appropriate target
-        const errorTarget = targetForStream instanceof Message
-          ? (targetForStream.channel as TextChannel)
-          : targetForStream;
+        const errorTarget: ITextChannel | IThreadChannel = isTargetMessage
+          ? message.channel
+          : (targetForStream as ITextChannel | IThreadChannel);
 
         await errorTarget.send(
           `❌ Error: Working directory not found. Please check server configuration.`
@@ -421,7 +424,7 @@ async function handleMessage(
       } else {
         logger.info(`✓ Working directory exists: ${workingDir}`);
         // Check if CLAUDE.md exists in centralized location
-        if (fs.existsSync(mapping.claudeMdPath)) {
+        if (context.fileStore.exists(mapping.claudeMdPath)) {
           logger.info(`✓ CLAUDE.md found at ${mapping.claudeMdPath}`);
         } else {
           logger.info(`⚠️  CLAUDE.md not found at ${mapping.claudeMdPath}`);
@@ -431,9 +434,9 @@ async function handleMessage(
 
     // Set channel context for permission requests
     // For lazy thread creation, use the message channel temporarily
-    const contextChannel = targetForStream instanceof Message
-      ? (targetForStream.channel as TextChannel)
-      : targetForStream;
+    const contextChannel: ITextChannel | IThreadChannel = isTargetMessage
+      ? message.channel
+      : (targetForStream as ITextChannel | IThreadChannel);
     sessionManager.setChannelContext(sessionId, contextChannel);
 
     // Set working directory context for built-in tools (cron, etc.)
@@ -446,7 +449,7 @@ async function handleMessage(
       // Handle attachments if present
       let userMessage = message.content;
       if (message.attachments.size > 0) {
-        const attachmentInfo = await downloadAttachments(message, workingDir, logger);
+        const attachmentInfo = await downloadAttachments(message, workingDir, context, logger);
         if (attachmentInfo.length > 0) {
           userMessage = `${message.content}\n\n[Files attached and saved to working directory: ${attachmentInfo.join(', ')}]`;
         }
@@ -514,14 +517,15 @@ async function handleMessage(
       const claudeMdPath = channelMapping.claudeMdPath;
       let systemPrompt: string | undefined;
 
-      if (fs.existsSync(claudeMdPath)) {
+      if (context.fileStore.exists(claudeMdPath)) {
         try {
           await sessionManager.populateMemory(claudeMdPath, parentChannelId, sessionId);
           logger.info(`💾 Memory populated for channel ${parentChannelId}`);
 
           // Read CLAUDE.md to use as system prompt
-          systemPrompt = fs.readFileSync(claudeMdPath, 'utf-8');
-          logger.info(`📖 Read CLAUDE.md (${systemPrompt.length} chars)`);
+          const claudeMdContent = context.fileStore.readFile(claudeMdPath, 'utf-8');
+          systemPrompt = claudeMdContent;
+          logger.info(`📖 Read CLAUDE.md (${claudeMdContent.length} chars)`);
         } catch (memoryError) {
           logger.error('Failed to populate memory or read CLAUDE.md:', memoryError);
           // Continue anyway - memory is nice-to-have, not critical
@@ -543,9 +547,9 @@ async function handleMessage(
         );
       } catch (queryError) {
         logger.error('Error creating query:', queryError);
-        const errorTarget = targetForStream instanceof Message
-          ? (targetForStream.channel as TextChannel)
-          : targetForStream;
+        const errorTarget: ITextChannel | IThreadChannel = isTargetMessage
+          ? message.channel
+          : (targetForStream as ITextChannel | IThreadChannel);
         await errorTarget.send(
           `❌ Failed to create query: ${queryError instanceof Error ? queryError.message : 'Unknown error'}`
         );
@@ -569,9 +573,9 @@ async function handleMessage(
         logger.error('Error streaming to Discord:', streamError);
 
         // Send error to the appropriate target
-        const errorTarget = targetForStream instanceof Message
-          ? (targetForStream.channel as TextChannel)
-          : targetForStream;
+        const errorTarget: ITextChannel | IThreadChannel = isTargetMessage
+          ? message.channel
+          : (targetForStream as ITextChannel | IThreadChannel);
 
         await errorTarget.send(
           `❌ Failed to stream response: ${streamError instanceof Error ? streamError.message : 'Unknown error'}`
@@ -603,7 +607,12 @@ async function handleMessage(
   }
 }
 
-async function downloadAttachments(message: Message, workingDir: string, logger: ILogger): Promise<string[]> {
+async function downloadAttachments(
+  message: IMessage,
+  workingDir: string,
+  context: IBotContext,
+  logger: ILogger
+): Promise<string[]> {
   const attachmentNames: string[] = [];
 
   for (const attachment of message.attachments.values()) {
@@ -620,7 +629,7 @@ async function downloadAttachments(message: Message, workingDir: string, logger:
 
       // Save to channel folder (overwrite if exists)
       const filePath = path.join(workingDir, attachment.name);
-      fs.writeFileSync(filePath, buffer);
+      context.fileStore.writeFile(filePath, buffer);
 
       attachmentNames.push(attachment.name);
       logger.info(`📎 Downloaded attachment: ${attachment.name} (${buffer.length} bytes)`);
@@ -635,8 +644,9 @@ async function downloadAttachments(message: Message, workingDir: string, logger:
 /**
  * Check if message mentions someone other than the bot
  */
-function mentionsSomeoneElse(message: Message): boolean {
-  const botId = message.client.user!.id;
+function mentionsSomeoneElse(message: IMessage): boolean {
+  const botId = message.client.user?.id;
+  if (!botId) return false;
 
   // Check for @mentions of other users
   const mentionsOthers = message.mentions.users.some(user => user.id !== botId && !user.bot);

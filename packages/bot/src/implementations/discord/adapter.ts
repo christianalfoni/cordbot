@@ -14,6 +14,7 @@ import {
   ChannelType as DiscordChannelType,
   GuildScheduledEventEntityType,
   GuildScheduledEventPrivacyLevel,
+  AttachmentBuilder,
 } from 'discord.js';
 import type {
   IDiscordAdapter,
@@ -29,6 +30,8 @@ import type {
   IGuildScheduledEvent,
   IButtonInteraction,
   IForumTag,
+  IAttachment,
+  ISendMessageOptions,
   ChannelType,
   MessageOptions,
   MessageHandler,
@@ -41,10 +44,41 @@ import type {
 } from '../../interfaces/discord.js';
 
 /**
+ * Helper to convert IAttachment to Discord.js AttachmentBuilder
+ */
+function convertAttachments(attachments?: IAttachment[]): AttachmentBuilder[] {
+  if (!attachments) return [];
+
+  return attachments.map(att => {
+    if (att.buffer) {
+      return new AttachmentBuilder(att.buffer, {
+        name: att.name,
+        description: att.description,
+      });
+    } else if (att.filePath) {
+      return new AttachmentBuilder(att.filePath, {
+        name: att.name,
+        description: att.description,
+      });
+    } else {
+      throw new Error('Attachment must have either buffer or filePath');
+    }
+  });
+}
+
+/**
  * Wrapper classes that implement our interfaces
  */
 class DiscordMessage implements IMessage {
   constructor(private msg: Message) {}
+
+  /**
+   * Internal method to get the underlying Discord.js message
+   * Only for use within the implementation layer
+   */
+  _getUnderlyingMessage(): Message {
+    return this.msg;
+  }
 
   get id() { return this.msg.id; }
   get content() { return this.msg.content; }
@@ -53,20 +87,104 @@ class DiscordMessage implements IMessage {
   get authorId() { return this.msg.author.id; }
   get author(): IUser { return new DiscordUser(this.msg.author); }
   get createdTimestamp() { return this.msg.createdTimestamp; }
-  get _raw() { return this.msg; }
+  get createdAt() { return this.msg.createdAt; }
 
-  async edit(content: string | { content?: string; embeds?: any[] }): Promise<IMessage> {
-    const edited = await this.msg.edit(content);
-    return new DiscordMessage(edited);
+  get client() {
+    return {
+      user: this.msg.client.user ? new DiscordUser(this.msg.client.user) : null,
+    };
+  }
+
+  get attachments(): Map<string, import('../../interfaces/discord.js').IMessageAttachment> {
+    const attachments = new Map();
+    this.msg.attachments.forEach((att, id) => {
+      attachments.set(id, {
+        id: att.id,
+        url: att.url,
+        name: att.name,
+        size: att.size,
+        contentType: att.contentType ?? undefined,
+      });
+    });
+    return attachments;
+  }
+
+  get reference(): import('../../interfaces/discord.js').IMessageReference | null {
+    if (!this.msg.reference) return null;
+    return {
+      messageId: this.msg.reference.messageId ?? '',
+      channelId: this.msg.reference.channelId,
+      guildId: this.msg.reference.guildId,
+    };
+  }
+
+  get member(): IMember | null {
+    if (!this.msg.member) return null;
+    return new DiscordMember(this.msg.member);
+  }
+
+  get mentions(): { users: IUser[]; has(userId: string): boolean } {
+    const msg = this.msg;
+    return {
+      users: Array.from(msg.mentions.users.values()).map(u => new DiscordUser(u)),
+      has(userId: string): boolean {
+        return msg.mentions.has(userId);
+      },
+    };
+  }
+
+  get embeds(): import('../../interfaces/discord.js').IMessageEmbed[] {
+    return this.msg.embeds.map(embed => ({
+      title: embed.title ?? undefined,
+      description: embed.description ?? undefined,
+      url: embed.url ?? undefined,
+      color: embed.color ?? undefined,
+    }));
+  }
+
+  get channel(): ITextChannel | IThreadChannel {
+    const ch = this.msg.channel;
+    if (ch instanceof ThreadChannel) {
+      return new DiscordThreadChannelWrapper(ch);
+    } else if (ch instanceof TextChannel) {
+      return new DiscordTextChannelWrapper(ch);
+    } else {
+      throw new Error('Message channel is not a text or thread channel');
+    }
+  }
+
+  async edit(content: string | ISendMessageOptions): Promise<IMessage> {
+    if (typeof content === 'string') {
+      const edited = await this.msg.edit(content);
+      return new DiscordMessage(edited);
+    } else {
+      const edited = await this.msg.edit({
+        content: content.content,
+        embeds: content.embeds,
+        files: convertAttachments(content.files),
+        components: content.components,
+      });
+      return new DiscordMessage(edited);
+    }
   }
 
   async delete(): Promise<void> {
     await this.msg.delete();
   }
 
-  async reply(content: string | { content?: string; components?: any[] }): Promise<IMessage> {
-    const reply = await this.msg.reply(content);
-    return new DiscordMessage(reply);
+  async reply(content: string | ISendMessageOptions): Promise<IMessage> {
+    if (typeof content === 'string') {
+      const reply = await this.msg.reply(content);
+      return new DiscordMessage(reply);
+    } else {
+      const reply = await this.msg.reply({
+        content: content.content,
+        embeds: content.embeds,
+        files: convertAttachments(content.files),
+        components: content.components,
+      });
+      return new DiscordMessage(reply);
+    }
   }
 }
 
@@ -77,7 +195,6 @@ class DiscordUser implements IUser {
   get username() { return this.user.username; }
   get bot() { return this.user.bot; }
   get discriminator() { return this.user.discriminator; }
-  get _raw() { return this.user; }
 }
 
 class DiscordMember implements IMember {
@@ -86,11 +203,11 @@ class DiscordMember implements IMember {
   get id() { return this.member.id; }
   get user(): IUser { return new DiscordUser(this.member.user); }
   get nickname() { return this.member.nickname; }
+  get displayName() { return this.member.displayName; }
   get roles(): IRole[] {
     return this.member.roles.cache.map(role => new DiscordRole(role));
   }
   get joinedTimestamp() { return this.member.joinedTimestamp; }
-  get _raw() { return this.member; }
 
   async kick(reason?: string): Promise<void> {
     await this.member.kick(reason);
@@ -114,7 +231,6 @@ class DiscordRole implements IRole {
   get position() { return this.role.position; }
   get permissions() { return this.role.permissions.bitfield; }
   get mentionable() { return this.role.mentionable; }
-  get _raw() { return this.role; }
 }
 
 class DiscordTextChannelWrapper implements ITextChannel {
@@ -125,15 +241,51 @@ class DiscordTextChannelWrapper implements ITextChannel {
   get type() { return this.channel.type as unknown as ChannelType; }
   get guildId() { return this.channel.guildId; }
   get topic() { return this.channel.topic; }
-  get _raw() { return this.channel; }
+
+  get threads() {
+    const channel = this.channel;
+    return {
+      async create(options: {
+        name: string;
+        autoArchiveDuration?: number;
+        reason?: string;
+        startMessage?: IMessage;
+      }): Promise<IThreadChannel> {
+        // Extract underlying Discord.js message if provided
+        let discordMessage: Message | undefined;
+        if (options.startMessage && options.startMessage instanceof DiscordMessage) {
+          discordMessage = options.startMessage._getUnderlyingMessage();
+        }
+
+        const thread = await channel.threads.create({
+          name: options.name,
+          autoArchiveDuration: options.autoArchiveDuration,
+          reason: options.reason,
+          startMessage: discordMessage,
+        });
+        return new DiscordThreadChannelWrapper(thread);
+      },
+    };
+  }
 
   isTextChannel(): this is ITextChannel { return true; }
   isThreadChannel(): this is IThreadChannel { return false; }
+  isThread(): this is IThreadChannel { return false; }
   isForumChannel(): this is IForumChannel { return false; }
 
-  async send(content: string | { content?: string; embeds?: any[]; files?: any[] }): Promise<IMessage> {
-    const msg = await this.channel.send(content);
-    return new DiscordMessage(msg);
+  async send(content: string | ISendMessageOptions): Promise<IMessage> {
+    if (typeof content === 'string') {
+      const msg = await this.channel.send(content);
+      return new DiscordMessage(msg);
+    } else {
+      const msg = await this.channel.send({
+        content: content.content,
+        embeds: content.embeds,
+        files: convertAttachments(content.files),
+        components: content.components,
+      });
+      return new DiscordMessage(msg);
+    }
   }
 
   async bulkDelete(messages: number | string[]): Promise<void> {
@@ -157,15 +309,25 @@ class DiscordThreadChannelWrapper implements IThreadChannel {
   get ownerId() { return this.channel.ownerId; }
   get archived() { return this.channel.archived ?? false; }
   get locked() { return this.channel.locked ?? false; }
-  get _raw() { return this.channel; }
 
   isTextChannel(): this is ITextChannel { return false; }
   isThreadChannel(): this is IThreadChannel { return true; }
+  isThread(): this is IThreadChannel { return true; }
   isForumChannel(): this is IForumChannel { return false; }
 
-  async send(content: string | { content?: string; embeds?: any[]; files?: any[] }): Promise<IMessage> {
-    const msg = await this.channel.send(content);
-    return new DiscordMessage(msg);
+  async send(content: string | ISendMessageOptions): Promise<IMessage> {
+    if (typeof content === 'string') {
+      const msg = await this.channel.send(content);
+      return new DiscordMessage(msg);
+    } else {
+      const msg = await this.channel.send({
+        content: content.content,
+        embeds: content.embeds,
+        files: convertAttachments(content.files),
+        components: content.components,
+      });
+      return new DiscordMessage(msg);
+    }
   }
 
   async setArchived(archived: boolean): Promise<IThreadChannel> {
@@ -194,10 +356,10 @@ class DiscordForumChannelWrapper implements IForumChannel {
       emoji: tag.emoji,
     }));
   }
-  get _raw() { return this.channel; }
 
   isTextChannel(): this is ITextChannel { return false; }
   isThreadChannel(): this is IThreadChannel { return false; }
+  isThread(): this is IThreadChannel { return false; }
   isForumChannel(): this is IForumChannel { return true; }
 
   get threads() {
@@ -222,7 +384,6 @@ class DiscordGuildWrapper implements IGuild {
   get channels() { return this.guild.channels; }
   get members() { return this.guild.members; }
   get roles() { return this.guild.roles; }
-  get _raw() { return this.guild; }
 }
 
 class DiscordGuildScheduledEventWrapper implements IGuildScheduledEvent {
@@ -235,7 +396,6 @@ class DiscordGuildScheduledEventWrapper implements IGuildScheduledEvent {
   get scheduledEndTimestamp() { return this.event.scheduledEndTimestamp; }
   get status() { return this.event.status; }
   get entityType() { return this.event.entityType; }
-  get _raw() { return this.event; }
 
   async delete(): Promise<void> {
     await this.event.delete();
@@ -250,7 +410,6 @@ class DiscordButtonInteractionWrapper implements IButtonInteraction {
   get channelId() { return this.interaction.channelId; }
   get guildId() { return this.interaction.guildId ?? undefined; }
   get message(): IMessage { return new DiscordMessage(this.interaction.message); }
-  get _raw() { return this.interaction; }
 
   async reply(content: string | { content?: string; ephemeral?: boolean }): Promise<void> {
     await this.interaction.reply(content);
@@ -284,8 +443,8 @@ export class DiscordJsAdapter implements IDiscordAdapter {
     return this.client.user ? new DiscordUser(this.client.user) : null;
   }
 
-  getRawClient(): any {
-    return this.client;
+  destroy(): void {
+    this.client.destroy();
   }
 
   // Message operations
@@ -354,8 +513,8 @@ export class DiscordJsAdapter implements IDiscordAdapter {
           guildId: ch!.guildId ?? guildId,
           isTextChannel: () => false,
           isThreadChannel: () => false,
+          isThread: () => false,
           isForumChannel: () => false,
-          _raw: ch,
         } as IChannel;
       });
   }
@@ -489,17 +648,21 @@ export class DiscordJsAdapter implements IDiscordAdapter {
   }
 
   async assignRole(guildId: string, userId: string, roleId: string): Promise<void> {
-    const member = await this.getMember(guildId, userId);
     const role = await this.getRole(guildId, roleId);
     if (!role) {
       throw new Error(`Role ${roleId} not found`);
     }
-    await (member._raw as GuildMember).roles.add(roleId);
+    // Fetch member directly from Discord client to access role operations
+    const guild = await this.client.guilds.fetch(guildId);
+    const member = await guild.members.fetch(userId);
+    await member.roles.add(roleId);
   }
 
   async removeRole(guildId: string, userId: string, roleId: string): Promise<void> {
-    const member = await this.getMember(guildId, userId);
-    await (member._raw as GuildMember).roles.remove(roleId);
+    // Fetch member directly from Discord client to access role operations
+    const guild = await this.client.guilds.fetch(guildId);
+    const member = await guild.members.fetch(userId);
+    await member.roles.remove(roleId);
   }
 
   // Event operations
