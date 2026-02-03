@@ -1,8 +1,8 @@
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
-import { logger } from 'firebase-functions/v2';
-import { db } from './index.js';
-import { sharedDiscordBotToken, sharedAnthropicApiKey } from './admin.js';
 import { defineSecret } from 'firebase-functions/params';
+import { sharedDiscordBotToken, sharedAnthropicApiKey } from './admin.js';
+import { ProductionFunctionContext } from './context.impl.js';
+import { GuildProvisioningService } from './services/guild-provisioning-service.js';
 
 // Import Fly.io token for provisioning
 const flyApiToken = defineSecret('FLY_API_TOKEN');
@@ -20,12 +20,19 @@ export const onGuildCreated = onDocumentCreated(
     const guildId = event.params.guildId;
     const guildData = event.data?.data();
 
+    // Create context with secrets
+    const ctx = new ProductionFunctionContext({
+      FLY_API_TOKEN: flyApiToken,
+      SHARED_DISCORD_BOT_TOKEN: sharedDiscordBotToken,
+      SHARED_ANTHROPIC_API_KEY: sharedAnthropicApiKey,
+    });
+
     if (!guildData) {
-      logger.error('No guild data in created document', { guildId });
+      ctx.logger.error('No guild data in created document', { guildId });
       return;
     }
 
-    logger.info('Guild document created, starting auto-provisioning', {
+    ctx.logger.info('Guild document created, starting auto-provisioning', {
       guildId,
       guildName: guildData.guildName,
       status: guildData.status,
@@ -33,7 +40,7 @@ export const onGuildCreated = onDocumentCreated(
 
     // Only provision if status is 'pending'
     if (guildData.status !== 'pending') {
-      logger.info('Guild status is not pending, skipping provisioning', {
+      ctx.logger.info('Guild status is not pending, skipping provisioning', {
         guildId,
         status: guildData.status,
       });
@@ -41,31 +48,24 @@ export const onGuildCreated = onDocumentCreated(
     }
 
     try {
-      // Import provisioning logic from fly-hosting
-      // We'll call the internal provisioning logic
-      const { provisionGuildInternal } = await import('./fly-hosting.js');
+      // Execute provisioning business logic
+      const service = new GuildProvisioningService(ctx);
+      await service.provisionGuild({ guildId });
 
-      await provisionGuildInternal(
-        guildId,
-        sharedDiscordBotToken.value(),
-        sharedAnthropicApiKey.value(),
-        flyApiToken.value()
-      );
-
-      logger.info('Auto-provisioning completed successfully', { guildId });
+      ctx.logger.info('Auto-provisioning completed successfully', { guildId });
     } catch (error) {
-      logger.error('Auto-provisioning failed', {
+      ctx.logger.error('Auto-provisioning failed', {
         guildId,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
 
       // Update guild document with error status
-      await db.collection('guilds').doc(guildId).update({
+      await ctx.firestore.updateGuild(guildId, {
         status: 'error',
         errorMessage: `Auto-provisioning failed: ${
           error instanceof Error ? error.message : 'Unknown error'
         }`,
-        updatedAt: new Date().toISOString(),
+        updatedAt: ctx.getCurrentTime().toISOString(),
       });
     }
   }

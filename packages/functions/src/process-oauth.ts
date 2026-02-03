@@ -1,9 +1,14 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { logger } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
-import { db } from './index.js';
-import { discordClientId, discordClientSecret, sharedDiscordBotToken, sharedAnthropicApiKey } from './admin.js';
-import { provisionGuildInternal } from './fly-hosting.js';
+import {
+  discordClientId,
+  discordClientSecret,
+  sharedDiscordBotToken,
+  sharedAnthropicApiKey,
+} from './admin.js';
+import { ProductionFunctionContext } from './context.impl.js';
+import { DiscordOAuthService } from './services/discord-oauth-service.js';
+import { GuildProvisioningService } from './services/guild-provisioning-service.js';
 
 const flyApiToken = defineSecret('FLY_API_TOKEN');
 
@@ -28,115 +33,43 @@ export const processDiscordOAuth = onCall(
     const firebaseUserId = request.auth?.uid;
 
     if (!code || !guildId || !redirectUri) {
-      throw new HttpsError(
-        'invalid-argument',
-        'code, guildId, and redirectUri are required'
-      );
+      throw new HttpsError('invalid-argument', 'code, guildId, and redirectUri are required');
     }
 
     if (!firebaseUserId) {
-      throw new HttpsError(
-        'unauthenticated',
-        'User must be authenticated'
-      );
+      throw new HttpsError('unauthenticated', 'User must be authenticated');
     }
 
+    // Create context with secrets
+    const ctx = new ProductionFunctionContext({
+      DISCORD_CLIENT_ID: discordClientId,
+      DISCORD_CLIENT_SECRET: discordClientSecret,
+      SHARED_DISCORD_BOT_TOKEN: sharedDiscordBotToken,
+      SHARED_ANTHROPIC_API_KEY: sharedAnthropicApiKey,
+      FLY_API_TOKEN: flyApiToken,
+    });
+
     try {
-      logger.info('Processing Discord OAuth', { guildId });
+      ctx.logger.info('Processing Discord OAuth', { guildId });
 
-      // Step 1: Exchange code for access token (SECURE - uses client secret on backend)
-      // Use the redirectUri that was passed from frontend (must match the one used in OAuth request)
-      const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: discordClientId.value(),
-          client_secret: discordClientSecret.value(), // SECURE: Only on backend
-          grant_type: 'authorization_code',
-          code: code,
-          redirect_uri: redirectUri, // Use the exact redirect_uri from the frontend
-        }),
-      });
-
-      if (!tokenResponse.ok) {
-        const errorData = await tokenResponse.json();
-        logger.error('Failed to exchange OAuth code:', errorData);
-        throw new HttpsError(
-          'internal',
-          'Failed to exchange authorization code'
-        );
-      }
-
-      const tokens = await tokenResponse.json();
-
-      // Step 2: Fetch guild details using the bot token (not user's OAuth token)
-      // The bot was just added to this guild, so it has access
-      const guildResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
-        headers: {
-          Authorization: `Bot ${sharedDiscordBotToken.value()}`,
-        },
-      });
-
-      if (!guildResponse.ok) {
-        const errorData = await guildResponse.json().catch(() => ({}));
-        logger.error('Failed to fetch guild details', {
-          status: guildResponse.status,
-          statusText: guildResponse.statusText,
-          guildId,
-          error: errorData,
-        });
-        throw new HttpsError('internal', `Failed to fetch guild details: ${guildResponse.status} ${guildResponse.statusText}`);
-      }
-
-      const guildData = await guildResponse.json();
-
-      // Step 3: Get user who installed the bot
-      const userResponse = await fetch('https://discord.com/api/v10/users/@me', {
-        headers: {
-          Authorization: `Bearer ${tokens.access_token}`,
-        },
-      });
-
-      let installedBy = 'unknown';
-      if (userResponse.ok) {
-        const userData = await userResponse.json();
-        installedBy = userData.id;
-      }
-
-      // Step 4: Create guild document in Firestore
-      const guildDoc = {
-        guildName: guildData.name,
-        guildIcon: guildData.icon || null,
-        status: 'pending' as const,
-        installedBy, // Discord user ID
-        userId: firebaseUserId, // Firebase auth user ID
-        permissions: permissions || '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        memoryContextSize: 10000,
-      };
-
-      await db.collection('guilds').doc(guildId).set(guildDoc);
-
-      logger.info('Guild document created successfully', {
+      // Execute Discord OAuth business logic
+      const oauthService = new DiscordOAuthService(ctx);
+      const oauthResult = await oauthService.processDiscordOAuth({
+        code,
         guildId,
-        guildName: guildData.name,
+        permissions,
+        redirectUri,
+        firebaseUserId,
       });
 
-      // Step 5: Immediately provision Fly.io deployment
-      logger.info('Starting Fly.io provisioning', { guildId });
+      // Immediately provision Fly.io deployment
+      ctx.logger.info('Starting Fly.io provisioning', { guildId });
 
       try {
-        const deployResult = await provisionGuildInternal(
-          guildId,
-          sharedDiscordBotToken.value(),
-          sharedAnthropicApiKey.value(),
-          flyApiToken.value()
-        );
+        const provisioningService = new GuildProvisioningService(ctx);
+        const deployResult = await provisioningService.provisionGuild({ guildId });
 
-        logger.info('Fly.io provisioning completed', {
+        ctx.logger.info('Fly.io provisioning completed', {
           guildId,
           appName: deployResult.appName,
           machineId: deployResult.machineId,
@@ -144,24 +77,24 @@ export const processDiscordOAuth = onCall(
 
         return {
           success: true,
-          guildId,
-          guildName: guildData.name,
-          guildIcon: guildData.icon,
+          guildId: oauthResult.guildId,
+          guildName: oauthResult.guildName,
+          guildIcon: oauthResult.guildIcon,
           deployed: true,
           appName: deployResult.appName,
           machineId: deployResult.machineId,
         };
       } catch (deployError) {
-        logger.error('Fly.io provisioning failed', {
+        ctx.logger.error('Fly.io provisioning failed', {
           guildId,
           error: deployError,
         });
 
         // Update guild status to reflect deployment failure
-        await db.collection('guilds').doc(guildId).update({
+        await ctx.firestore.updateGuild(guildId, {
           status: 'error',
           error: deployError instanceof Error ? deployError.message : 'Deployment failed',
-          updatedAt: new Date().toISOString(),
+          updatedAt: ctx.getCurrentTime().toISOString(),
         });
 
         throw new HttpsError(
@@ -172,7 +105,7 @@ export const processDiscordOAuth = onCall(
         );
       }
     } catch (error) {
-      logger.error('Error processing OAuth:', error);
+      ctx.logger.error('Error processing OAuth:', error);
 
       if (error instanceof HttpsError) {
         throw error;
@@ -180,9 +113,7 @@ export const processDiscordOAuth = onCall(
 
       throw new HttpsError(
         'internal',
-        `Failed to process OAuth: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`
+        `Failed to process OAuth: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }
