@@ -50,15 +50,19 @@ function AppContent() {
     );
   }
 
+  const handleSignIn = async () => {
+    await signInWithDiscord();
+  };
+
   return (
     <Routes>
-      <Route path="/" element={<Home userData={userData} onSignOut={signOut} onSignIn={signInWithDiscord} loading={loading} />} />
-      <Route path="/guilds" element={<GuildsList userData={userData} onSignOut={signOut} onSignIn={signInWithDiscord} loading={loading} />} />
-      <Route path="/docs" element={<Docs userData={userData} onSignOut={signOut} onSignIn={signInWithDiscord} loading={loading} />} />
+      <Route path="/" element={<Home userData={userData} onSignOut={signOut} onSignIn={handleSignIn} loading={loading} />} />
+      <Route path="/guilds" element={<GuildsList userData={userData} onSignOut={signOut} onSignIn={handleSignIn} loading={loading} />} />
+      <Route path="/docs" element={<Docs userData={userData} onSignOut={signOut} onSignIn={handleSignIn} loading={loading} />} />
       <Route path="/guilds/:guildId/setup" element={<OAuthSuccess />} />
       <Route path="/auth/callback/gmail" element={<GmailCallback />} />
       <Route path="/auth/cli" element={<CliAuth />} />
-      <Route path="*" element={user && userData ? <Navigate to="/" replace /> : <Login onSignIn={async () => { await signInWithDiscord(); }} />} />
+      <Route path="*" element={user && userData ? <Navigate to="/" replace /> : <Login onSignIn={handleSignIn} />} />
     </Routes>
   );
 }

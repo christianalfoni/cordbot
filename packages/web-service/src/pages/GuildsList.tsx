@@ -291,7 +291,7 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
                                 <MenuItem disabled={guild.status === 'deprovisioning' || guild.status === 'provisioning'}>
                                   {({ focus, disabled }) => (
                                     <button
-                                      onClick={() => !disabled && handleDelete(guild.id, isPaidTier && !!subscription)}
+                                      onClick={() => !disabled && handleDelete(guild.id, !!isPaidTier && !!subscription)}
                                       className={`group flex w-full items-center px-4 py-2 text-sm ${
                                         focus
                                           ? 'bg-gray-100 text-gray-900 dark:bg-white/5 dark:text-white'
