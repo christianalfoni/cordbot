@@ -70,7 +70,7 @@ const pricing = {
         'Dedicated instance',
         'Memory',
         'Bigger memory',
-        'Extended configuration',
+        'Extended configuration and skills',
       ],
       featured: true,
       disabled: true,
