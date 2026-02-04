@@ -6,7 +6,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { DiscordOAuthService } from './discord-oauth-service.js';
 import { MockFunctionContext, createMockResponse } from '../context.mock.js';
-import type { Guild } from '../context.js';
 
 describe('DiscordOAuthService', () => {
   let ctx: MockFunctionContext;
@@ -80,7 +79,7 @@ describe('DiscordOAuthService', () => {
       });
 
       // Verify HTTP calls
-      expect(ctx.http.fetch).toHaveBeenCalledTimes(3);
+      expect(ctx.http.fetch).toHaveBeenCalledTimes(2);
 
       // Verify token exchange call
       expect(ctx.http.fetch).toHaveBeenNthCalledWith(
@@ -102,28 +101,19 @@ describe('DiscordOAuthService', () => {
         })
       );
 
-      // Verify user fetch uses OAuth token
-      expect(ctx.http.fetch).toHaveBeenNthCalledWith(
-        3,
-        'https://discord.com/api/v10/users/@me',
-        expect.objectContaining({
-          headers: {
-            Authorization: 'Bearer discord-access-token',
-          },
-        })
-      );
-
       // Verify guild was created in Firestore
       expect(ctx.firestore.createGuild).toHaveBeenCalledWith('guild-456', {
         guildName: 'Test Server',
         guildIcon: 'icon-hash-123',
         status: 'pending',
-        installedBy: 'discord-user-789',
         userId: 'firebase-user-123',
-        permissions: '8',
+        tier: 'free',
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
         memoryContextSize: 10000,
+        periodStart: '2024-01-01T00:00:00.000Z',
+        periodEnd: null,
+        lastDeployedAt: '2024-01-01T00:00:00.000Z',
       });
 
       // Verify logging
@@ -262,7 +252,7 @@ describe('DiscordOAuthService', () => {
       );
     });
 
-    it('should handle user fetch failure gracefully', async () => {
+    it('should use firebaseUserId from params', async () => {
       // Arrange
       const params = {
         code: 'oauth-code-123',
@@ -290,24 +280,16 @@ describe('DiscordOAuthService', () => {
         })
       );
 
-      // User fetch fails
-      ctx.http.fetch.mockResolvedValueOnce(
-        createMockResponse({
-          ok: false,
-          status: 401,
-        })
-      );
-
       // Act
       const result = await service.processDiscordOAuth(params);
 
-      // Assert - should succeed but with 'unknown' user
+      // Assert - should succeed with firebaseUserId from params
       expect(result).toBeTruthy();
 
       expect(ctx.firestore.createGuild).toHaveBeenCalledWith(
         'guild-456',
         expect.objectContaining({
-          installedBy: 'unknown',
+          userId: 'firebase-user-123',
         })
       );
     });
@@ -344,54 +326,4 @@ describe('DiscordOAuthService', () => {
     });
   });
 
-  describe('handleDiscordOAuthCallback', () => {
-    it('should handle OAuth callback and return redirect URL', async () => {
-      // Arrange
-      const params = {
-        code: 'oauth-code-123',
-        guildId: 'guild-456',
-        permissions: '8',
-      };
-
-      ctx.secrets.setSecret('DISCORD_REDIRECT_URI', 'https://example.com/auth/discord/callback');
-
-      ctx.http.fetch.mockResolvedValueOnce(
-        createMockResponse({
-          ok: true,
-          data: { access_token: 'discord-access-token' },
-        })
-      );
-
-      ctx.http.fetch.mockResolvedValueOnce(
-        createMockResponse({
-          ok: true,
-          data: {
-            id: 'guild-456',
-            name: 'Test Server',
-            icon: 'icon-hash',
-          },
-        })
-      );
-
-      ctx.http.fetch.mockResolvedValueOnce(
-        createMockResponse({
-          ok: true,
-          data: { id: 'discord-user-789' },
-        })
-      );
-
-      // Act
-      const result = await service.handleDiscordOAuthCallback(params);
-
-      // Assert
-      expect(result).toEqual({
-        success: true,
-        guildId: 'guild-456',
-        redirectUrl: 'https://example.com/guilds/guild-456/setup',
-      });
-
-      // Verify guild was created
-      expect(ctx.firestore.createGuild).toHaveBeenCalled();
-    });
-  });
 });

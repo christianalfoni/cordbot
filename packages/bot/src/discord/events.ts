@@ -4,6 +4,7 @@ import { streamToDiscord } from '../agent/stream.js';
 import { ChannelMapping, getChannelMapping, syncNewChannel, updateChannelClaudeMdTopic, BotConfig } from './sync.js';
 import { CronRunner } from '../scheduler/runner.js';
 import { trackMessage } from '../message-tracking/tracker.js';
+import { QueryLimitManager } from '../service/query-limit-manager.js';
 import type { IBotContext } from '../interfaces/core.js';
 import type { IMessage, ITextChannel, IThreadChannel, IChannel } from '../interfaces/discord.js';
 import type { ILogger } from '../interfaces/logger.js';
@@ -27,7 +28,8 @@ export function setupEventHandlers(
   guildId: string,
   cronRunner: CronRunner,
   logger: ILogger,
-  botConfig?: BotConfig
+  botConfig?: BotConfig,
+  queryLimitManager?: QueryLimitManager
 ): void {
   // Handle new messages
   context.discord.on('messageCreate', async (message) => {
@@ -51,7 +53,7 @@ export function setupEventHandlers(
       }
 
       // Existing bot interaction logic
-      await handleMessageWithLock(message, context, sessionManager, channelMappings, logger, botConfig);
+      await handleMessageWithLock(message, context, sessionManager, channelMappings, logger, botConfig, queryLimitManager);
     } catch (error) {
       logger.error('❌ Fatal error in messageCreate handler:', error);
       // Try to notify the user
@@ -208,7 +210,8 @@ async function handleMessageWithLock(
   sessionManager: SessionManager,
   channelMappings: ChannelMapping[],
   logger: ILogger,
-  botConfig?: BotConfig
+  botConfig?: BotConfig,
+  queryLimitManager?: QueryLimitManager
 ): Promise<void> {
   // Determine thread ID for locking
   const threadId = message.channel.isThreadChannel()
@@ -226,7 +229,7 @@ async function handleMessageWithLock(
     }
 
     // Create new lock for this message
-    const newLock = handleMessage(message, context, sessionManager, channelMappings, logger, botConfig)
+    const newLock = handleMessage(message, context, sessionManager, channelMappings, logger, botConfig, queryLimitManager)
       .finally(() => {
         // Remove lock when done
         try {
@@ -252,7 +255,8 @@ async function handleMessage(
   sessionManager: SessionManager,
   channelMappings: ChannelMapping[],
   logger: ILogger,
-  botConfig?: BotConfig
+  botConfig?: BotConfig,
+  queryLimitManager?: QueryLimitManager
 ): Promise<void> {
   // Ignore bot messages
   if (message.author.bot) return;
@@ -272,20 +276,19 @@ async function handleMessage(
     return;
   }
 
-  // SHARED MODE FILTERING
-  if (botConfig?.mode === 'shared') {
-    if (!message.channel.isThread()) {
-      // In channel - only respond to mentions
-      const botUser = message.client.user;
-      if (!botUser) {
-        return; // Bot user not available
-      }
-      const botMentioned = message.mentions.has(botUser.id);
-      if (!botMentioned) {
-        return; // Ignore non-mention messages
-      }
-    } else {
-      // In thread - new approach: Let Claude handle responses, but buffer messages that mention others
+  // MENTION FILTERING IN CHANNELS
+  if (!message.channel.isThread()) {
+    // In channel - only respond to mentions
+    const botUser = message.client.user;
+    if (!botUser) {
+      return; // Bot user not available
+    }
+    const botMentioned = message.mentions.has(botUser.id);
+    if (!botMentioned) {
+      return; // Ignore non-mention messages
+    }
+  } else {
+    // In thread - Let Claude handle responses, but buffer messages that mention others
       const threadId = message.channel.id;
 
       if (mentionsSomeoneElse(message)) {
@@ -305,9 +308,8 @@ async function handleMessage(
         return;
       }
 
-      // Message doesn't mention others - process it (Claude will decide whether to respond)
-      // Note: If bot is mentioned, we'll also process it
-    }
+    // Message doesn't mention others - process it (Claude will decide whether to respond)
+    // Note: If bot is mentioned, we'll also process it
   }
 
   try {
@@ -455,32 +457,29 @@ async function handleMessage(
         }
       }
 
-      // Prefix with username in shared mode
-      if (botConfig?.mode === 'shared') {
-        const displayName = message.member?.displayName || message.author.username;
+      // Prefix with username for multi-user context
+      const displayName = message.member?.displayName || message.author.username;
 
-        // Include buffered messages as context (messages that mentioned others)
-        const threadId = message.channel.isThread() ? message.channel.id : message.id;
-        const buffer = messageBuffers.get(threadId);
+      // Include buffered messages as context (messages that mentioned others)
+      const threadId = message.channel.isThread() ? message.channel.id : message.id;
+      const buffer = messageBuffers.get(threadId);
 
-        if (buffer && buffer.length > 0) {
-          // Format buffered messages as context
-          const contextMessages = buffer
-            .map(msg => `[${msg.author}]: ${msg.content}`)
-            .join('\n');
+      if (buffer && buffer.length > 0) {
+        // Format buffered messages as context
+        const contextMessages = buffer
+          .map(msg => `[${msg.author}]: ${msg.content}`)
+          .join('\n');
 
-          userMessage = `${contextMessages}\n[${displayName}]: ${userMessage}`;
+        userMessage = `${contextMessages}\n[${displayName}]: ${userMessage}`;
 
-          // Clear the buffer
-          messageBuffers.delete(threadId);
-          logger.info(`📝 Included ${buffer.length} buffered message(s) as context`);
-        } else {
-          userMessage = `[${displayName}]: ${userMessage}`;
-        }
+        // Clear the buffer
+        messageBuffers.delete(threadId);
+        logger.info(`📝 Included ${buffer.length} buffered message(s) as context`);
+      } else {
+        userMessage = `[${displayName}]: ${userMessage}`;
       }
 
       // Capture user message to memory (Phase 1: Store ALL messages)
-      // This happens for both personal and shared modes, but shared mode adds username prefix
       try {
         const threadId = message.channel.isThread() ? message.channel.id : message.id;
 
@@ -534,10 +533,27 @@ async function handleMessage(
         logger.warn(`⚠️  CLAUDE.md not found at ${claudeMdPath}`);
       }
 
+      // Check query limit BEFORE processing
+      if (queryLimitManager) {
+        const canProceed = await queryLimitManager.canProceedWithQuery();
+        if (!canProceed) {
+          const errorTarget: ITextChannel | IThreadChannel = isTargetMessage
+            ? message.channel
+            : (targetForStream as ITextChannel | IThreadChannel);
+          await errorTarget.send(
+            '⚠️ Query limit reached. Please upgrade your plan to continue using the bot.'
+          );
+          return;
+        }
+      }
+
       // Create query for Claude
       // For new sessions, pass null to let SDK create a fresh session
       // For existing sessions, pass the real SDK session ID to resume
       let queryResult;
+      let success = false;
+      let cost = 0;
+
       try {
         queryResult = sessionManager.createQuery(
           userMessage,
@@ -558,7 +574,7 @@ async function handleMessage(
 
       // Stream response from Claude agent to Discord
       try {
-        await streamToDiscord(
+        const streamResult = await streamToDiscord(
           queryResult,
           targetForStream,
           sessionManager,
@@ -569,6 +585,8 @@ async function handleMessage(
           undefined, // messagePrefix
           parentChannelId // Pass parent channel ID for memory operations
         );
+        success = true;
+        cost = estimateQueryCost(streamResult);
       } catch (streamError) {
         logger.error('Error streaming to Discord:', streamError);
 
@@ -580,6 +598,11 @@ async function handleMessage(
         await errorTarget.send(
           `❌ Failed to stream response: ${streamError instanceof Error ? streamError.message : 'Unknown error'}`
         );
+      } finally {
+        // Track query usage
+        if (queryLimitManager) {
+          await queryLimitManager.trackQuery('discord_message', cost, success);
+        }
       }
     } finally {
       // Clear contexts after execution - wrap in try/catch to prevent cleanup errors
@@ -652,4 +675,27 @@ function mentionsSomeoneElse(message: IMessage): boolean {
   const mentionsOthers = message.mentions.users.some(user => user.id !== botId && !user.bot);
 
   return mentionsOthers;
+}
+
+/**
+ * Estimate query cost from response
+ * Returns cost in dollars
+ */
+function estimateQueryCost(response: any): number {
+  // If response has usage.total_cost, use it directly
+  if (response?.usage?.total_cost) {
+    return response.usage.total_cost;
+  }
+
+  // Fallback estimation based on tokens
+  const inputTokens = response?.usage?.input_tokens || 0;
+  const outputTokens = response?.usage?.output_tokens || 0;
+
+  // Claude Sonnet 4.5 pricing (as of implementation)
+  // Input: $3 per 1M tokens = $0.000003 per token
+  // Output: $15 per 1M tokens = $0.000015 per token
+  const inputCost = inputTokens * 0.000003;
+  const outputCost = outputTokens * 0.000015;
+
+  return inputCost + outputCost;
 }

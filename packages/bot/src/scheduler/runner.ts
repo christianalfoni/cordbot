@@ -5,6 +5,7 @@ import { SessionManager } from '../agent/manager.js';
 import { ChannelMapping } from '../discord/sync.js';
 import { parseCronFile, CronJob, validateCronSchedule } from './parser.js';
 import { streamToDiscord } from '../agent/stream.js';
+import { QueryLimitManager } from '../service/query-limit-manager.js';
 import type { IDiscordAdapter, ITextChannel, IThreadChannel } from '../interfaces/discord.js';
 import type { ILogger } from '../interfaces/logger.js';
 import type { IScheduler } from '../interfaces/scheduler.js';
@@ -27,7 +28,8 @@ export class CronRunner {
     private sessionManager: SessionManager,
     private logger: ILogger,
     private scheduler: IScheduler,
-    private fileStore: IFileStore
+    private fileStore: IFileStore,
+    private queryLimitManager?: QueryLimitManager
   ) {}
 
   /**
@@ -163,6 +165,18 @@ export class CronRunner {
   ): Promise<void> {
     this.logger.info(`⏰ Executing scheduled job: ${job.name}`);
 
+    // Check query limit BEFORE execution
+    if (this.queryLimitManager) {
+      const canProceed = await this.queryLimitManager.canProceedWithQuery();
+      if (!canProceed) {
+        this.logger.info(`[Cron] Skipping "${job.name}" - query limit reached`);
+        return;
+      }
+    }
+
+    let success = false;
+    let cost = 0;
+
     try {
       const channel = await this.discord.getChannel(channelId);
 
@@ -226,7 +240,7 @@ Task: ${job.task}`;
         }
 
         // Pass channel to streamToDiscord (already interface type)
-        await streamToDiscord(
+        const streamResult = await streamToDiscord(
           queryResult,
           channel,
           this.sessionManager,
@@ -238,6 +252,9 @@ Task: ${job.task}`;
           undefined, // parentChannelId
           true // isCronJob - only sends final message with clock emoji suffix
         );
+
+        success = true;
+        cost = this.estimateCost(streamResult);
 
         this.logger.info(`✅ Completed scheduled job: ${job.name}`);
 
@@ -256,7 +273,29 @@ Task: ${job.task}`;
       }
     } catch (error) {
       this.logger.error(`Failed to execute job "${job.name}":`, error);
+    } finally {
+      // Track query usage
+      if (this.queryLimitManager) {
+        await this.queryLimitManager.trackQuery('scheduled_task', cost, success);
+      }
     }
+  }
+
+  /**
+   * Estimate query cost from response
+   */
+  private estimateCost(response: any): number {
+    if (response?.usage?.total_cost) {
+      return response.usage.total_cost;
+    }
+
+    const inputTokens = response?.usage?.input_tokens || 0;
+    const outputTokens = response?.usage?.output_tokens || 0;
+
+    const inputCost = inputTokens * 0.000003;
+    const outputCost = outputTokens * 0.000015;
+
+    return inputCost + outputCost;
   }
 
   /**

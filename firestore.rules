@@ -42,11 +42,49 @@ service cloud.firestore {
 
     // Guilds collection (OAuth-based shared bot model)
     match /guilds/{guildId} {
-      // Anyone can read guild info (for display purposes)
-      allow read: if true;
+      // Users can read guilds they installed
+      allow read: if request.auth != null
+                  && request.auth.uid == resource.data.userId;
 
-      // Only Cloud Functions can create/update/delete guilds
-      allow create, update, delete: if false;
+      // Users can update certain fields, but not subscriptionId, tier, or status
+      allow update: if request.auth != null
+                    && request.auth.uid == resource.data.userId
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                        .hasAny(['subscriptionId', 'tier', 'status', 'userId']);
+
+      // Only Cloud Functions can create/delete guilds
+      allow create, delete: if false;
+    }
+
+    // Guild deployments - INTERNAL ONLY (accessed via Cloud Functions)
+    match /guildDeployments/{guildId} {
+      allow read, write: if false;
+    }
+
+    // Free tier config - publicly readable for displaying available slots
+    match /config/freeTier {
+      allow read: if true;  // Public read access
+      allow write: if false;  // Only Cloud Functions can write
+    }
+
+    // Subscriptions collection - Stripe subscription data
+    match /subscriptions/{subscriptionId} {
+      // Users can read their own subscriptions
+      allow read: if request.auth != null
+                  && request.auth.uid == resource.data.userId;
+
+      // Only Cloud Functions can create/update/delete subscriptions
+      allow write: if false;
+
+      // Payments subcollection - payment records for subscriptions
+      match /payments/{paymentId} {
+        // Users can read payments for their subscriptions
+        allow read: if request.auth != null
+                    && request.auth.uid == get(/databases/$(database)/documents/subscriptions/$(subscriptionId)).data.userId;
+
+        // Only Cloud Functions can write payments
+        allow write: if false;
+      }
     }
 
     // Deny all other access

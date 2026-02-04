@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import chatBotLogo from '../chat-bot-logo.svg';
 
 interface LoginProps {
   onSignIn: () => Promise<void>;
@@ -26,10 +25,7 @@ export function Login({ onSignIn }: LoginProps) {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="mx-auto h-32 w-32 flex items-center justify-center mb-4">
-            <img src={chatBotLogo} alt="Cordbot" className="h-32 w-32" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Cordbot</h1>
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">Cordbot</h1>
           <p className="text-gray-600 dark:text-gray-400">Service Dashboard</p>
         </div>
 

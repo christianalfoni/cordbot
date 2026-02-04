@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import { useAuth } from './hooks/useAuth';
 import { Login } from './components/Login';
 import { Home } from './pages/Home';
-import { GuildPage } from './pages/GuildPage';
+import { GuildsList } from './pages/GuildsList';
 import { GmailCallback } from './pages/GmailCallback';
 import { CliAuth } from './pages/CliAuth';
 import { Privacy } from './pages/Privacy';
@@ -11,8 +11,9 @@ import { Terms } from './pages/Terms';
 import { Docs } from './pages/Docs';
 import { OAuthSuccess } from './pages/OAuthSuccess';
 import { DiscordCallback } from './pages/DiscordCallback';
+import { StripeSuccess } from './pages/StripeSuccess';
+import { StripeCancel } from './pages/StripeCancel';
 import { useEffect } from 'react';
-import chatBotLogo from './chat-bot-logo.svg';
 
 function AppContent() {
   const { user, userData, loading, signInWithDiscord, signOut } = useAuth();
@@ -31,51 +32,33 @@ function AppContent() {
   }, [user, userData, loading, navigate]);
 
   // Public routes that don't require auth - render immediately
-  const isPublicRoute = location.pathname === '/privacy' || location.pathname === '/terms';
+  const isPublicRoute = location.pathname === '/privacy' ||
+                       location.pathname === '/terms' ||
+                       location.pathname === '/auth/discord/callback' ||
+                       location.pathname === '/stripe/success' ||
+                       location.pathname === '/stripe/cancel';
 
   if (isPublicRoute) {
     return (
       <Routes>
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
-      </Routes>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="mx-auto h-32 w-32 flex items-center justify-center mb-6">
-            <img src={chatBotLogo} alt="Cordbot" className="h-32 w-32" />
-          </div>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400 text-sm font-medium">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user || !userData) {
-    return (
-      <Routes>
-        <Route path="/auth/callback/gmail" element={<GmailCallback />} />
-        <Route path="/auth/cli" element={<CliAuth />} />
-        <Route path="*" element={<Login onSignIn={async () => { await signInWithDiscord(); }} />} />
+        <Route path="/auth/discord/callback" element={<DiscordCallback />} />
+        <Route path="/stripe/success" element={<StripeSuccess />} />
+        <Route path="/stripe/cancel" element={<StripeCancel />} />
       </Routes>
     );
   }
 
   return (
     <Routes>
-      <Route path="/" element={<Home userData={userData} onSignOut={signOut} />} />
-      <Route path="/guild/:guildId" element={<GuildPage userData={userData} onSignOut={signOut} />} />
-      <Route path="/docs" element={<Docs userData={userData} onSignOut={signOut} />} />
-      <Route path="/auth/discord/callback" element={<DiscordCallback userData={userData} />} />
+      <Route path="/" element={<Home userData={userData} onSignOut={signOut} onSignIn={signInWithDiscord} loading={loading} />} />
+      <Route path="/guilds" element={<GuildsList userData={userData} onSignOut={signOut} onSignIn={signInWithDiscord} loading={loading} />} />
+      <Route path="/docs" element={<Docs userData={userData} onSignOut={signOut} onSignIn={signInWithDiscord} loading={loading} />} />
       <Route path="/guilds/:guildId/setup" element={<OAuthSuccess />} />
       <Route path="/auth/callback/gmail" element={<GmailCallback />} />
       <Route path="/auth/cli" element={<CliAuth />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={user && userData ? <Navigate to="/" replace /> : <Login onSignIn={async () => { await signInWithDiscord(); }} />} />
     </Routes>
   );
 }

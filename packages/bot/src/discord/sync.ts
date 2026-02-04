@@ -18,7 +18,6 @@ export interface ChannelMapping {
 }
 
 export interface BotConfig {
-  mode: 'personal' | 'shared';
   id: string;
   username: string;
 }
@@ -46,8 +45,6 @@ export async function syncChannelsOnStartup(
     return ch.type === 0;
   });
 
-  const homeDir = os.homedir();
-
   for (const channel of textChannels) {
     // Type guard ensures this is ITextChannel
     if (!channel.isTextChannel()) continue;
@@ -55,8 +52,8 @@ export async function syncChannelsOnStartup(
     const channelName = channel.name;
     const folderPath = path.join(basePath, channelName);
 
-    // Centralized channel data directory
-    const channelClaudeDir = path.join(homeDir, '.claude', 'channels', channel.id);
+    // Centralized channel data directory (use basePath instead of homedir for persistence)
+    const channelClaudeDir = path.join(basePath, '.claude', 'channels', channel.id);
     const claudeMdPath = path.join(channelClaudeDir, 'CLAUDE.md');
     const cronPath = path.join(channelClaudeDir, 'cron.yaml');
 
@@ -276,12 +273,11 @@ export async function syncNewChannel(
   basePath: string,
   botConfig?: BotConfig
 ): Promise<ChannelMapping> {
-  const homeDir = os.homedir();
   const channelName = channel.name;
   const folderPath = path.join(basePath, channelName);
 
-  // Centralized channel data directory
-  const channelClaudeDir = path.join(homeDir, '.claude', 'channels', channel.id);
+  // Centralized channel data directory (use basePath instead of homedir for persistence)
+  const channelClaudeDir = path.join(basePath, '.claude', 'channels', channel.id);
   const claudeMdPath = path.join(channelClaudeDir, 'CLAUDE.md');
   const cronPath = path.join(channelClaudeDir, 'cron.yaml');
 

@@ -5,6 +5,7 @@ import { setupEventHandlers } from "./discord/events.js";
 import { SessionManager } from "./agent/manager.js";
 import { CronRunner } from "./scheduler/runner.js";
 import { HealthServer } from "./health/server.js";
+import { QueryLimitManager } from "./service/query-limit-manager.js";
 import cron from 'node-cron';
 import { runDailyMemoryCompression } from "./memory/compress.js";
 import { readFileSync } from 'fs';
@@ -16,9 +17,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export async function startBot(cwd: string): Promise<void> {
-  // Set HOME environment variable to current working directory
-  process.env.HOME = cwd;
-
   // Read version from package.json
   const packageJsonPath = path.join(__dirname, '..', 'package.json');
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
@@ -43,17 +41,15 @@ export async function startBot(cwd: string): Promise<void> {
   }
 
   // Extract bot configuration
-  const botMode = (process.env.BOT_MODE || 'personal') as 'personal' | 'shared';
   const botId = process.env.BOT_ID || 'local';
   const botUsername = process.env.DISCORD_BOT_USERNAME || 'Cordbot';
   const memoryContextSize = Math.max(1000, Math.min(100000, parseInt(process.env.MEMORY_CONTEXT_SIZE || '10000')));
 
-  console.log(`🤖 Bot Mode: ${botMode}`);
   console.log(`🆔 Bot ID: ${botId}`);
   console.log(`👤 Bot Username: ${botUsername}`);
   console.log(`💾 Memory Context Size: ${memoryContextSize.toLocaleString()} tokens\n`);
 
-  const botConfig = { mode: botMode, id: botId, username: botUsername };
+  const botConfig = { id: botId, username: botUsername };
 
   // Create bot context with all dependencies
   console.log("🔌 Initializing bot context...\n");
@@ -79,8 +75,31 @@ export async function startBot(cwd: string): Promise<void> {
   const channelMappings = await syncChannelsOnStartup(context.discord, guildId, cwd, botConfig);
   console.log("");
 
+  // Initialize query limit manager (optional - only if SERVICE_URL is set)
+  let queryLimitManager: QueryLimitManager | undefined;
+
+  if (process.env.SERVICE_URL) {
+    try {
+      queryLimitManager = new QueryLimitManager(guildId, process.env.SERVICE_URL);
+      await queryLimitManager.initialize();
+      console.log('✅ Query limit manager initialized\n');
+    } catch (error) {
+      console.error('⚠️  Failed to initialize query limit manager:', error);
+      console.log('   Continuing without query limits\n');
+    }
+  } else {
+    console.log('ℹ️  SERVICE_URL not set - running without query limits\n');
+  }
+
   // Start cron scheduler
-  const cronRunner = new CronRunner(context.discord, sessionManager, context.logger, context.scheduler, context.fileStore);
+  const cronRunner = new CronRunner(
+    context.discord,
+    sessionManager,
+    context.logger,
+    context.scheduler,
+    context.fileStore,
+    queryLimitManager
+  );
   cronRunner.start(channelMappings);
   console.log("");
 
@@ -89,7 +108,7 @@ export async function startBot(cwd: string): Promise<void> {
     console.log('\n⏰ Running scheduled memory compression');
     const channelIds = channelMappings.map(m => m.channelId);
     try {
-      await runDailyMemoryCompression(channelIds);
+      await runDailyMemoryCompression(channelIds, guildId, queryLimitManager);
     } catch (error) {
       console.error('Memory compression failed:', error);
     }
@@ -98,7 +117,17 @@ export async function startBot(cwd: string): Promise<void> {
   console.log("");
 
   // Setup event handlers (after cron runner is initialized)
-  setupEventHandlers(context, sessionManager, channelMappings, cwd, guildId, cronRunner, context.logger, botConfig);
+  setupEventHandlers(
+    context,
+    sessionManager,
+    channelMappings,
+    cwd,
+    guildId,
+    cronRunner,
+    context.logger,
+    botConfig,
+    queryLimitManager
+  );
   console.log("✅ Event handlers registered\n");
 
   // Start health check server (if port is configured)

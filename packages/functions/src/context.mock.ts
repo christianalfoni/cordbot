@@ -12,33 +12,47 @@ import type {
   IHttpClient,
   ISecretsManager,
   ILogger,
-  Bot,
-  Guild,
-  User,
+  IStripe,
 } from './context.js';
 
 /**
  * Mock Firestore - all methods are vitest mocks
  */
 export class MockFirestore implements IFirestore {
-  getBot = vi.fn<[string, string], Promise<Bot | null>>();
-  updateBot = vi.fn<[string, string, Partial<Bot>], Promise<void>>();
-  queryBotByToken = vi.fn<[string], Promise<{ userId: string; botId: string; data: Bot } | null>>();
-  deleteBot = vi.fn<[string, string], Promise<void>>();
-  createBot = vi.fn<[string, string, Bot], Promise<void>>();
-  queryBots = vi.fn<[string], Promise<Array<{ id: string; data: Bot }>>>();
-  getGuild = vi.fn<[string], Promise<Guild | null>>();
-  createGuild = vi.fn<[string, Guild], Promise<void>>();
-  updateGuild = vi.fn<[string, Partial<Guild>], Promise<void>>();
-  getUser = vi.fn<[string], Promise<User | null>>();
-  updateUser = vi.fn<[string, Partial<User>], Promise<void>>();
+  getBot = vi.fn();
+  updateBot = vi.fn();
+  queryBotByToken = vi.fn();
+  deleteBot = vi.fn();
+  createBot = vi.fn();
+  queryBots = vi.fn();
+  getGuild = vi.fn();
+  createGuild = vi.fn();
+  updateGuild = vi.fn();
+  deleteGuild = vi.fn();
+  getUser = vi.fn();
+  updateUser = vi.fn();
+  getGuildDeployment = vi.fn();
+  createGuildDeployment = vi.fn();
+  updateGuildDeployment = vi.fn();
+  deleteGuildDeployment = vi.fn();
+  getFreeTierConfig = vi.fn();
+  createFreeTierConfig = vi.fn();
+  incrementFreeTierSlots = vi.fn();
+  queryGuildsByUser = vi.fn();
+  runTransaction = vi.fn();
+  createSubscription = vi.fn();
+  updateSubscription = vi.fn();
+  getSubscription = vi.fn();
+  getSubscriptionByGuild = vi.fn();
+  createPayment = vi.fn();
+  queryPayments = vi.fn();
 }
 
 /**
  * Mock HTTP Client - fetch is a vitest mock
  */
 export class MockHttpClient implements IHttpClient {
-  fetch = vi.fn<[string, RequestInit?], Promise<Response>>();
+  fetch = vi.fn();
 }
 
 /**
@@ -68,9 +82,16 @@ export class MockSecretsManager implements ISecretsManager {
  * Mock Logger - all methods are vitest mocks
  */
 export class MockLogger implements ILogger {
-  info = vi.fn<[string, Record<string, unknown>?], void>();
-  error = vi.fn<[string, unknown?], void>();
-  warn = vi.fn<[string, Record<string, unknown>?], void>();
+  info = vi.fn();
+  error = vi.fn();
+  warn = vi.fn();
+}
+
+/**
+ * Mock Stripe - all methods are vitest mocks
+ */
+export class MockStripe implements IStripe {
+  cancelSubscriptionImmediately = vi.fn();
 }
 
 /**
@@ -81,12 +102,14 @@ export class MockFunctionContext implements FunctionContext {
   public readonly http: MockHttpClient;
   public readonly secrets: MockSecretsManager;
   public readonly logger: MockLogger;
+  public readonly stripe: MockStripe;
 
   constructor() {
     this.firestore = new MockFirestore();
     this.http = new MockHttpClient();
     this.secrets = new MockSecretsManager();
     this.logger = new MockLogger();
+    this.stripe = new MockStripe();
   }
 
   getCurrentTime = vi.fn(() => new Date('2024-01-01T00:00:00Z'));

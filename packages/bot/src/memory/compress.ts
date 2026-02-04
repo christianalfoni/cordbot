@@ -71,8 +71,12 @@ function getYearIdentifier(date: Date): string {
 
 /**
  * Use Claude to summarize content
+ * Returns both summary and cost
  */
-async function summarizeWithClaude(content: string, context: string): Promise<string> {
+async function summarizeWithClaude(content: string, context: string): Promise<{
+  summary: string;
+  cost: number;
+}> {
   const prompt = `${context}
 
 Please summarize the following content into a concise memory summary. Focus on:
@@ -99,6 +103,8 @@ Summary:`;
     });
 
     let summary = '';
+    let cost = 0;
+
     for await (const message of result) {
       if (message.type === 'assistant') {
         // Extract text from assistant message
@@ -110,30 +116,42 @@ Summary:`;
             }
           }
         }
+
+        // Extract cost from usage
+        if (message.message.usage?.total_cost) {
+          cost = message.message.usage.total_cost;
+        }
       }
     }
 
-    return summary.trim() || content; // Fallback to original if no summary
+    return {
+      summary: summary.trim() || content,
+      cost,
+    };
   } catch (error) {
     console.error('Failed to summarize with Claude:', error);
-    return content; // Fallback to original content
+    return {
+      summary: content,
+      cost: 0,
+    };
   }
 }
 
 /**
  * Compress yesterday's raw messages into a daily summary
+ * Returns cost in dollars
  */
 async function compressDailyMemories(
   channelId: string,
   date: string
-): Promise<void> {
+): Promise<number> {
   console.log(`[Memory] Compressing daily memories for ${channelId} on ${date}`);
 
   const rawEntries = await readRawMemories(channelId, date);
 
   if (rawEntries.length === 0) {
     console.log(`[Memory] No raw memories to compress for ${date}`);
-    return;
+    return 0;
   }
 
   // Combine all raw messages
@@ -142,7 +160,7 @@ async function compressDailyMemories(
     .join('\n\n---\n\n');
 
   // Summarize with Claude
-  const summary = await summarizeWithClaude(
+  const { summary, cost } = await summarizeWithClaude(
     combinedContent,
     `You are summarizing the conversation outcomes from ${date} in a Discord channel.`
   );
@@ -158,15 +176,18 @@ async function compressDailyMemories(
     summary.length,
     countTokens(summary)
   );
+
+  return cost;
 }
 
 /**
  * Compress last week's daily summaries into a weekly summary
+ * Returns cost in dollars
  */
 async function compressWeeklyMemories(
   channelId: string,
   weekIdentifier: string
-): Promise<void> {
+): Promise<number> {
   console.log(`[Memory] Compressing weekly memories for ${channelId} (${weekIdentifier})`);
 
   // Get all daily summaries from last week
@@ -182,7 +203,7 @@ async function compressWeeklyMemories(
 
   if (weeklyDailies.length === 0) {
     console.log(`[Memory] No daily summaries to compress for ${weekIdentifier}`);
-    return;
+    return 0;
   }
 
   // Combine all daily summaries
@@ -195,7 +216,7 @@ async function compressWeeklyMemories(
   }
 
   // Summarize with Claude
-  const summary = await summarizeWithClaude(
+  const { summary, cost } = await summarizeWithClaude(
     combinedContent,
     `You are summarizing a week (${weekIdentifier}) of activity in a Discord channel.`
   );
@@ -211,15 +232,18 @@ async function compressWeeklyMemories(
     summary.length,
     countTokens(summary)
   );
+
+  return cost;
 }
 
 /**
  * Compress last month's weekly summaries into a monthly summary
+ * Returns cost in dollars
  */
 async function compressMonthlyMemories(
   channelId: string,
   monthIdentifier: string
-): Promise<void> {
+): Promise<number> {
   console.log(`[Memory] Compressing monthly memories for ${channelId} (${monthIdentifier})`);
 
   // Get all weekly summaries from last month
@@ -233,7 +257,7 @@ async function compressMonthlyMemories(
 
   if (monthlyWeeklies.length === 0) {
     console.log(`[Memory] No weekly summaries to compress for ${monthIdentifier}`);
-    return;
+    return 0;
   }
 
   // Combine all weekly summaries
@@ -246,7 +270,7 @@ async function compressMonthlyMemories(
   }
 
   // Summarize with Claude
-  const summary = await summarizeWithClaude(
+  const { summary, cost } = await summarizeWithClaude(
     combinedContent,
     `You are summarizing a month (${monthIdentifier}) of activity in a Discord channel.`
   );
@@ -262,15 +286,18 @@ async function compressMonthlyMemories(
     summary.length,
     countTokens(summary)
   );
+
+  return cost;
 }
 
 /**
  * Compress last year's monthly summaries into a yearly summary
+ * Returns cost in dollars
  */
 async function compressYearlyMemories(
   channelId: string,
   year: string
-): Promise<void> {
+): Promise<number> {
   console.log(`[Memory] Compressing yearly memories for ${channelId} (${year})`);
 
   // Get all monthly summaries from last year
@@ -281,7 +308,7 @@ async function compressYearlyMemories(
 
   if (yearlyMonthlies.length === 0) {
     console.log(`[Memory] No monthly summaries to compress for ${year}`);
-    return;
+    return 0;
   }
 
   // Combine all monthly summaries
@@ -294,7 +321,7 @@ async function compressYearlyMemories(
   }
 
   // Summarize with Claude
-  const summary = await summarizeWithClaude(
+  const { summary, cost } = await summarizeWithClaude(
     combinedContent,
     `You are summarizing a year (${year}) of activity in a Discord channel.`
   );
@@ -310,16 +337,29 @@ async function compressYearlyMemories(
     summary.length,
     countTokens(summary)
   );
+
+  return cost;
 }
 
 /**
  * Main compression job that runs daily and checks for boundary conditions
  */
 export async function runDailyMemoryCompression(
-  channelIds: string[]
+  channelIds: string[],
+  guildId?: string,
+  queryLimitManager?: any
 ): Promise<void> {
   console.log('\n[Memory] Starting daily compression job');
   console.log(`[Memory] Processing ${channelIds.length} channels`);
+
+  // Check query limit before proceeding
+  if (queryLimitManager) {
+    const canProceed = await queryLimitManager.canProceedWithQuery();
+    if (!canProceed) {
+      console.log('[Memory] ⚠️  Query limit reached - skipping memory compression');
+      return;
+    }
+  }
 
   const today = new Date();
   const yesterday = new Date(today);
@@ -328,17 +368,22 @@ export async function runDailyMemoryCompression(
   const dateInfo = getDateInfo(today);
   const yesterdayStr = formatDate(yesterday);
 
+  let totalCost = 0;
+  let success = true;
+
   for (const channelId of channelIds) {
     try {
       // Always: Compress yesterday's raw messages
-      await compressDailyMemories(channelId, yesterdayStr);
+      const dailyCost = await compressDailyMemories(channelId, yesterdayStr);
+      totalCost += dailyCost;
 
       // If Monday: Compress last week
       if (dateInfo.isMonday) {
         const lastWeek = new Date(today);
         lastWeek.setDate(lastWeek.getDate() - 7);
         const weekIdentifier = getWeekIdentifier(lastWeek);
-        await compressWeeklyMemories(channelId, weekIdentifier);
+        const weeklyCost = await compressWeeklyMemories(channelId, weekIdentifier);
+        totalCost += weeklyCost;
       }
 
       // If 1st of month: Compress last month
@@ -346,7 +391,8 @@ export async function runDailyMemoryCompression(
         const lastMonth = new Date(today);
         lastMonth.setMonth(lastMonth.getMonth() - 1);
         const monthIdentifier = getMonthIdentifier(lastMonth);
-        await compressMonthlyMemories(channelId, monthIdentifier);
+        const monthlyCost = await compressMonthlyMemories(channelId, monthIdentifier);
+        totalCost += monthlyCost;
       }
 
       // If Jan 1st: Compress last year
@@ -354,12 +400,20 @@ export async function runDailyMemoryCompression(
         const lastYear = new Date(today);
         lastYear.setFullYear(lastYear.getFullYear() - 1);
         const yearIdentifier = getYearIdentifier(lastYear);
-        await compressYearlyMemories(channelId, yearIdentifier);
+        const yearlyCost = await compressYearlyMemories(channelId, yearIdentifier);
+        totalCost += yearlyCost;
       }
     } catch (error) {
       console.error(`[Memory] Error compressing memories for channel ${channelId}:`, error);
+      success = false;
       // Continue with other channels
     }
+  }
+
+  // Track query usage (doesn't reduce query count, only tracks cost)
+  if (queryLimitManager && totalCost > 0) {
+    await queryLimitManager.trackQuery('summarize_query', totalCost, success);
+    console.log(`[Memory] Tracked compression cost: $${totalCost.toFixed(4)}`);
   }
 
   console.log('[Memory] Daily compression job completed\n');

@@ -5,7 +5,6 @@ import { UserData } from '../hooks/useAuth';
 import { db } from '../firebase';
 import { Guild, useGuilds } from '../hooks/useGuilds';
 import { Navigation } from '../components/Navigation';
-import chatBotLogo from '../chat-bot-logo.svg';
 
 interface GuildPageProps {
   userData: UserData;

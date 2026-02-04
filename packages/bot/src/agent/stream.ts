@@ -29,6 +29,15 @@ interface StreamState {
   parentChannel: ITextChannel | null;
   // For cron jobs: collect all messages and only send the last one
   collectedAssistantMessages: string[];
+  // Usage information from query result
+  usageInfo?: { total_cost: number; num_turns?: number };
+}
+
+export interface StreamResult {
+  usage?: {
+    total_cost: number;
+    num_turns?: number;
+  };
 }
 
 export async function streamToDiscord(
@@ -42,7 +51,7 @@ export async function streamToDiscord(
   messagePrefix?: string,
   parentChannelId?: string,
   isCronJob?: boolean
-): Promise<void> {
+): Promise<StreamResult> {
   // Prepare for lazy thread creation (don't create yet)
   let channel: ITextChannel | IThreadChannel;
   let threadCreated = false;
@@ -66,9 +75,7 @@ export async function streamToDiscord(
     // Clean the message content by removing Discord mentions
     const cleanContent = message.content.replace(/<@!?\d+>/g, '').trim();
 
-    threadName = botConfig?.mode === 'shared'
-      ? `${cleanContent.slice(0, 80)}${cleanContent.length > 80 ? '...' : ''}`
-      : `${message.author.username}: ${cleanContent.slice(0, 80)}${cleanContent.length > 80 ? '...' : ''}`;
+    threadName = `${cleanContent.slice(0, 80)}${cleanContent.length > 80 ? '...' : ''}`;
   } else {
     // Already in a thread or channel
     channel = target as ITextChannel | IThreadChannel;
@@ -147,6 +154,9 @@ export async function streamToDiscord(
     await sessionManager.updateSession(sessionId, channel.id);
 
     // Note: Files are now attached inline to messages, not sent separately
+
+    // Return usage information
+    return { usage: state.usageInfo };
   } catch (error) {
     logger.error('❌ Stream error:', error);
     logger.error('❌ Stream error stack:', error instanceof Error ? error.stack : 'No stack trace');
@@ -226,6 +236,12 @@ async function handleSDKMessage(
     case 'result':
       // Final result message
       if (message.subtype === 'success') {
+        // Capture usage information
+        state.usageInfo = {
+          total_cost: message.total_cost_usd,
+          num_turns: message.num_turns,
+        };
+
         logger.info(
           `✅ Session completed: ${message.num_turns} turns, $${message.total_cost_usd.toFixed(4)}`
         );

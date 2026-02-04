@@ -60,8 +60,6 @@ export interface UserData {
   };
   hostingBetaRequested?: boolean;
   hostingBetaApproved?: boolean;
-  // Note: Bots are now stored in a subcollection: users/{userId}/bots/{botId}
-  // Use useHostedBots hook to access them
 }
 
 export function useAuth() {

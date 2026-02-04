@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from '@headlessui/react';
 import { Bars3Icon, XMarkIcon, HomeIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import { Link, useLocation } from 'react-router-dom';
-import chatBotLogo from '../chat-bot-logo.svg';
 
 interface NavigationProps {
   userPhotoURL?: string | null;
@@ -48,9 +47,8 @@ export function Navigation({ userPhotoURL, userDisplayName, onSignOut, guilds = 
             </TransitionChild>
 
             <div className="relative flex grow flex-col gap-y-5 overflow-y-auto bg-white px-6 pb-2 dark:bg-gray-900 dark:ring dark:ring-white/10 dark:before:pointer-events-none dark:before:absolute dark:before:inset-0 dark:before:bg-black/10">
-              <div className="relative flex h-16 shrink-0 items-center gap-3">
-                <img alt="Cordbot" src={chatBotLogo} className="h-8 w-8" />
-                <span className="text-lg font-bold text-gray-900 dark:text-white">Cordbot</span>
+              <div className="relative flex h-16 shrink-0 items-center">
+                <span className="text-xl font-bold text-gray-900 dark:text-white">Cordbot</span>
               </div>
               <nav className="relative flex flex-1 flex-col">
                 <ul role="list" className="flex flex-1 flex-col gap-y-7">
@@ -134,9 +132,8 @@ export function Navigation({ userPhotoURL, userDisplayName, onSignOut, guilds = 
       {/* Static sidebar for desktop */}
       <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-72 lg:flex-col dark:bg-gray-900">
         <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r border-gray-200 bg-white px-6 dark:border-white/10 dark:bg-black/10">
-          <div className="flex h-16 shrink-0 items-center gap-3">
-            <img alt="Cordbot" src={chatBotLogo} className="h-8 w-8" />
-            <span className="text-lg font-bold text-gray-900 dark:text-white">Cordbot</span>
+          <div className="flex h-16 shrink-0 items-center">
+            <span className="text-xl font-bold text-gray-900 dark:text-white">Cordbot</span>
           </div>
           <nav className="flex flex-1 flex-col">
             <ul role="list" className="flex flex-1 flex-col gap-y-7">
@@ -245,9 +242,8 @@ export function Navigation({ userPhotoURL, userDisplayName, onSignOut, guilds = 
           <span className="sr-only">Open sidebar</span>
           <Bars3Icon aria-hidden="true" className="size-6" />
         </button>
-        <div className="flex-1 flex items-center gap-3">
-          <img alt="Cordbot" src={chatBotLogo} className="h-6 w-6" />
-          <span className="text-sm/6 font-semibold text-gray-900 dark:text-white">Cordbot</span>
+        <div className="flex-1 flex items-center">
+          <span className="text-lg font-bold text-gray-900 dark:text-white">Cordbot</span>
         </div>
         <button onClick={onSignOut}>
           <span className="sr-only">Your profile</span>

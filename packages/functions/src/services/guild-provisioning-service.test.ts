@@ -2,7 +2,7 @@
  * Tests for GuildProvisioningService
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { GuildProvisioningService } from './guild-provisioning-service.js';
 import { MockFunctionContext, createMockResponse } from '../context.mock.js';
 import type { Guild } from '../context.js';
@@ -28,12 +28,13 @@ describe('GuildProvisioningService', () => {
         guildName: 'Test Guild',
         guildIcon: 'icon-hash',
         status: 'pending',
-        installedBy: 'user-123',
         userId: 'firebase-user-123',
-        permissions: '8',
-        memoryContextSize: 12000,
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
+        memoryContextSize: 10000,
+        periodStart: '2024-01-01T00:00:00Z',
+        periodEnd: null,
+        lastDeployedAt: '2024-01-01T00:00:00Z',
       };
 
       ctx.firestore.getGuild.mockResolvedValueOnce(mockGuild);
@@ -85,6 +86,8 @@ describe('GuildProvisioningService', () => {
       expect(result).toEqual({
         appName: expect.stringContaining('cordbot-guild-'),
         machineId: 'machine_abc123',
+        volumeId: 'vol_123',
+        region: 'sjc',
       });
 
       // Verify Firestore calls
@@ -93,19 +96,18 @@ describe('GuildProvisioningService', () => {
       // Verify guild status was updated to provisioning
       expect(ctx.firestore.updateGuild).toHaveBeenCalledWith('guild-123', {
         status: 'provisioning',
+        lastDeployedAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
       });
 
-      // Verify guild was updated with Fly.io details
+      // Verify guild status was updated to provisioning (deployment details are no longer stored in Guild)
       expect(ctx.firestore.updateGuild).toHaveBeenCalledWith(
         'guild-123',
-        expect.objectContaining({
-          appName: expect.stringContaining('cordbot-guild-'),
-          machineId: 'machine_abc123',
-          volumeId: 'vol_123',
-          region: 'sjc',
+        {
           status: 'provisioning',
-        })
+          lastDeployedAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        }
       );
 
       // Verify logging
@@ -136,12 +138,13 @@ describe('GuildProvisioningService', () => {
         guildName: 'Test Guild',
         guildIcon: 'icon-hash',
         status: 'active', // Already active
-        installedBy: 'user-123',
-        permissions: '8',
-        memoryContextSize: 10000,
-        appName: 'cordbot-guild-existing',
+        userId: 'firebase-user-123',
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
+        memoryContextSize: 10000,
+        periodStart: '2024-01-01T00:00:00Z',
+        periodEnd: null,
+        lastDeployedAt: '2024-01-01T00:00:00Z',
       };
 
       ctx.firestore.getGuild.mockResolvedValueOnce(mockGuild);
@@ -161,11 +164,13 @@ describe('GuildProvisioningService', () => {
         guildName: 'Test Guild',
         guildIcon: 'icon-hash',
         status: 'pending',
-        installedBy: 'user-123',
-        permissions: '8',
-        memoryContextSize: 10000,
+        userId: 'firebase-user-123',
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
+        memoryContextSize: 10000,
+        periodStart: '2024-01-01T00:00:00Z',
+        periodEnd: null,
+        lastDeployedAt: '2024-01-01T00:00:00Z',
       };
 
       ctx.firestore.getGuild.mockResolvedValueOnce(mockGuild);
@@ -185,6 +190,7 @@ describe('GuildProvisioningService', () => {
       // Verify status was updated to provisioning before failure
       expect(ctx.firestore.updateGuild).toHaveBeenCalledWith('guild-123', {
         status: 'provisioning',
+        lastDeployedAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
       });
     });
@@ -195,11 +201,13 @@ describe('GuildProvisioningService', () => {
         guildName: 'Test Guild',
         guildIcon: null,
         status: 'pending',
-        installedBy: 'user-123',
-        permissions: '8',
-        memoryContextSize: 10000,
+        userId: 'firebase-user-123',
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
+        memoryContextSize: 10000,
+        periodStart: '2024-01-01T00:00:00Z',
+        periodEnd: null,
+        lastDeployedAt: '2024-01-01T00:00:00Z',
       };
 
       ctx.firestore.getGuild.mockResolvedValueOnce(mockGuild);
@@ -231,11 +239,13 @@ describe('GuildProvisioningService', () => {
         guildName: 'Test Guild',
         guildIcon: null,
         status: 'pending',
-        installedBy: 'user-123',
-        permissions: '8',
-        memoryContextSize: 15000,
+        userId: 'firebase-user-123',
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
+        memoryContextSize: 10000,
+        periodStart: '2024-01-01T00:00:00Z',
+        periodEnd: null,
+        lastDeployedAt: '2024-01-01T00:00:00Z',
       };
 
       ctx.firestore.getGuild.mockResolvedValueOnce(mockGuild);
@@ -264,7 +274,8 @@ describe('GuildProvisioningService', () => {
         ANTHROPIC_API_KEY: 'test-api-key',
         BOT_MODE: 'shared',
         BOT_ID: 'guild-123',
-        MEMORY_CONTEXT_SIZE: '15000',
+        MEMORY_CONTEXT_SIZE: '10000',
+        SERVICE_URL: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
       });
     });
 
@@ -274,11 +285,13 @@ describe('GuildProvisioningService', () => {
         guildName: 'Test Guild',
         guildIcon: null,
         status: 'pending',
-        installedBy: 'user-123',
-        permissions: '8',
-        memoryContextSize: 0, // Not set
+        userId: 'firebase-user-123',
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
+        memoryContextSize: 10000,
+        periodStart: '2024-01-01T00:00:00Z',
+        periodEnd: null,
+        lastDeployedAt: '2024-01-01T00:00:00Z',
       };
 
       ctx.firestore.getGuild.mockResolvedValueOnce(mockGuild);

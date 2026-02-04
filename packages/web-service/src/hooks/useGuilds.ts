@@ -7,9 +7,9 @@ interface Guild {
   id: string;
   guildName: string;
   guildIcon: string | null;
-  status: 'pending' | 'provisioning' | 'active' | 'error' | 'suspended' | 'deleted';
-  installedBy: string;
-  permissions: string;
+  status: 'pending' | 'provisioning' | 'active' | 'error' | 'suspended' | 'deprovisioning' | 'deleted';
+  tier?: 'free' | 'starter' | 'pro' | 'business';
+  subscriptionId?: string | null;
   appName?: string;
   machineId?: string;
   volumeId?: string;
@@ -83,8 +83,8 @@ export function useGuilds(userId: string | null) {
     setError(null);
 
     try {
-      const getHostedBotStatus = httpsCallable(functions, 'getHostedBotStatus');
-      const result = await getHostedBotStatus({ botId: guildId });
+      const getGuildStatus = httpsCallable(functions, 'getGuildStatus');
+      const result = await getGuildStatus({ guildId });
       return result.data as GuildStatus;
     } catch (err: any) {
       setError(err.message || 'Failed to get guild status');
@@ -99,8 +99,8 @@ export function useGuilds(userId: string | null) {
     setError(null);
 
     try {
-      const getHostedBotLogs = httpsCallable(functions, 'getHostedBotLogs');
-      const result = await getHostedBotLogs({ botId: guildId });
+      const getGuildLogs = httpsCallable(functions, 'getGuildLogs');
+      const result = await getGuildLogs({ guildId });
       return result.data as GuildLogs;
     } catch (err: any) {
       setError(err.message || 'Failed to get guild logs');
@@ -115,8 +115,8 @@ export function useGuilds(userId: string | null) {
     setError(null);
 
     try {
-      const restartHostedBot = httpsCallable(functions, 'restartHostedBot');
-      await restartHostedBot({ botId: guildId });
+      const restartGuildFunc = httpsCallable(functions, 'restartGuild');
+      await restartGuildFunc({ guildId });
     } catch (err: any) {
       setError(err.message || 'Failed to restart guild bot');
       throw err;
@@ -130,8 +130,8 @@ export function useGuilds(userId: string | null) {
     setError(null);
 
     try {
-      const deployHostedBot = httpsCallable(functions, 'deployHostedBot');
-      await deployHostedBot({ version, botId: guildId });
+      const deployGuildUpdate = httpsCallable(functions, 'deployGuildUpdate');
+      await deployGuildUpdate({ guildId, version });
     } catch (err: any) {
       setError(err.message || 'Failed to deploy update');
       throw err;
@@ -145,8 +145,8 @@ export function useGuilds(userId: string | null) {
     setError(null);
 
     try {
-      const deprovisionHostedBot = httpsCallable(functions, 'deprovisionHostedBot');
-      await deprovisionHostedBot({ botId: guildId });
+      const deprovisionGuildFunc = httpsCallable(functions, 'deprovisionGuild');
+      await deprovisionGuildFunc({ guildId });
     } catch (err: any) {
       setError(err.message || 'Failed to delete guild bot');
       throw err;

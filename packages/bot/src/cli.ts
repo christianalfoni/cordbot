@@ -20,7 +20,6 @@ export async function run(): Promise<void> {
     console.log(chalk.gray('  DISCORD_GUILD_ID         Your Discord server ID'));
     console.log(chalk.gray('  ANTHROPIC_API_KEY        Your Anthropic API key\n'));
     console.log(chalk.white('Environment Variables (Optional):'));
-    console.log(chalk.gray('  BOT_MODE                 personal or shared (default: personal)'));
     console.log(chalk.gray('  MEMORY_CONTEXT_SIZE      Memory token budget (default: 10000, range: 1000-100000)'));
     console.log(chalk.gray('  WORKSPACE_DIR            Workspace directory (default: ./workspace)'));
     console.log(chalk.gray('  BOT_ID                   Bot identifier (default: local)'));
@@ -29,7 +28,6 @@ export async function run(): Promise<void> {
     console.log(chalk.gray('  export DISCORD_BOT_TOKEN=your-token'));
     console.log(chalk.gray('  export DISCORD_GUILD_ID=your-guild-id'));
     console.log(chalk.gray('  export ANTHROPIC_API_KEY=your-api-key'));
-    console.log(chalk.gray('  export BOT_MODE=personal'));
     console.log(chalk.gray('  export MEMORY_CONTEXT_SIZE=10000'));
     console.log(chalk.gray('  npx @cordbot/agent\n'));
     return;
@@ -76,14 +74,9 @@ function validateConfig(): { valid: boolean; missing: string[] } {
     'ANTHROPIC_API_KEY',
   ];
 
-  const optional = ['BOT_MODE', 'BOT_ID', 'DISCORD_BOT_USERNAME', 'MEMORY_CONTEXT_SIZE'];
+  const optional = ['BOT_ID', 'DISCORD_BOT_USERNAME', 'MEMORY_CONTEXT_SIZE'];
 
   const missing = required.filter(key => !process.env[key]);
-
-  // Validate BOT_MODE if provided
-  if (process.env.BOT_MODE && !['personal', 'shared'].includes(process.env.BOT_MODE)) {
-    console.warn('⚠️  BOT_MODE must be "personal" or "shared", defaulting to "personal"');
-  }
 
   // Validate MEMORY_CONTEXT_SIZE if provided
   if (process.env.MEMORY_CONTEXT_SIZE) {

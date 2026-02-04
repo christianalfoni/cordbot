@@ -101,11 +101,11 @@ export function GmailCallback() {
       if (result.success) {
         setStatus('success');
         setMessage(`Gmail connected successfully! (${result.email})`);
-        setTimeout(() => navigate(`/bots/${stateBotId}`), 2000);
+        setTimeout(() => navigate('/'), 2000);
       } else {
         setStatus('error');
         setMessage(result.error || 'Failed to connect Gmail');
-        setTimeout(() => navigate(`/bots/${stateBotId}`), 3000);
+        setTimeout(() => navigate('/'), 3000);
       }
     };
 

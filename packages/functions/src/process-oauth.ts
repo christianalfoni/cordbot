@@ -1,33 +1,28 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { defineSecret } from 'firebase-functions/params';
 import {
   discordClientId,
   discordClientSecret,
   sharedDiscordBotToken,
-  sharedAnthropicApiKey,
 } from './admin.js';
 import { ProductionFunctionContext } from './context.impl.js';
 import { DiscordOAuthService } from './services/discord-oauth-service.js';
-import { GuildProvisioningService } from './services/guild-provisioning-service.js';
-
-const flyApiToken = defineSecret('FLY_API_TOKEN');
 
 /**
- * Process Discord OAuth callback securely on the backend and deploy immediately
+ * Process Discord OAuth callback securely on the backend
  * Called by the frontend after Discord redirects back with a code
  *
  * This function:
  * 1. Exchanges OAuth code for access token (client secret stays secure on backend)
- * 2. Fetches guild details from Discord API
- * 3. Creates guild document in Firestore
- * 4. Immediately provisions Fly.io deployment with shared bot token and API key
+ * 2. Fetches guild details from Discord API using shared bot token
+ * 3. Creates guild document in Firestore with status: 'pending'
+ * 4. Firestore trigger (onGuildCreated) handles provisioning automatically
  */
 export const processDiscordOAuth = onCall(
   {
-    secrets: [discordClientSecret, sharedDiscordBotToken, sharedAnthropicApiKey, flyApiToken],
+    secrets: [discordClientSecret, sharedDiscordBotToken],
   },
   async (request) => {
-    const { code, guildId, permissions, redirectUri } = request.data;
+    const { code, guildId, permissions, redirectUri, tier } = request.data;
 
     // Get Firebase user ID from auth context
     const firebaseUserId = request.auth?.uid;
@@ -45,8 +40,6 @@ export const processDiscordOAuth = onCall(
       DISCORD_CLIENT_ID: discordClientId,
       DISCORD_CLIENT_SECRET: discordClientSecret,
       SHARED_DISCORD_BOT_TOKEN: sharedDiscordBotToken,
-      SHARED_ANTHROPIC_API_KEY: sharedAnthropicApiKey,
-      FLY_API_TOKEN: flyApiToken,
     });
 
     try {
@@ -60,50 +53,17 @@ export const processDiscordOAuth = onCall(
         permissions,
         redirectUri,
         firebaseUserId,
+        tier: tier || 'free', // Default to free if not specified
       });
 
-      // Immediately provision Fly.io deployment
-      ctx.logger.info('Starting Fly.io provisioning', { guildId });
+      ctx.logger.info('Guild document created, provisioning will happen via trigger', { guildId });
 
-      try {
-        const provisioningService = new GuildProvisioningService(ctx);
-        const deployResult = await provisioningService.provisionGuild({ guildId });
-
-        ctx.logger.info('Fly.io provisioning completed', {
-          guildId,
-          appName: deployResult.appName,
-          machineId: deployResult.machineId,
-        });
-
-        return {
-          success: true,
-          guildId: oauthResult.guildId,
-          guildName: oauthResult.guildName,
-          guildIcon: oauthResult.guildIcon,
-          deployed: true,
-          appName: deployResult.appName,
-          machineId: deployResult.machineId,
-        };
-      } catch (deployError) {
-        ctx.logger.error('Fly.io provisioning failed', {
-          guildId,
-          error: deployError,
-        });
-
-        // Update guild status to reflect deployment failure
-        await ctx.firestore.updateGuild(guildId, {
-          status: 'error',
-          error: deployError instanceof Error ? deployError.message : 'Deployment failed',
-          updatedAt: ctx.getCurrentTime().toISOString(),
-        });
-
-        throw new HttpsError(
-          'internal',
-          `Guild created but deployment failed: ${
-            deployError instanceof Error ? deployError.message : 'Unknown error'
-          }`
-        );
-      }
+      return {
+        success: true,
+        guildId: oauthResult.guildId,
+        guildName: oauthResult.guildName,
+        guildIcon: oauthResult.guildIcon,
+      };
     } catch (error) {
       ctx.logger.error('Error processing OAuth:', error);
 
