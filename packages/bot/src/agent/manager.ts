@@ -7,7 +7,6 @@ import { spawn } from "child_process";
 import { populateMemorySection } from "../discord/sync.js";
 import type { IBotContext } from "../interfaces/core.js";
 import type { ITextChannel, IThreadChannel } from "../interfaces/discord.js";
-import type { IPermissionManager } from "../interfaces/permission.js";
 import type { Client } from "discord.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -45,8 +44,7 @@ export class SessionManager {
     private sessionsDir: string,
     private workspaceRoot: string,
     memoryContextSize: number = 10000,
-    private discordClient?: Client,
-    private permissionManager?: IPermissionManager
+    private discordClient?: Client
   ) {
     this.memoryContextSize = memoryContextSize;
   }
@@ -76,10 +74,9 @@ export class SessionManager {
 
     // Load Discord tools if Discord client is provided
     let discordTools: SdkMcpToolDefinition<any>[] = [];
-    if (this.discordClient && this.permissionManager) {
+    if (this.discordClient) {
       discordTools = loadDiscordTools(
         this.discordClient,
-        this.permissionManager,
         () => {
           // Get the channel for the currently executing session
           const entries = Array.from(this.currentChannels.entries());

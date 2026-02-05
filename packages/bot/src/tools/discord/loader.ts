@@ -1,6 +1,5 @@
 import { Client } from 'discord.js';
 import { SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk';
-import type { IPermissionManager } from '../../interfaces/permission.js';
 import { createSendMessageTool } from './send_message.js';
 import { createListChannelsTool } from './list_channels.js';
 import { createCreateChannelTool } from './create_channel.js';
@@ -28,14 +27,12 @@ import { createDeleteForumPostTool } from './delete_forum_post.js';
 /**
  * Load all Discord management tools
  * @param client Discord client instance
- * @param permissionManager Permission manager for sensitive operations
  * @param getCurrentChannel Function to get the current channel context
  * @param guildId The configured guild ID from environment (NEVER use client.guilds.cache)
  * @returns Array of Discord tools
  */
 export function loadDiscordTools(
   client: Client,
-  permissionManager: IPermissionManager,
   getCurrentChannel: () => any,
   guildId: string
 ): SdkMcpToolDefinition<any>[] {
@@ -44,47 +41,47 @@ export function loadDiscordTools(
     createSendMessageTool(client),
     createListChannelsTool(client, guildId),
 
-    // Channel tools (require permission)
-    createCreateChannelTool(client, permissionManager, getCurrentChannel, guildId),
-    createDeleteChannelTool(client, permissionManager, getCurrentChannel),
+    // Channel tools
+    createCreateChannelTool(client, getCurrentChannel, guildId),
+    createDeleteChannelTool(client, getCurrentChannel),
 
     // Member tools (read-only)
     createListMembersTool(client, guildId),
     createGetMemberTool(client, guildId),
 
-    // Member tools (require permission)
-    createKickMemberTool(client, permissionManager, getCurrentChannel, guildId),
-    createBanMemberTool(client, permissionManager, getCurrentChannel, guildId),
+    // Member tools
+    createKickMemberTool(client, getCurrentChannel, guildId),
+    createBanMemberTool(client, getCurrentChannel, guildId),
 
     // Role tools (read-only)
     createListRolesTool(client, guildId),
 
-    // Role tools (require permission)
-    createAssignRoleTool(client, permissionManager, getCurrentChannel, guildId),
-    createRemoveRoleTool(client, permissionManager, getCurrentChannel, guildId),
-    createCreateRoleTool(client, permissionManager, getCurrentChannel, guildId),
+    // Role tools
+    createAssignRoleTool(client, getCurrentChannel, guildId),
+    createRemoveRoleTool(client, getCurrentChannel, guildId),
+    createCreateRoleTool(client, getCurrentChannel, guildId),
 
     // Event tools (read-only)
     createListEventsTool(client, getCurrentChannel, guildId),
     createGetEventTool(client, getCurrentChannel, guildId),
     createGetEventUsersTool(client, getCurrentChannel, guildId),
 
-    // Event tools (require permission)
-    createCreateEventTool(client, permissionManager, getCurrentChannel, guildId),
-    createDeleteEventTool(client, permissionManager, getCurrentChannel, guildId),
+    // Event tools
+    createCreateEventTool(client, getCurrentChannel, guildId),
+    createDeleteEventTool(client, getCurrentChannel, guildId),
 
     // Poll tools (read-only)
     createGetPollResultsTool(client),
 
-    // Poll tools (require permission)
-    createCreatePollTool(client, permissionManager, getCurrentChannel),
+    // Poll tools
+    createCreatePollTool(client, getCurrentChannel),
 
     // Forum tools (read-only)
     createListForumPostsTool(client),
     createCreateForumPostTool(client),
 
-    // Forum tools (require permission)
-    createCreateForumChannelTool(client, permissionManager, getCurrentChannel, guildId),
-    createDeleteForumPostTool(client, permissionManager, getCurrentChannel),
+    // Forum tools
+    createCreateForumChannelTool(client, getCurrentChannel, guildId),
+    createDeleteForumPostTool(client, getCurrentChannel),
   ];
 }

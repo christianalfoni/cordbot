@@ -13,9 +13,6 @@ export * from './storage.js';
 // Scheduler
 export * from './scheduler.js';
 
-// Permission
-export * from './permission.js';
-
 // Token
 export * from './token.js';
 

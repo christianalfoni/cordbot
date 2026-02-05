@@ -2,7 +2,6 @@ import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type { Client } from 'discord.js';
 import { ChannelType } from 'discord.js';
-import type { IPermissionManager } from '../../interfaces/permission.js';
 
 const schema = z.object({
   name: z.string().describe('Forum channel name'),
@@ -12,7 +11,6 @@ const schema = z.object({
 
 export function createCreateForumChannelTool(
   client: Client,
-  permissionManager: IPermissionManager,
   getCurrentChannel: () => any,
   guildId: string
 ) {
@@ -22,33 +20,11 @@ export function createCreateForumChannelTool(
     schema.shape,
     async ({ name, topic, tags }) => {
       try {
-        const contextChannel = getCurrentChannel();
-        if (!contextChannel) {
-          return {
-            content: [{ type: 'text', text: 'Error: No channel context available' }],
-            isError: true,
-          };
-        }
-
         // Use the configured guild ID from context (NEVER use client.guilds.cache)
         const guild = await client.guilds.fetch(guildId);
         if (!guild) {
           return {
             content: [{ type: 'text', text: `Error: Guild ${guildId} not found` }],
-            isError: true,
-          };
-        }
-
-        // Request permission
-        try {
-          await permissionManager.requestPermission(
-            contextChannel,
-            `Create forum channel "${name}"?`,
-            `create_forum_${Date.now()}`
-          );
-        } catch (permError) {
-          return {
-            content: [{ type: 'text', text: `❌ ${permError instanceof Error ? permError.message : 'Permission denied'}` }],
             isError: true,
           };
         }

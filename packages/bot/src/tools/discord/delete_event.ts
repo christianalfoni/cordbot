@@ -1,7 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type { Client } from 'discord.js';
-import type { IPermissionManager } from '../../interfaces/permission.js';
 
 const schema = z.object({
   eventId: z.string().describe('The event ID to delete'),
@@ -9,7 +8,6 @@ const schema = z.object({
 
 export function createDeleteEventTool(
   client: Client,
-  permissionManager: IPermissionManager,
   getCurrentChannel: () => any,
   guildId: string
 ) {
@@ -19,14 +17,6 @@ export function createDeleteEventTool(
     schema.shape,
     async ({ eventId }) => {
       try {
-        const contextChannel = getCurrentChannel();
-        if (!contextChannel) {
-          return {
-            content: [{ type: 'text', text: 'Error: No channel context available' }],
-            isError: true,
-          };
-        }
-
         // Use the configured guild ID from context (NEVER use client.guilds.cache)
         const guild = await client.guilds.fetch(guildId);
         if (!guild) {
@@ -40,20 +30,6 @@ export function createDeleteEventTool(
         if (!event) {
           return {
             content: [{ type: 'text', text: 'Error: Event not found' }],
-            isError: true,
-          };
-        }
-
-        // Request permission
-        try {
-          await permissionManager.requestPermission(
-            contextChannel,
-            `Delete event "${event.name}"? This cannot be undone.`,
-            `delete_event_${Date.now()}`
-          );
-        } catch (permError) {
-          return {
-            content: [{ type: 'text', text: `❌ ${permError instanceof Error ? permError.message : 'Permission denied'}` }],
             isError: true,
           };
         }

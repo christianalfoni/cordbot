@@ -5,7 +5,6 @@ import type {
   ISessionStore,
   IMemoryStore,
   IScheduler,
-  IPermissionManager,
   ITokenProvider,
   ILogger,
   IFileStore,
@@ -33,7 +32,6 @@ import type {
   MemoryLoadResult,
   ScheduledTask,
   TaskFunction,
-  PermissionResult,
   Token,
   TokenCategory,
   ChannelType,
@@ -673,76 +671,6 @@ export class MockScheduler implements IScheduler {
 }
 
 /**
- * Mock Permission Manager
- */
-export class MockPermissionManager implements IPermissionManager {
-  private pendingRequests = new Map<string, {
-    resolve: (result: PermissionResult) => void;
-    reject: (error: Error) => void;
-  }>();
-  private autoApprove = false;
-
-  async requestPermission(
-    channel: ITextChannel | IThreadChannel,
-    message: string,
-    requestId: string
-  ): Promise<PermissionResult> {
-    if (this.autoApprove) {
-      return { approved: true, userId: 'test-user', timestamp: Date.now() };
-    }
-
-    return new Promise((resolve, reject) => {
-      this.pendingRequests.set(requestId, { resolve, reject });
-    });
-  }
-
-  handleApproval(requestId: string, userId: string): void {
-    const request = this.pendingRequests.get(requestId);
-    if (request) {
-      request.resolve({ approved: true, userId, timestamp: Date.now() });
-      this.pendingRequests.delete(requestId);
-    }
-  }
-
-  handleDenial(requestId: string, userId: string): void {
-    const request = this.pendingRequests.get(requestId);
-    if (request) {
-      request.resolve({ approved: false, userId, timestamp: Date.now() });
-      this.pendingRequests.delete(requestId);
-    }
-  }
-
-  handleExpired(requestId: string, errorMessage: string): void {
-    const request = this.pendingRequests.get(requestId);
-    if (request) {
-      request.reject(new Error(errorMessage));
-      this.pendingRequests.delete(requestId);
-    }
-  }
-
-  getPermissionLevel(toolId: string): any {
-    return 'low';
-  }
-
-  isPending(requestId: string): boolean {
-    return this.pendingRequests.has(requestId);
-  }
-
-  cancel(requestId: string): void {
-    const request = this.pendingRequests.get(requestId);
-    if (request) {
-      request.reject(new Error('Permission request cancelled'));
-      this.pendingRequests.delete(requestId);
-    }
-  }
-
-  // Testing utilities
-  setAutoApprove(enabled: boolean): void {
-    this.autoApprove = enabled;
-  }
-}
-
-/**
  * Mock Token Provider
  */
 export class MockTokenProvider implements ITokenProvider {
@@ -928,7 +856,6 @@ export function createMockContext(guildId: string = 'test-guild-id'): IBotContex
   sessionStore: MockSessionStore;
   memoryStore: MockMemoryStore;
   scheduler: MockScheduler;
-  permissionManager: MockPermissionManager;
   tokenProvider: MockTokenProvider;
   logger: MockLogger;
   fileStore: MockFileStore;
@@ -940,7 +867,6 @@ export function createMockContext(guildId: string = 'test-guild-id'): IBotContex
     sessionStore: new MockSessionStore(),
     memoryStore: new MockMemoryStore(),
     scheduler: new MockScheduler(),
-    permissionManager: new MockPermissionManager(),
     tokenProvider: new MockTokenProvider(),
     logger: new MockLogger(),
     fileStore: new MockFileStore(),

@@ -1,12 +1,10 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 import type { IBotContext, BotContextConfig } from '../interfaces/core.js';
-import type { IPermissionManager } from '../interfaces/permission.js';
 import { DiscordJsAdapter } from './discord/adapter.js';
 import { ClaudeSDKQueryExecutor } from './query/claude-sdk.js';
 import { FileSystemSessionStore } from './storage/filesystem-session.js';
 import { FileSystemMemoryStore } from './storage/filesystem-memory.js';
 import { NodeCronScheduler } from './scheduler/node-cron.js';
-import { DiscordPermissionManager } from './permission/discord-permission.js';
 import { ServiceTokenProvider } from './token/service-token.js';
 import { ConsoleLogger } from './logger.js';
 import { NodeFileStore } from './file/node-fs.js';
@@ -16,12 +14,11 @@ import os from 'os';
 
 /**
  * Create a production bot context with all real implementations
- * Returns the context, Discord client, and permission manager for Discord tools
+ * Returns the context and Discord client
  */
 export async function createProductionBotContext(config: BotContextConfig): Promise<{
   context: IBotContext;
   discordClient: Client;
-  permissionManager: IPermissionManager;
 }> {
   // Create Discord client
   const discordClient = new Client({
@@ -64,9 +61,6 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
   // Create scheduler
   const scheduler = new NodeCronScheduler();
 
-  // Create permission manager
-  const permissionManager = new DiscordPermissionManager();
-
   // Create token provider
   const serviceUrl = config.serviceUrl || process.env.SERVICE_URL || '';
   const tokenManager = new TokenManager(config.discordToken, serviceUrl, null);
@@ -85,7 +79,6 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
     sessionStore,
     memoryStore,
     scheduler,
-    permissionManager,
     tokenProvider,
     logger,
     fileStore,
@@ -94,7 +87,6 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
   return {
     context,
     discordClient, // Return raw client for SessionManager to load Discord tools
-    permissionManager, // Return permission manager for Discord tools
   };
 }
 
@@ -111,7 +103,6 @@ export function isValidBotContext(context: any): context is IBotContext {
     'sessionStore' in context &&
     'memoryStore' in context &&
     'scheduler' in context &&
-    'permissionManager' in context &&
     'tokenProvider' in context &&
     'logger' in context
   );

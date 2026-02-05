@@ -2,7 +2,6 @@ import type { IDiscordAdapter } from './discord';
 import type { IQueryExecutor } from './query';
 import type { ISessionStore, IMemoryStore } from './storage';
 import type { IScheduler } from './scheduler';
-import type { IPermissionManager } from './permission';
 import type { ITokenProvider } from './token';
 import type { ILogger } from './logger';
 import type { IFileStore } from './file';
@@ -45,11 +44,6 @@ export interface IBotContext {
    * Task scheduler
    */
   scheduler: IScheduler;
-
-  /**
-   * Permission manager
-   */
-  permissionManager: IPermissionManager;
 
   /**
    * OAuth token provider
