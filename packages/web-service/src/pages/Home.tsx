@@ -119,7 +119,7 @@ export function Home({ userData, onSignOut, onSignIn, loading }: HomeProps) {
     }
     // Build Discord OAuth URL with user ID and tier in state parameter
     const state = btoa(JSON.stringify({ userId: userData.id, tier }));
-    const oauthUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&permissions=277025508352&scope=bot%20applications.commands%20guilds&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${encodeURIComponent(state)}`;
+    const oauthUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&permissions=55370986941526&scope=bot%20applications.commands%20guilds&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${encodeURIComponent(state)}`;
     window.location.href = oauthUrl;
   };
 

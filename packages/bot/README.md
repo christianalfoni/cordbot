@@ -46,11 +46,15 @@ Cordbot deploys a Claude agent that observes your Discord server, maintains conv
 5. **Invite Bot to Your Server**
    - Use this invite URL, replacing `YOUR_CLIENT_ID` with your bot's Client ID:
    ```
-   https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=277025508352&scope=bot
+   https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=55370986941526&scope=bot
    ```
    - Open the URL in your browser
    - Select the server you want to add the bot to
    - Click "Authorize"
+
+   **Required Permissions (18 total):**
+   - General: View Channels, Manage Channels, Manage Roles, Kick Members, Ban Members, Manage Events, Create Events
+   - Text: Send Messages, Create Threads (Public/Private), Send in Threads, Manage Messages/Threads, Embed Links, Attach Files, Read History, Add Reactions, Create Polls
 
 ### Start the bot
 

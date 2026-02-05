@@ -128,7 +128,7 @@ export async function streamToDiscord(
       if (state.isCronJob) {
         // Get files to share before sending message
         const filesToShare = sessionManager.getFilesToShare(sessionId);
-        channel = await sendCompleteMessage(channel, finalMessage, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare, logger);
+        channel = await sendCompleteMessage(channel, finalMessage, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare, logger, sessionManager);
       }
 
       // Capture final message to memory (for both cron and non-cron)
@@ -198,7 +198,7 @@ async function handleSDKMessage(
         // For non-cron jobs, send each message immediately (streaming) with any queued files
         if (!state.isCronJob) {
           const filesToShare = sessionManager.getFilesToShare(sessionId);
-          channel = await sendCompleteMessage(channel, content, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare, logger);
+          channel = await sendCompleteMessage(channel, content, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare, logger, sessionManager);
           state.planContent = null; // Clear plan after sending
           state.messagePrefix = null; // Clear prefix after using
           state.messageSuffix = null; // Clear suffix after using
@@ -372,7 +372,8 @@ async function sendCompleteMessage(
   messageSuffix: string | null,
   state: StreamState,
   filesToShare: string[] = [],
-  logger: ILogger
+  logger: ILogger,
+  sessionManager: SessionManager
 ): Promise<ITextChannel | IThreadChannel> {
   logger.info(`📤 Sending message to Discord (${content.length} chars)`);
 
@@ -388,6 +389,11 @@ async function sendCompleteMessage(
     });
     targetChannel = thread;
     state.threadCreated = true;
+
+    // IMPORTANT: Update session manager's channel context to the new thread
+    // This ensures permission requests and other channel-specific operations
+    // use the thread, not the parent channel
+    sessionManager.setChannelContext(state.sessionId, thread);
 
     // Note: Keep state.channelId as parent channel ID for memory operations
     // Don't update it to thread.id
