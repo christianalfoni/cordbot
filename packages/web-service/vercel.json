@@ -1,6 +1,4 @@
 {
-  "installCommand": "corepack enable && corepack prepare pnpm@10.0.0 --activate && pnpm install --no-frozen-lockfile",
-  "buildCommand": "pnpm build",
   "rewrites": [
     {
       "source": "/(.*)",
