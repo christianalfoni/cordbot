@@ -10,7 +10,7 @@ export type MemoryLogType =
   | 'daily_compressed'  // Daily compression completed
   | 'weekly_compressed' // Weekly compression completed
   | 'monthly_compressed' // Monthly compression completed
-  | 'yearly_compressed' // Yearly compression completed
+  | 'monthly_deleted'   // Monthly memory deleted due to retention policy
   | 'memory_loaded';    // Memories loaded for a query
 
 export interface MemoryLogEntry {
@@ -153,30 +153,24 @@ export async function logMonthlyCompression(
 }
 
 /**
- * Log when yearly compression is completed
+ * Log when a monthly memory is deleted due to retention policy
  */
-export async function logYearlyCompression(
+export async function logMonthlyMemoryDeleted(
   channelId: string,
-  year: string,
-  monthlySummaryCount: number,
-  summaryLength: number,
-  tokenCount: number
+  monthIdentifier: string
 ): Promise<void> {
   const entry: MemoryLogEntry = {
     timestamp: new Date().toISOString(),
-    type: 'yearly_compressed',
+    type: 'monthly_deleted',
     channelId,
     details: {
-      year,
-      monthlySummaryCount,
-      summaryLength,
-      tokenCount,
+      monthIdentifier,
     },
   };
 
   await appendLogEntry(entry);
   console.log(
-    `[Memory] Yearly compression completed for ${channelId} (${year}): ${monthlySummaryCount} months → ${tokenCount} tokens`
+    `[Memory] Monthly memory deleted for ${channelId} (${monthIdentifier}) due to retention policy`
   );
 }
 
@@ -241,7 +235,7 @@ export async function getChannelMemoryStats(
   dailyCompressionsCount: number;
   weeklyCompressionsCount: number;
   monthlyCompressionsCount: number;
-  yearlyCompressionsCount: number;
+  monthlyDeletionsCount: number;
   memoriesLoadedCount: number;
 }> {
   const logs = await readRecentLogs(10000); // Read last 10k entries
@@ -252,7 +246,7 @@ export async function getChannelMemoryStats(
     dailyCompressionsCount: channelLogs.filter(e => e.type === 'daily_compressed').length,
     weeklyCompressionsCount: channelLogs.filter(e => e.type === 'weekly_compressed').length,
     monthlyCompressionsCount: channelLogs.filter(e => e.type === 'monthly_compressed').length,
-    yearlyCompressionsCount: channelLogs.filter(e => e.type === 'yearly_compressed').length,
+    monthlyDeletionsCount: channelLogs.filter(e => e.type === 'monthly_deleted').length,
     memoriesLoadedCount: channelLogs.filter(e => e.type === 'memory_loaded').length,
   };
 }

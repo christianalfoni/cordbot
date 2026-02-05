@@ -90,6 +90,7 @@ export class QueryLimitService {
     type: string;
     cost: number;
     success: boolean;
+    memoryTokens?: number;
   }): Promise<{
     limitReached: boolean;
     blocked: boolean;
@@ -97,7 +98,7 @@ export class QueryLimitService {
     deploymentType: string;
     shouldDeprovision: boolean;
   }> {
-    const { guildId, type, cost } = params;
+    const { guildId, type, cost, memoryTokens } = params;
 
     // Use transaction to atomically update deployment
     const result = await this.ctx.firestore.runTransaction(async (transaction) => {
@@ -140,6 +141,11 @@ export class QueryLimitService {
         lastQueryAt: now,
         updatedAt: now,
       };
+
+      // Add memory tokens if provided
+      if (memoryTokens !== undefined) {
+        updateData.lastQueryMemoryTokens = memoryTokens;
+      }
 
       // Set firstQueryAt if not set
       if (!deployment.firstQueryAt) {
@@ -188,6 +194,11 @@ export class QueryLimitService {
         this.ctx.logger.error(`Failed to send deprovision notification for ${guildId}:`, error);
       });
     }
+
+    // Log query tracking with memory tokens
+    this.ctx.logger.info(
+      `Query tracked: ${type} (cost: $${cost.toFixed(4)}, memory: ${memoryTokens !== undefined ? `${memoryTokens} tokens` : 'N/A'})`
+    );
 
     return result;
   }

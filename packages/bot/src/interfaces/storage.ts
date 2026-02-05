@@ -111,7 +111,6 @@ export interface MemoryLoadResult {
     daily?: number;
     weekly?: number;
     monthly?: number;
-    yearly?: number;
   };
 }
 
@@ -158,16 +157,6 @@ export interface IMemoryStore {
    * Load monthly summary for a specific month
    */
   loadMonthlyMemory(channelId: string, month: string): Promise<string | null>;
-
-  /**
-   * Save a yearly summary
-   */
-  saveYearlyMemory(channelId: string, year: string, content: string): Promise<void>;
-
-  /**
-   * Load yearly summary for a specific year
-   */
-  loadYearlyMemory(channelId: string, year: string): Promise<string | null>;
 
   /**
    * Load all relevant memories for a channel within a token budget

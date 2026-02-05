@@ -174,6 +174,7 @@ export interface GuildDeployment {
   queryTypes: Record<string, number>;
   costByType: Record<string, number>;
   lastQueryAt: string;
+  lastQueryMemoryTokens?: number;
   firstQueryAt?: string;
   createdAt: string;
   updatedAt: string;

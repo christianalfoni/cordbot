@@ -63,13 +63,14 @@ export class QueryLimitManager {
   /**
    * Track query usage after a query has been executed
    */
-  async trackQuery(type: string, cost: number, success: boolean): Promise<void> {
+  async trackQuery(type: string, cost: number, success: boolean, memoryTokens?: number): Promise<void> {
     try {
       const result = await this.callFunction('trackQueryLimit', {
         guildId: this.guildId,
         type,
         cost,
         success,
+        memoryTokens,
       });
 
       // Update local state

@@ -18,8 +18,6 @@ import os from 'os';
  *           2026-W04.md
  *         monthly/
  *           2026-01.md
- *         yearly/
- *           2026.md
  */
 
 export interface RawMemoryEntry {
@@ -66,13 +64,6 @@ export function getMonthlyMemoriesPath(channelId: string): string {
 }
 
 /**
- * Get the yearly memories directory path
- */
-export function getYearlyMemoriesPath(channelId: string): string {
-  return path.join(getMemoriesPath(channelId), 'yearly');
-}
-
-/**
  * Initialize memory storage structure for a channel
  */
 export async function initializeMemoryStorage(channelId: string): Promise<void> {
@@ -81,7 +72,6 @@ export async function initializeMemoryStorage(channelId: string): Promise<void> 
   await fs.mkdir(getDailyMemoriesPath(channelId), { recursive: true });
   await fs.mkdir(getWeeklyMemoriesPath(channelId), { recursive: true });
   await fs.mkdir(getMonthlyMemoriesPath(channelId), { recursive: true });
-  await fs.mkdir(getYearlyMemoriesPath(channelId), { recursive: true });
 }
 
 /**
@@ -298,58 +288,22 @@ export async function listMonthlyMemories(
 }
 
 /**
- * Write a yearly memory summary
+ * Delete a monthly memory summary
  */
-export async function writeYearlyMemory(
+export async function deleteMonthlyMemory(
   channelId: string,
-  year: string, // e.g., "2026"
-  content: string
+  monthIdentifier: string
 ): Promise<void> {
-  const yearlyPath = getYearlyMemoriesPath(channelId);
-  const filePath = path.join(yearlyPath, `${year}.md`);
-
-  await fs.mkdir(yearlyPath, { recursive: true });
-  await fs.writeFile(filePath, content, 'utf-8');
-}
-
-/**
- * Read a yearly memory summary
- */
-export async function readYearlyMemory(
-  channelId: string,
-  year: string
-): Promise<string | null> {
-  const filePath = path.join(getYearlyMemoriesPath(channelId), `${year}.md`);
+  const filePath = path.join(getMonthlyMemoriesPath(channelId), `${monthIdentifier}.md`);
 
   try {
-    return await fs.readFile(filePath, 'utf-8');
+    await fs.unlink(filePath);
   } catch (error: any) {
     if (error.code === 'ENOENT') {
-      return null;
+      // File doesn't exist, that's fine
+      return;
     }
     throw error;
   }
 }
 
-/**
- * List all yearly memory files for a channel
- */
-export async function listYearlyMemories(
-  channelId: string
-): Promise<string[]> {
-  const yearlyPath = getYearlyMemoriesPath(channelId);
-
-  try {
-    const files = await fs.readdir(yearlyPath);
-    return files
-      .filter(f => f.endsWith('.md'))
-      .map(f => f.replace('.md', ''))
-      .sort()
-      .reverse(); // Most recent first
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      return [];
-    }
-    throw error;
-  }
-}

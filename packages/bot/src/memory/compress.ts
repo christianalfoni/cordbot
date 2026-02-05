@@ -10,13 +10,13 @@ import {
   writeDailyMemory,
   writeWeeklyMemory,
   writeMonthlyMemory,
-  writeYearlyMemory,
+  deleteMonthlyMemory,
 } from './storage.js';
 import {
   logDailyCompression,
   logWeeklyCompression,
   logMonthlyCompression,
-  logYearlyCompression,
+  logMonthlyMemoryDeleted,
 } from './logger.js';
 import { countTokens } from './loader.js';
 
@@ -26,12 +26,10 @@ import { countTokens } from './loader.js';
 function getDateInfo(date: Date) {
   const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday
   const dayOfMonth = date.getDate();
-  const month = date.getMonth(); // 0 = January
 
   return {
     isMonday: dayOfWeek === 1,
     isFirstOfMonth: dayOfMonth === 1,
-    isJanuary1st: month === 0 && dayOfMonth === 1,
   };
 }
 
@@ -60,13 +58,6 @@ function getMonthIdentifier(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   return `${year}-${month}`;
-}
-
-/**
- * Get year identifier (YYYY)
- */
-function getYearIdentifier(date: Date): string {
-  return String(date.getFullYear());
 }
 
 /**
@@ -287,59 +278,51 @@ async function compressMonthlyMemories(
     countTokens(summary)
   );
 
+  // Clean up old monthly memories based on retention policy
+  await cleanupOldMonthlyMemories(channelId);
+
   return cost;
 }
 
 /**
- * Compress last year's monthly summaries into a yearly summary
- * Returns cost in dollars
+ * Clean up old monthly memories beyond the retention limit
+ * Keeps the most recent X months where X = MEMORY_RETENTION_MONTHS env variable
  */
-async function compressYearlyMemories(
-  channelId: string,
-  year: string
-): Promise<number> {
-  console.log(`[Memory] Compressing yearly memories for ${channelId} (${year})`);
+async function cleanupOldMonthlyMemories(channelId: string): Promise<void> {
+  const retentionMonths = parseInt(process.env.MEMORY_RETENTION_MONTHS || '0', 10);
 
-  // Get all monthly summaries from last year
+  // If retention is 0, delete all monthly memories
+  // Otherwise, keep the most recent X months
+  if (retentionMonths < 0) {
+    console.log('[Memory] Invalid MEMORY_RETENTION_MONTHS value, skipping cleanup');
+    return;
+  }
+
+  console.log(`[Memory] Cleaning up monthly memories (retention: ${retentionMonths} months)`);
+
+  // Get all monthly summaries
   const allMonthlies = await listMonthlyMemories(channelId);
 
-  // Filter to only last year's months
-  const yearlyMonthlies = allMonthlies.filter(monthId => monthId.startsWith(year));
+  // Calculate how many to delete (keep the most recent retentionMonths)
+  const toDelete = allMonthlies.slice(retentionMonths);
 
-  if (yearlyMonthlies.length === 0) {
-    console.log(`[Memory] No monthly summaries to compress for ${year}`);
-    return 0;
+  if (toDelete.length === 0) {
+    console.log('[Memory] No old monthly memories to clean up');
+    return;
   }
 
-  // Combine all monthly summaries
-  let combinedContent = '';
-  for (const monthId of yearlyMonthlies) {
-    const monthly = await readMonthlyMemory(channelId, monthId);
-    if (monthly) {
-      combinedContent += `## ${monthId}\n\n${monthly}\n\n`;
-    }
+  console.log(`[Memory] Deleting ${toDelete.length} old monthly memories`);
+
+  // Delete old monthly memories
+  for (const monthId of toDelete) {
+    await deleteMonthlyMemory(channelId, monthId);
+    await logMonthlyMemoryDeleted(channelId, monthId);
+    console.log(`[Memory] Deleted monthly memory: ${monthId}`);
   }
 
-  // Summarize with Claude
-  const { summary, cost } = await summarizeWithClaude(
-    combinedContent,
-    `You are summarizing a year (${year}) of activity in a Discord channel.`
-  );
-
-  // Write yearly summary
-  await writeYearlyMemory(channelId, year, summary);
-
-  // Log compression
-  await logYearlyCompression(
-    channelId,
-    year,
-    yearlyMonthlies.length,
-    summary.length,
-    countTokens(summary)
-  );
-
-  return cost;
+  console.log(`[Memory] Cleanup completed - kept ${Math.min(allMonthlies.length, retentionMonths)} most recent months`);
 }
+
 
 /**
  * Main compression job that runs daily and checks for boundary conditions
@@ -393,15 +376,6 @@ export async function runDailyMemoryCompression(
         const monthIdentifier = getMonthIdentifier(lastMonth);
         const monthlyCost = await compressMonthlyMemories(channelId, monthIdentifier);
         totalCost += monthlyCost;
-      }
-
-      // If Jan 1st: Compress last year
-      if (dateInfo.isJanuary1st) {
-        const lastYear = new Date(today);
-        lastYear.setFullYear(lastYear.getFullYear() - 1);
-        const yearIdentifier = getYearIdentifier(lastYear);
-        const yearlyCost = await compressYearlyMemories(channelId, yearIdentifier);
-        totalCost += yearlyCost;
       }
     } catch (error) {
       console.error(`[Memory] Error compressing memories for channel ${channelId}:`, error);

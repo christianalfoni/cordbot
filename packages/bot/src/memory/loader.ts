@@ -2,11 +2,9 @@ import {
   listDailyMemories,
   listWeeklyMemories,
   listMonthlyMemories,
-  listYearlyMemories,
   readDailyMemory,
   readWeeklyMemory,
   readMonthlyMemory,
-  readYearlyMemory,
   readRawMemories,
 } from './storage.js';
 
@@ -21,8 +19,8 @@ export function countTokens(text: string): number {
 }
 
 export interface LoadedMemory {
-  type: 'raw' | 'daily' | 'weekly' | 'monthly' | 'yearly';
-  identifier: string; // date, week, month, or year
+  type: 'raw' | 'daily' | 'weekly' | 'monthly';
+  identifier: string; // date, week, or month
   content: string;
   tokenCount: number;
 }
@@ -146,26 +144,6 @@ export async function loadMemoriesForChannel(
     }
   }
 
-  // If still have budget, load yearly summaries
-  if (totalTokens < tokenBudget) {
-    const yearlyIdentifiers = await listYearlyMemories(channelId);
-    for (const year of yearlyIdentifiers) {
-      const content = await readYearlyMemory(channelId, year);
-      if (!content) continue;
-
-      const memory: LoadedMemory = {
-        type: 'yearly',
-        identifier: year,
-        content,
-        tokenCount: countTokens(content),
-      };
-
-      if (!tryAddMemory(memory)) {
-        break;
-      }
-    }
-  }
-
   return {
     memories,
     totalTokens,
@@ -203,7 +181,6 @@ export function formatMemoriesForClaudeMd(loadResult: MemoryLoadResult): string 
   const dailyMemories = loadResult.memories.filter(m => m.type === 'daily');
   const weeklyMemories = loadResult.memories.filter(m => m.type === 'weekly');
   const monthlyMemories = loadResult.memories.filter(m => m.type === 'monthly');
-  const yearlyMemories = loadResult.memories.filter(m => m.type === 'yearly');
 
   let output = '';
 
@@ -228,8 +205,8 @@ export function formatMemoriesForClaudeMd(loadResult: MemoryLoadResult): string 
     }
   }
 
-  // Long Term Memory: Weeks, months, years
-  const hasLongTermMemory = weeklyMemories.length > 0 || monthlyMemories.length > 0 || yearlyMemories.length > 0;
+  // Long Term Memory: Weeks and months
+  const hasLongTermMemory = weeklyMemories.length > 0 || monthlyMemories.length > 0;
   if (hasLongTermMemory) {
     output += '## Long Term Memory\n\n';
 
@@ -243,13 +220,6 @@ export function formatMemoriesForClaudeMd(loadResult: MemoryLoadResult): string 
     // Monthly summaries
     if (monthlyMemories.length > 0) {
       for (const mem of monthlyMemories) {
-        output += `### ${mem.identifier}\n\n${mem.content}\n\n`;
-      }
-    }
-
-    // Yearly summaries
-    if (yearlyMemories.length > 0) {
-      for (const mem of yearlyMemories) {
         output += `### ${mem.identifier}\n\n${mem.content}\n\n`;
       }
     }

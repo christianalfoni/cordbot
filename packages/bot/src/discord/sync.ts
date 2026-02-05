@@ -322,7 +322,7 @@ export async function populateMemorySection(
   channelId: string,
   memoryContextSize: number,
   sessionId?: string
-): Promise<void> {
+): Promise<import('../memory/loader.js').MemoryLoadResult> {
   // Load memories for this channel
   const memoryResult = await loadMemoriesForChannel(channelId, memoryContextSize);
 
@@ -384,4 +384,6 @@ export async function populateMemorySection(
     memoryResult.totalTokens,
     memoryResult.budgetUsed
   );
+
+  return memoryResult;
 }

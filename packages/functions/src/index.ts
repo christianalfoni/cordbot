@@ -188,7 +188,7 @@ export const trackQueryLimit = onRequest(async (req, res) => {
     return;
   }
 
-  const { guildId, type, cost, success } = req.body.data || {};
+  const { guildId, type, cost, success, memoryTokens } = req.body.data || {};
 
   if (!guildId || !type || cost === undefined || success === undefined) {
     res.status(400).json({ error: 'guildId, type, cost, and success are required' });
@@ -199,7 +199,7 @@ export const trackQueryLimit = onRequest(async (req, res) => {
 
   try {
     const service = new QueryLimitService(ctx);
-    const result = await service.trackQueryLimit({ guildId, type, cost, success });
+    const result = await service.trackQueryLimit({ guildId, type, cost, success, memoryTokens });
     res.status(200).json({ result });
   } catch (error) {
     ctx.logger.error('Error tracking query limit:', error);

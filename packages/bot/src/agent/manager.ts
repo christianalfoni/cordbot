@@ -332,8 +332,8 @@ export class SessionManager {
     claudeMdPath: string,
     channelId: string,
     sessionId: string
-  ): Promise<void> {
-    await populateMemorySection(
+  ): Promise<import('../memory/loader.js').MemoryLoadResult> {
+    return populateMemorySection(
       claudeMdPath,
       channelId,
       this.memoryContextSize,

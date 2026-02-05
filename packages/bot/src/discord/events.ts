@@ -560,10 +560,12 @@ async function handleMessage(
       const claudeMdPath = channelMapping.claudeMdPath;
       let systemPrompt: string | undefined;
 
+      let memoryTokens = 0;
       if (context.fileStore.exists(claudeMdPath)) {
         try {
-          await sessionManager.populateMemory(claudeMdPath, parentChannelId, sessionId);
-          logger.info(`💾 Memory populated for channel ${parentChannelId}`);
+          const memoryResult = await sessionManager.populateMemory(claudeMdPath, parentChannelId, sessionId);
+          memoryTokens = memoryResult.totalTokens;
+          logger.info(`💾 Memory loaded: ${memoryTokens} tokens`);
 
           // Read CLAUDE.md to use as system prompt
           const claudeMdContent = context.fileStore.readFile(claudeMdPath, 'utf-8');
@@ -645,7 +647,7 @@ async function handleMessage(
       } finally {
         // Track query usage
         if (queryLimitManager) {
-          await queryLimitManager.trackQuery('discord_message', cost, success);
+          await queryLimitManager.trackQuery('discord_message', cost, success, memoryTokens);
         }
       }
     } finally {

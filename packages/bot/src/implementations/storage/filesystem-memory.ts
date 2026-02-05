@@ -13,8 +13,6 @@ import {
   readWeeklyMemory,
   writeMonthlyMemory,
   readMonthlyMemory,
-  writeYearlyMemory,
-  readYearlyMemory,
 } from '../../memory/storage.js';
 import { loadMemoriesForChannel } from '../../memory/loader.js';
 
@@ -78,14 +76,6 @@ export class FileSystemMemoryStore implements IMemoryStore {
     return await readMonthlyMemory(channelId, month);
   }
 
-  async saveYearlyMemory(channelId: string, year: string, content: string): Promise<void> {
-    await writeYearlyMemory(channelId, year, content);
-  }
-
-  async loadYearlyMemory(channelId: string, year: string): Promise<string | null> {
-    return await readYearlyMemory(channelId, year);
-  }
-
   async loadMemoriesForChannel(channelId: string, tokenBudget: number): Promise<MemoryLoadResult> {
     const result = await loadMemoriesForChannel(channelId, tokenBudget);
 
@@ -100,7 +90,6 @@ export class FileSystemMemoryStore implements IMemoryStore {
       if (memory.type === 'daily') sources.daily = (sources.daily || 0) + 1;
       if (memory.type === 'weekly') sources.weekly = (sources.weekly || 0) + 1;
       if (memory.type === 'monthly') sources.monthly = (sources.monthly || 0) + 1;
-      if (memory.type === 'yearly') sources.yearly = (sources.yearly || 0) + 1;
     }
 
     return {
