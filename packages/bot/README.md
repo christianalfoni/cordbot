@@ -1,211 +1,304 @@
 # Cordbot
 
-A Discord bot powered by the Claude Agent SDK that enables autonomous AI assistance directly in your Discord server.
+An open-source Discord bot powered by the [Claude](https://claude.ai) Agent SDK that enables autonomous AI assistance directly in your Discord server.
+
+Visit [cordbot.io](https://cordbot.io) for the web dashboard and documentation.
 
 ## Overview
 
-Cordbot is a directory-based Discord bot that syncs Discord channels to local folders, maintains persistent conversation sessions in threads, and supports scheduled autonomous tasks. It uses the Claude Agent SDK with full system access (dangerous mode) to read files, run commands, and make code changes.
+Cordbot deploys a Claude agent that observes your Discord server, maintains conversation memory, and helps your community with tasks. Bring your own Claude API key and deploy on your own infrastructure for complete control.
 
-## Key Features
-
-- **🤖 Autonomous AI Agent**: Full Claude Code SDK capabilities with dangerous mode enabled
-- **💬 Thread-Based Sessions**: Each Discord thread maintains persistent conversation history
-- **📁 Directory-Based**: Each workspace directory has its own configuration and synced channels
-- **📎 File Attachments**: Upload files to Claude or receive generated files back through Discord
-- **⏰ Scheduled Tasks**: Configure autonomous tasks with `.claude-cron` files
-- **🔌 Service Integrations**: Connect Gmail, Google Calendar, and other services via OAuth
-- **🔄 Hot Reload**: Watches for configuration changes and reloads automatically
-- **🏥 Health Monitoring**: Built-in health check endpoint for production deployments
-
-## Getting Started
+## Running on Your Own
 
 ### Prerequisites
 
-1. **Visit [cordbot.io](https://cordbot.io)** to configure your bot and server
-2. **Create a Discord Bot**: Follow the instructions on cordbot.io to create your bot application
-3. **Get your Anthropic API Key**: Sign up at [console.anthropic.com](https://console.anthropic.com)
+1. **Claude API Key** - Get your key at [console.anthropic.com](https://console.anthropic.com)
+2. **Discord Bot** - Follow the setup instructions below
 
 ### Discord Bot Setup
 
-1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
-2. Create a new application and add a bot
-3. **Enable Privileged Gateway Intents** (REQUIRED):
-   - Go to the **Bot** section
-   - Scroll down to **Privileged Gateway Intents**
-   - Enable **MESSAGE CONTENT INTENT**
-   - Click **Save Changes**
-4. Copy your bot token
-5. Invite the bot to your server using this URL (replace `YOUR_CLIENT_ID` with your bot's client ID):
+1. **Create a Discord Application**
 
-```
-https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=309237763136&scope=bot%20applications.commands
-```
+   - Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+   - Click "New Application"
+   - Give your application a name (e.g., "My Cordbot")
+   - Click "Create"
 
-**Important:** The bot requires the Message Content privileged intent to read message content. Without this enabled, the bot will fail to connect with a "Used disallowed intents" error.
+2. **Create a Bot User**
 
-### Running Cordbot
+   - In your application, go to the "Bot" section in the left sidebar
+   - Click "Add Bot" and confirm
+   - Under the bot's username, click "Reset Token" to reveal your bot token
+   - **Copy and save this token securely** - you'll need it later
 
-Run the bot using npx with the required environment variables:
+3. **Enable Required Intents**
 
-```bash
-export DISCORD_BOT_TOKEN="your-discord-bot-token"
-export DISCORD_GUILD_ID="your-server-id"
-export ANTHROPIC_API_KEY="your-anthropic-api-key"
-export WORKSPACE_DIR="./workspace"  # Optional, defaults to ./workspace
+   - Scroll down to "Privileged Gateway Intents"
+   - Enable **"MESSAGE CONTENT INTENT"** (required)
+   - Enable **"SERVER MEMBERS INTENT"** (required)
+   - Click "Save Changes"
 
-npx @cordbot/agent
-```
+4. **Get Your Bot's Client ID**
 
-Or create a `.env` file in your project directory:
+   - In the "OAuth2" section, find your "Client ID"
+   - Copy this ID
 
-```env
-DISCORD_BOT_TOKEN=your-discord-bot-token
-DISCORD_GUILD_ID=your-server-id
-ANTHROPIC_API_KEY=your-anthropic-api-key
-WORKSPACE_DIR=./workspace
-```
+5. **Invite Bot to Your Server**
+   - Use this invite URL, replacing `YOUR_CLIENT_ID` with your bot's Client ID:
+   ```
+   https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=277025508352&scope=bot
+   ```
+   - Open the URL in your browser
+   - Select the server you want to add the bot to
+   - Click "Authorize"
 
-Then run:
+### Start the bot
 
-```bash
-npx @cordbot/agent
-```
+Run the bot directly with npx:
 
-### Service Integrations
+1. **Create a workspace directory**
 
-For additional capabilities like Gmail and Google Calendar, visit **[cordbot.io](https://cordbot.io)** to connect service integrations. When connected, these services become available as tools that Claude can use:
-- **Gmail**: Send and read emails
-- **Google Calendar**: Create and manage calendar events
-- **More integrations**: Additional services coming soon
+   Create an empty folder that will serve as the bot's workspace:
 
-## How It Works
+   ```bash
+   mkdir cordbot-workspace
+   cd cordbot-workspace
+   ```
 
-### Workspace Structure
+2. **Set environment variables**
 
-When Cordbot starts, it creates a workspace-based architecture:
+   Create a `.env` file in this directory:
 
-```
-workspace/                    # Your workspace directory (where the bot runs)
-├── .claude/                 # Bot management folder (created automatically)
-│   ├── config.json          # Bot configuration
-│   ├── storage/             # Session state and mappings
-│   ├── sessions/            # Active conversation sessions
-│   ├── skills/              # Global skills (cron, skill-creator)
-│   │   ├── cron/            # Cron job management skill
-│   │   └── skill-creator/   # Skill creation tool
-│   └── channels/            # Channel-specific data
-│       └── {channel-id}/    # One directory per Discord channel
-│           ├── CLAUDE.md    # Channel-specific instructions
-│           └── cron.yaml    # Scheduled jobs for this channel
-├── channel-name-1/          # Work folder for Discord channel #1
-│   └── (files uploaded to or created for this channel)
-└── channel-name-2/          # Work folder for Discord channel #2
-    └── (files uploaded to or created for this channel)
-```
+   ```env
+   DISCORD_BOT_TOKEN=your-discord-bot-token
+   DISCORD_GUILD_ID=your-server-id
+   ANTHROPIC_API_KEY=your-anthropic-api-key
+   ```
 
-### How Channels Work
+3. **Run the bot**
+   ```bash
+   npx @cordbot/agent
+   ```
 
-1. **Configure**: Set up your bot on [cordbot.io](https://cordbot.io) and get your credentials
-2. **Channel Sync**: Each Discord channel gets:
-   - A **work folder** in the workspace (e.g., `workspace/general/`) for files
-   - A **data folder** in `.claude/channels/{channel-id}/` for configuration
-3. **Contextual Instructions**: Each channel's `CLAUDE.md` in `.claude/channels/{channel-id}/` provides context to Claude
-4. **Thread Sessions**: Conversations in Discord threads maintain persistent context stored in `.claude/sessions/`
-5. **File Attachments**: Files attached to Discord messages are saved to the channel's work folder
-6. **Scheduled Jobs**: Configure `cron.yaml` files in `.claude/channels/{channel-id}/` to run autonomous tasks
-7. **Service Tools**: Connected services (Gmail, etc.) become available as tools Claude can use
-8. **Skills**: Global skills in `~/.claude/skills/` are available across all channels
+The bot will start observing your Discord server and responding to messages. It will create channel folders and configuration files in this workspace directory.
 
-### Working with Files
+## Deploy to Fly.io
 
-**Sending files to Claude:**
+For 24/7 operation, deploy to [Fly.io](https://fly.io):
 
-- Attach files to any Discord message (images, code, documents, etc.)
-- Files are automatically downloaded to the channel's work folder
-- Claude can read, edit, and process them using its standard tools
-- Existing files with the same name are overwritten
+1. **Create a project directory**
 
-**Receiving files from Claude:**
+   ```bash
+   mkdir cordbot-deploy
+   cd cordbot-deploy
+   ```
 
-- Claude can use the `shareFile` tool to send files back to you
-- Files are attached to Discord after Claude's response
-- Works with any file type: generated code, diagrams, reports, etc.
+2. **Create a Dockerfile**
 
-Example:
+   Create a file named `Dockerfile`:
 
-```
-You: [Attach config.json] "Can you update the timeout to 30 seconds?"
-Claude: [Reads config.json, edits it, uses shareFile to send back]
-Discord: 📎 Shared files: config.json
-```
+   ```dockerfile
+   FROM node:20-slim
 
-## Deployment
+   # Install additional tools that might be needed
+   RUN apt-get update && apt-get install -y \
+       sqlite3 \
+       && rm -rf /var/lib/apt/lists/*
 
-### Deployment Templates
+   # Set HOME to workspace for persistent ~/.claude/ directory
+   ENV HOME=/workspace
 
-Generate deployment configurations for various platforms:
+   # Accept version as build argument
+   ARG CORDBOT_VERSION=latest
 
-```bash
-# Generate Fly.io deployment template
-npx @cordbot/agent --template=fly
-```
+   # Install cordbot package with specified version
+   RUN npm install -g @cordbot/agent@${CORDBOT_VERSION}
 
-This creates:
-- `Dockerfile` - Simple container using `npx @cordbot/agent`
-- `fly.toml` - Fly.io configuration with persistent volume
-- `DEPLOYMENT.md` - Complete deployment guide
-- `.dockerignore` - Docker build exclusions
+   # Create workspace directory for persistent storage
+   # Use the existing 'node' user from the base image (already UID 1000)
+   RUN mkdir -p /workspace && chown node:node /workspace
 
-The generated `DEPLOYMENT.md` includes:
-- Step-by-step deployment instructions
-- Environment variable configuration
-- Troubleshooting guides
-- Backup and recovery procedures
+   # Switch to non-root user
+   USER node
 
-**Available templates:**
-- `fly` - Deploy to Fly.io with filesystem-based session storage
+   # Set working directory to the volume mount point
+   # The volume will be mounted here, making it persistent
+   WORKDIR /workspace
+
+   # Run cordbot (will use /workspace as its workspace)
+   CMD ["cordbot"]
+   ```
+
+3. **Create a fly.toml configuration**
+
+   Create a file named `fly.toml`:
+
+   ```toml
+   app = "your-cordbot-name"
+   primary_region = "iad"
+
+   [build]
+
+   [env]
+     WORKSPACE_DIR = "/workspace"
+
+   [mounts]
+     source = "cordbot_data"
+     destination = "/workspace"
+
+   [[vm]]
+     memory = '2gb'
+     cpu_kind = 'shared'
+     cpus = 1
+   ```
+
+4. **Deploy with Fly CLI**
+
+   ```bash
+   # Install Fly CLI
+   brew install flyctl  # macOS
+   # or: curl -L https://fly.io/install.sh | sh
+
+   # Login to Fly
+   fly auth login
+
+   # Create volume for persistent storage
+   fly volumes create cordbot_data --size 1
+
+   # Set secrets
+   fly secrets set DISCORD_BOT_TOKEN="your-token"
+   fly secrets set DISCORD_GUILD_ID="your-guild-id"
+   fly secrets set ANTHROPIC_API_KEY="your-api-key"
+
+   # Deploy
+   fly deploy
+   ```
 
 ## Project Structure
 
-This is a monorepo containing:
+This is a monorepo managed with pnpm workspaces:
 
-- **`packages/bot/`** - The agent process and Discord bot
-- **`packages/web-service/`** - Web dashboard for configuration and OAuth flows
+```
+cordbot/
+├── packages/
+│   ├── bot/                    # Discord bot agent
+│   │   ├── src/
+│   │   │   ├── agent/          # Claude agent integration
+│   │   │   ├── discord/        # Discord API adapter
+│   │   │   ├── memory/         # Long-term memory system
+│   │   │   ├── permissions/    # Permission management
+│   │   │   └── index.ts        # Bot entry point
+│   │   └── package.json
+│   │
+│   └── web-service/            # Web dashboard
+│       ├── src/
+│       │   ├── components/     # React components
+│       │   ├── pages/          # Page components
+│       │   ├── hooks/          # React hooks
+│       │   └── firebase.ts     # Firebase config
+│       └── package.json
+│
+├── package.json                # Root package.json
+├── pnpm-workspace.yaml         # Workspace configuration
+└── README.md                   # This file
+```
 
-## Documentation
+### Key Components
 
-- **Agent Documentation**: See [packages/bot/README.md](packages/bot/README.md) for detailed agent usage
-- **Web Service**: Visit [cordbot.io](https://cordbot.io) for setup and configuration
-- **How It Works**: See the documentation section at [cordbot.io](https://cordbot.io) for details on channels, threads, messages, and cron jobs
+- **`packages/bot/`** - The Discord bot that runs the Claude agent
 
-## Security Warning
+  - Discord.js integration for server interaction
+  - Claude Agent SDK for AI capabilities
+  - Memory system for long-term context
+  - Permission system for sensitive operations
+  - Cron scheduler for autonomous tasks
 
-Cordbot runs in "dangerous mode" with full system access:
+- **`packages/web-service/`** - Web dashboard for configuration
+  - React + Vite + TypeScript
+  - Firebase for authentication and storage
+  - Bot setup and configuration UI
+  - OAuth service integrations
 
-- Full filesystem read/write
-- Bash command execution
-- Network operations
-- Package management
+## Contributing
 
-**Only use in trusted environments with controlled Discord access.** Never share your authentication tokens or commit `.env` files to git.
+We welcome contributions! Cordbot is open source to enable community collaboration and transparency.
 
-## Development
+### Development Workflow
+
+1. **Fork the repository** on GitHub
+
+2. **Create a feature branch**
+
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+3. **Make your changes**
+
+   - Write clean, readable code
+   - Follow existing code style
+   - Add tests for new features
+   - Update documentation as needed
+
+4. **Test your changes**
+
+   ```bash
+   pnpm test
+   pnpm build
+   ```
+
+5. **Commit your changes**
+
+   ```bash
+   git add .
+   git commit -m "Description of your changes"
+   ```
+
+6. **Push to your fork**
+
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+7. **Open a Pull Request** on GitHub
+
+### Code Style
+
+- Use TypeScript for type safety
+- Follow existing naming conventions
+- Write meaningful commit messages
+- Keep functions focused and small
+- Comment complex logic
+
+### Testing
 
 ```bash
-# Install dependencies
-npm install
+# Run all tests
+pnpm test
 
-# Build packages
-npm run build
-
-# Run tests
-npm test
+# Run tests for specific package
+pnpm --filter @cordbot/bot test
+pnpm --filter @cordbot/web-service test
 ```
+
+### Areas for Contribution
+
+- New Discord API integrations
+- Additional OAuth service integrations
+- Memory system improvements
+- Documentation and examples
+- Bug fixes and performance improvements
+
+## Security
+
+Cordbot runs with full system access to provide Claude's complete capabilities. Only use in trusted environments with controlled Discord access. Never share authentication tokens or commit `.env` files to version control.
 
 ## License
 
-MIT
+MIT - See [LICENSE](LICENSE) for details
 
 ## Support
 
-For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/yourusername/cordbot).
+- **Issues**: [GitHub Issues](https://github.com/yourusername/cordbot/issues)
+- **Documentation**: [cordbot.io](https://cordbot.io)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/cordbot/discussions)

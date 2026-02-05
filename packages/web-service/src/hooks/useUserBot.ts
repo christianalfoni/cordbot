@@ -1,31 +1,12 @@
 import { useState, useEffect } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { db } from '../firebase';
+import { useAppContext } from '../context/AppContextProvider';
+import type { BotValidationResult } from '../context/types';
 
-interface BotInfo {
-  id: string;
-  username: string;
-  discriminator: string;
-  avatar: string | null;
-}
-
-interface Guild {
-  id: string;
-  name: string;
-  icon: string | null;
-  owner: boolean;
-  permissions: string;
-}
-
-interface BotValidationResult {
-  valid: boolean;
-  bot?: BotInfo;
-  guilds?: Guild[];
-  error?: string;
-}
+// Re-export types for backward compatibility
+export type { BotValidationResult, BotInfo, BotGuild as Guild } from '../context/types';
 
 export function useUserBot(userId: string, initialToken?: string) {
+  const ctx = useAppContext();
   const [token, setToken] = useState<string | undefined>(initialToken);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<BotValidationResult | null>(null);
@@ -36,6 +17,7 @@ export function useUserBot(userId: string, initialToken?: string) {
     } else {
       setValidationResult(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const validateToken = async (botToken: string) => {
@@ -43,13 +25,8 @@ export function useUserBot(userId: string, initialToken?: string) {
     setValidationResult(null);
 
     try {
-      const functions = getFunctions();
-      const validateBotToken = httpsCallable(functions, 'validateBotToken');
-
-      const result = await validateBotToken({ botToken });
-      const data = result.data as BotValidationResult;
-
-      setValidationResult(data);
+      const result = await ctx.validateBotToken(botToken);
+      setValidationResult(result);
     } catch (error) {
       console.error('Error validating bot token:', error);
       setValidationResult({
@@ -63,10 +40,7 @@ export function useUserBot(userId: string, initialToken?: string) {
 
   const saveToken = async (newToken: string) => {
     try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        botToken: newToken,
-      });
+      await ctx.saveBotToken(userId, newToken);
       setToken(newToken);
       return true;
     } catch (error) {
@@ -77,10 +51,7 @@ export function useUserBot(userId: string, initialToken?: string) {
 
   const saveGuildSelection = async (guildId: string) => {
     try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        guildId: guildId,
-      });
+      await ctx.saveGuildSelection(userId, guildId);
       return true;
     } catch (error) {
       console.error('Error saving guild selection:', error);
@@ -90,11 +61,7 @@ export function useUserBot(userId: string, initialToken?: string) {
 
   const clearToken = async () => {
     try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        botToken: null,
-        guildId: null,
-      });
+      await ctx.clearBotToken(userId);
       setToken(undefined);
       setValidationResult(null);
       return true;

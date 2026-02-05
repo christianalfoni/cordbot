@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import { httpsCallable } from 'firebase/functions';
-import { doc, updateDoc, deleteField } from 'firebase/firestore';
-import { functions, db } from '../firebase';
+import { useAppContext } from '../context/AppContextProvider';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const REDIRECT_URI = `${window.location.origin}/auth/callback/gmail`;
 
 export function useGmailAuth(userId: string, botId?: string) {
+  const ctx = useAppContext();
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,45 +14,20 @@ export function useGmailAuth(userId: string, botId?: string) {
       return;
     }
 
-    const scopes = [
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/gmail.send',
-      'https://www.googleapis.com/auth/userinfo.email',
-    ].join(' ');
-
-    // Store botId in the state parameter to retrieve it after OAuth redirect
-    const state = JSON.stringify({ botId, userId });
-
-    const params = new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
-      response_type: 'code',
-      scope: scopes,
-      access_type: 'offline',
-      prompt: 'consent',
-      state,
-    });
-
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-    window.location.href = authUrl;
+    ctx.initiateGmailOAuth(userId, botId);
   };
 
-  const exchangeToken = async (code: string, stateBotId: string): Promise<{ success: boolean; email?: string; error?: string }> => {
+  const exchangeToken = async (
+    code: string,
+    stateBotId: string
+  ): Promise<{ success: boolean; email?: string; error?: string }> => {
     setIsConnecting(true);
     setError(null);
 
     try {
-      const exchangeGmailToken = httpsCallable(functions, 'exchangeGmailToken');
-      const result = await exchangeGmailToken({
-        code,
-        userId,
-        botId: stateBotId,
-        redirectUri: REDIRECT_URI
-      });
-      const data = result.data as { success: boolean; email?: string };
-
+      const result = await ctx.exchangeGmailToken(code, userId, stateBotId, REDIRECT_URI);
       setIsConnecting(false);
-      return data;
+      return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to connect Gmail';
       setError(errorMessage);
@@ -73,11 +46,7 @@ export function useGmailAuth(userId: string, botId?: string) {
     setError(null);
 
     try {
-      const botRef = doc(db, 'users', userId, 'bots', botId);
-      await updateDoc(botRef, {
-        'oauthConnections.gmail': deleteField(),
-        'toolsConfig.gmail': deleteField(),
-      });
+      await ctx.disconnectGmail(userId, botId);
       setIsConnecting(false);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to disconnect Gmail';

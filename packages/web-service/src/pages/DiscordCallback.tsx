@@ -1,29 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { httpsCallable, getFunctions } from 'firebase/functions';
-import { functions, db, auth } from '../firebase';
-import { collection, query, where, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
 import { CheckIcon } from '@heroicons/react/20/solid';
+import { useAuth } from '../hooks/useAuth';
+import { useAppContext } from '../context/AppContextProvider';
+import type { Guild, Subscription } from '../context/types';
 
 type StepStatus = 'pending' | 'in_progress' | 'completed' | 'error';
-type GuildStatus = 'pending' | 'provisioning' | 'active' | 'error';
-type GuildTier = 'free' | 'starter' | 'pro' | 'business';
-
-interface GuildData {
-  guildName: string;
-  guildIcon: string | null;
-  status: GuildStatus;
-  tier?: GuildTier;
-  subscriptionId?: string | null;
-  errorMessage?: string;
-  createdAt: string;
-}
-
-interface SubscriptionData {
-  id: string;
-  status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'incomplete';
-  tier: 'starter' | 'pro';
-}
 
 interface SetupStep {
   id: number;
@@ -36,13 +18,15 @@ function classNames(...classes: string[]) {
 }
 
 export function DiscordCallback() {
-  const [userId, setUserId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const ctx = useAppContext();
+  const userId = user?.id || null;
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
-  const [guildInfo, setGuildInfo] = useState<GuildData | null>(null);
+  const [guildInfo, setGuildInfo] = useState<Guild | null>(null);
   const [guildId, setGuildId] = useState<string | null>(null);
-  const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isCreatingSubscription, setIsCreatingSubscription] = useState(false);
   const [checkoutOpened, setCheckoutOpened] = useState(false);
   const [steps, setSteps] = useState<SetupStep[]>([
@@ -53,44 +37,30 @@ export function DiscordCallback() {
     { id: 5, title: 'Complete setup', status: 'pending' },
   ]);
 
-  // Get current user
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        setUserId(user.uid);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
   // Listen for guild status changes
   useEffect(() => {
     if (!userId) return;
 
     const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-    const guildsRef = collection(db, 'guilds');
-    const q = query(
-      guildsRef,
-      where('userId', '==', userId),
-      where('createdAt', '>', twoMinutesAgo),
-      orderBy('createdAt', 'desc'),
-      limit(1)
-    );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const docSnap = snapshot.docs[0];
-        const data = docSnap.data() as GuildData;
-        setGuildId(docSnap.id);
-        setGuildInfo(data);
+    const unsubscribe = ctx.watchUserGuilds(userId, (guilds) => {
+      // Filter for guilds created in the last 2 minutes and get the most recent
+      const recentGuilds = guilds
+        .filter((g) => g.createdAt > twoMinutesAgo)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+      if (recentGuilds.length > 0) {
+        const latestGuild = recentGuilds[0];
+        setGuildId(latestGuild.id);
+        setGuildInfo(latestGuild);
 
         // Check if this is a paid tier
-        const isPaidTier = data.tier && data.tier !== 'free';
-        const hasSubscription = !!data.subscriptionId;
+        const isPaidTier = latestGuild.tier && latestGuild.tier !== 'free';
+        const hasSubscription = !!latestGuild.subscriptionId;
 
         // Update steps based on guild status and tier
         // Always include subscription step, but it's disabled for free tier
-        if (data.status === 'pending') {
+        if (latestGuild.status === 'pending') {
           if (isPaidTier && !hasSubscription) {
             // Paid tier waiting for subscription
             setSteps([
@@ -110,7 +80,7 @@ export function DiscordCallback() {
               { id: 5, title: 'Complete setup', status: 'pending' },
             ]);
           }
-        } else if (data.status === 'provisioning') {
+        } else if (latestGuild.status === 'provisioning') {
           setSteps([
             { id: 1, title: 'Authenticate with Cordbot', status: 'completed' },
             { id: 2, title: 'Connect to Discord', status: 'completed' },
@@ -118,7 +88,7 @@ export function DiscordCallback() {
             { id: 4, title: 'Provision bot instance', status: 'completed' },
             { id: 5, title: 'Complete setup', status: 'in_progress' },
           ]);
-        } else if (data.status === 'active') {
+        } else if (latestGuild.status === 'active') {
           setSteps([
             { id: 1, title: 'Authenticate with Cordbot', status: 'completed' },
             { id: 2, title: 'Connect to Discord', status: 'completed' },
@@ -131,17 +101,19 @@ export function DiscordCallback() {
           setTimeout(() => {
             navigate('/guilds');
           }, 2000);
-        } else if (data.status === 'error') {
-          setError(data.errorMessage || 'Setup failed');
-          setSteps(prev => prev.map(step =>
-            step.status === 'in_progress' ? { ...step, status: 'error' as StepStatus } : step
-          ));
+        } else if (latestGuild.status === 'error') {
+          setError(latestGuild.error || 'Setup failed');
+          setSteps((prev) =>
+            prev.map((step) =>
+              step.status === 'in_progress' ? { ...step, status: 'error' as StepStatus } : step
+            )
+          );
         }
       }
     });
 
     return () => unsubscribe();
-  }, [userId, navigate]);
+  }, [userId, navigate, ctx]);
 
   // Listen to subscription document if guild has subscriptionId
   useEffect(() => {
@@ -150,17 +122,12 @@ export function DiscordCallback() {
       return;
     }
 
-    const subscriptionRef = doc(db, 'subscriptions', guildInfo.subscriptionId);
-    const unsubscribe = onSnapshot(subscriptionRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setSubscription(docSnap.data() as SubscriptionData);
-      } else {
-        setSubscription(null);
-      }
+    const unsubscribe = ctx.watchSubscription(guildInfo.subscriptionId, (sub) => {
+      setSubscription(sub);
     });
 
     return () => unsubscribe();
-  }, [guildInfo?.subscriptionId]);
+  }, [guildInfo?.subscriptionId, ctx]);
 
   // Trigger provisioning when subscription becomes active
   useEffect(() => {
@@ -170,11 +137,8 @@ export function DiscordCallback() {
     if (subscription.status === 'active' && guildInfo.status === 'pending') {
       const triggerProvisioning = async () => {
         try {
-          const functions = getFunctions();
-          const provisionPaidTierGuild = httpsCallable(functions, 'provisionPaidTierGuild');
-
           console.log('Triggering provisioning for paid tier guild:', guildId);
-          await provisionPaidTierGuild({ guildId });
+          await ctx.triggerPaidTierProvisioning(guildId);
           console.log('Provisioning triggered successfully');
         } catch (error) {
           console.error('Error triggering provisioning:', error);
@@ -183,7 +147,7 @@ export function DiscordCallback() {
 
       triggerProvisioning();
     }
-  }, [subscription, guildId, guildInfo]);
+  }, [subscription, guildId, guildInfo, ctx]);
 
   // Process OAuth
   useEffect(() => {
@@ -226,8 +190,7 @@ export function DiscordCallback() {
       }
 
       try {
-        const processDiscordOAuth = httpsCallable(functions, 'processDiscordOAuth');
-        await processDiscordOAuth({
+        await ctx.processDiscordOAuth({
           code,
           guildId,
           permissions: permissions || '',
@@ -254,26 +217,30 @@ export function DiscordCallback() {
     };
 
     processOAuth();
-  }, [searchParams, navigate]);
+  }, [searchParams, navigate, ctx]);
 
   const handleCreateSubscription = async () => {
     if (!guildId || !guildInfo?.tier || guildInfo.tier === 'free' || !userId) return;
 
+    // Only starter and pro tiers are supported for subscription creation
+    if (guildInfo.tier !== 'starter' && guildInfo.tier !== 'pro') {
+      alert('Invalid tier for subscription creation');
+      return;
+    }
+
     setIsCreatingSubscription(true);
 
     try {
-      const createGuildSubscription = httpsCallable(functions, 'createGuildSubscription');
-
-      const result = await createGuildSubscription({
+      const result = await ctx.createGuildSubscription(
         guildId,
-        tier: guildInfo.tier,
+        guildInfo.tier,
         userId,
-        successUrl: `${window.location.origin}/stripe/success`,
-        cancelUrl: `${window.location.origin}/stripe/cancel`,
-      }) as { data: { url: string } };
+        `${window.location.origin}/stripe/success`,
+        `${window.location.origin}/stripe/cancel`
+      );
 
       // Open Stripe checkout in new tab
-      window.open(result.data.url, '_blank');
+      window.open(result.url, '_blank');
       setCheckoutOpened(true);
     } catch (error: any) {
       console.error('Error creating subscription:', error);
@@ -281,7 +248,7 @@ export function DiscordCallback() {
         code: error.code,
         message: error.message,
         details: error.details,
-        fullError: JSON.stringify(error, null, 2)
+        fullError: JSON.stringify(error, null, 2),
       });
       alert(`Failed to create subscription: ${error.message || 'Unknown error'}`);
     } finally {

@@ -64,7 +64,7 @@ export function CliAuth() {
       return;
     }
 
-    console.log('[CliAuth] User authenticated:', user.uid);
+    console.log('[CliAuth] User authenticated:', user.id);
     console.log('[CliAuth] UserData:', { botToken: !!userData?.botToken, guildId: userData?.guildId });
 
     // Check if user has bot configured
@@ -215,7 +215,7 @@ export function CliAuth() {
             </div>
           </div>
 
-          {user && <BotSetup userId={user.uid} initialToken={userData?.botToken} initialGuildId={userData?.guildId} />}
+          {user && <BotSetup userId={user.id} initialToken={userData?.botToken} initialGuildId={userData?.guildId} />}
         </div>
       </div>
     );
