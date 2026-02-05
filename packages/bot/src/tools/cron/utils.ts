@@ -7,7 +7,7 @@ import fs from 'fs';
  * Uses centralized storage: ~/.claude/channels/{channelId}/cron.yaml
  */
 export function getCronFilePath(channelId: string): string {
-  const homeDir = os.homedir(); // /workspace (set via ENV HOME=/workspace)
+  const homeDir = process.env.HOME || os.homedir();
   const cronPath = path.join(homeDir, '.claude', 'channels', channelId, 'cron.yaml');
 
   // Ensure directory exists

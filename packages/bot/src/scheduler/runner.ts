@@ -178,10 +178,13 @@ export class CronRunner {
     let cost = 0;
 
     try {
-      const channel = await this.discord.getChannel(channelId);
+      // Determine where to send the final response
+      // If job has responseThreadId, use that; otherwise use the channel
+      const responseChannelId = job.responseThreadId || channelId;
+      const channel = await this.discord.getChannel(responseChannelId);
 
       if (!channel) {
-        this.logger.error(`Channel ${channelId} not found`);
+        this.logger.error(`Channel/Thread ${responseChannelId} not found`);
         return;
       }
 

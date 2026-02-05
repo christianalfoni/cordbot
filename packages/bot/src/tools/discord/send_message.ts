@@ -3,14 +3,14 @@ import { z } from 'zod';
 import type { Client, TextChannel } from 'discord.js';
 
 const schema = z.object({
-  channelId: z.string().describe('The Discord channel ID'),
+  channelId: z.string().describe('The Discord channel or thread ID'),
   content: z.string().describe('Message content to send'),
 });
 
 export function createSendMessageTool(client: Client) {
   return tool(
     'discord_send_message',
-    'Send a message to a Discord channel',
+    'Send a message to a Discord channel or thread',
     schema.shape,
     async ({ channelId, content }) => {
       try {

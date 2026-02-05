@@ -48,7 +48,175 @@ Results include:
    - Community votes: 3-7 days
 4. **Channel Selection** - Post polls in appropriate channels where the target audience is active
 
+## Automating Poll Result Announcements
+
+Use one-time scheduled tasks to automatically check and announce poll results exactly when they end.
+
+### Pattern: Create Poll + One-Time Cron Job
+
+Instead of tracking polls in a separate file, **create a one-time cron job** when you create the poll:
+
+**User Request (in Thread #planning):**
+```
+Create a poll asking "Preferred meeting time?" with options: 9 AM, 2 PM, 5 PM.
+Run for 48 hours, then announce results here.
+```
+
+**Bot Actions:**
+
+**1. Create the poll**
+```
+Use discord_create_poll to create poll in target channel.
+Note the poll message ID (e.g., 123456789).
+Calculate end time: current time + 48 hours = 2026-02-12T14:30:00Z
+```
+
+**2. Create one-time cron job**
+```yaml
+# Add to cron.yaml
+jobs:
+  - name: poll-meeting-time-results
+    schedule: "30 14 12 2 *"  # Exact end time
+    oneTime: true
+    task: |
+      Get results from poll message 123456789 in channel #general.
+
+      Send results to thread #planning (where request came from):
+      "📊 Poll Results: Preferred meeting time?
+
+       Results:
+       - 9 AM: [count] votes ([percent]%)
+       - 2 PM: [count] votes ([percent]%)
+       - 5 PM: [count] votes ([percent]%)
+
+       Winner: [option with most votes] ✨"
+```
+
+**3. Reply to user**
+```
+Bot in Thread #planning: "✅ Poll created! I'll check back here with results in 48 hours."
+```
+
+### Benefits Over Separate Tracker
+
+**Why this is better:**
+1. ✅ **No extra state file** - cron.yaml is the tracker
+2. ✅ **Precise timing** - Runs exactly when poll ends, not "every 6 hours"
+3. ✅ **Task-specific logic** - Each poll can have custom follow-up actions
+4. ✅ **Self-documenting** - Reading cron.yaml shows all pending polls
+5. ✅ **Auto-cleanup** - `oneTime: true` removes job after running
+6. ✅ **Thread-aware** - Task knows where to send results
+
+### Complete Example Workflow
+
+**Day 1: User asks in Thread #planning-discussion**
+```
+User in Thread: Create a poll in #team-chat asking "Preferred meeting time?"
+with options: 9 AM, 2 PM, 5 PM, duration 48 hours. Then analyze and schedule the meeting.
+
+Bot in Thread:
+1. Creates poll in #team-chat (messageId: 999888777)
+2. Calculates end time: 48 hours from now = Feb 8, 2PM
+3. Adds to cron.yaml:
+
+   jobs:
+     - name: meeting-poll-results
+       schedule: "0 14 8 2 *"  # Feb 8 at 2PM
+       oneTime: true
+       task: |
+         Get results from poll 999888777.
+
+         Send to thread #planning-discussion:
+         "📊 Poll Results: Preferred meeting time?
+          Winner: [winning option]"
+
+         Create a calendar event for the winning time.
+         Reply with event details.
+
+4. Replies: "✅ Poll created! I'll analyze results here on Feb 8 at 2PM."
+```
+
+**Day 3: Automated follow-up (Feb 8, 2PM exactly)**
+```
+One-time cron job runs:
+1. Gets results using discord_get_poll_results
+2. Sends to Thread #planning-discussion:
+   "📊 Poll Results: Preferred meeting time?
+
+   1. **9 AM**: 5 votes (25%)
+   2. **2 PM**: 12 votes (60%)  ← Winner!
+   3. **5 PM**: 3 votes (15%)
+
+   Total voters: 20
+
+   ✅ Creating recurring meeting for 2 PM..."
+
+3. Creates calendar event
+4. Cron job auto-removes itself from cron.yaml (oneTime: true)
+```
+
+**Context Preserved!** The results and actions appear in the same thread where the user originally asked.
+
+### Advanced: Custom Follow-Up Actions
+
+Each poll can have its own custom logic based on results:
+
+**Example 1: Decision-based workflow**
+```yaml
+- name: deployment-approval-poll
+  schedule: "0 17 10 2 *"
+  oneTime: true
+  task: |
+    Get results from poll "Should we deploy v2.0?"
+
+    If "Yes" wins:
+      - Create deployment checklist
+      - Notify DevOps team
+      - Schedule deployment for tomorrow
+
+    If "No" wins:
+      - Ask what concerns need addressing
+      - Schedule follow-up discussion
+
+    Send summary to thread #releases
+```
+
+**Example 2: Multi-step automation**
+```yaml
+- name: feature-priority-poll
+  schedule: "0 9 15 2 *"
+  oneTime: true
+  task: |
+    Get results from "Q1 Feature Priority" poll.
+
+    Take top 3 features by votes.
+
+    For each feature:
+      - Create GitHub issue
+      - Add to project board
+      - Assign to appropriate team
+
+    Send project board link to thread #planning
+```
+
+**Example 3: Conditional scheduling**
+```yaml
+- name: meeting-poll-results
+  schedule: "0 14 8 2 *"
+  oneTime: true
+  task: |
+    Get poll results for meeting time.
+
+    Based on winning time slot:
+      - Create recurring calendar event
+      - Send invites to all poll voters
+      - Create reminder 24h before first meeting
+
+    Reply in thread #team with calendar link
+```
+
 ## Requirements
 
 - Bot must have permission to send messages in the target channel
 - Creating polls requires Manage Messages or Administrator permission
+- Scheduled result checking requires read access to poll messages

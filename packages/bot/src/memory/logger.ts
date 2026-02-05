@@ -24,7 +24,7 @@ export interface MemoryLogEntry {
  * Get the memory logs file path
  */
 function getMemoryLogsPath(): string {
-  const homeDir = os.homedir(); // /workspace (set via ENV HOME=/workspace)
+  const homeDir = process.env.HOME || os.homedir();
   return path.join(homeDir, '.claude', 'storage', 'memory-logs.jsonl');
 }
 

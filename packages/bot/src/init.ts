@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -56,9 +55,6 @@ export function initializeClaudeFolder(cwd: string): InitResult {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
   }
 
-  // Initialize global skills in ~/.claude/skills/
-  ensureGlobalSkills();
-
   return {
     claudeDir,
     configPath,
@@ -66,33 +62,4 @@ export function initializeClaudeFolder(cwd: string): InitResult {
     sessionsDir,
     isFirstRun,
   };
-}
-
-function ensureGlobalSkills(): void {
-  const homeDir = os.homedir();
-  const claudeDir = path.join(homeDir, '.claude');
-  const globalSkillsDir = path.join(claudeDir, 'skills');
-  const channelsDir = path.join(claudeDir, 'channels');
-
-  // Create directories
-  fs.mkdirSync(globalSkillsDir, { recursive: true });
-  fs.mkdirSync(channelsDir, { recursive: true });
-
-  // Copy template skills to subdirectories
-  const skillTemplates = [
-    { src: 'cron-skill.md', dest: 'cron' },
-    { src: 'skill-creator.md', dest: 'skill-creator' }
-  ];
-
-  for (const { src, dest } of skillTemplates) {
-    const templatePath = path.join(__dirname, '..', 'templates', src);
-    const skillDir = path.join(globalSkillsDir, dest);
-    const destPath = path.join(skillDir, 'SKILL.md');
-
-    if (!fs.existsSync(destPath)) {
-      fs.mkdirSync(skillDir, { recursive: true });
-      fs.copyFileSync(templatePath, destPath);
-      console.log(`🔧 Added ${dest}/SKILL.md skill to global skills`);
-    }
-  }
 }

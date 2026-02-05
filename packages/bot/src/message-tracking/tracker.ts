@@ -21,7 +21,7 @@ export interface TrackedMessage {
  * Stores in ~/.claude/channels/{channelId}/messages/raw/{date}.jsonl
  */
 export async function trackMessage(message: IMessage): Promise<void> {
-  const homeDir = os.homedir();
+  const homeDir = process.env.HOME || os.homedir();
   const channelName = message.channel.name;
 
   const record: TrackedMessage = {

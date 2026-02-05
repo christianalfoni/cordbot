@@ -21,6 +21,8 @@ import { loadMemoriesForChannel } from '../../memory/loader.js';
  * Wraps the existing memory storage functions
  */
 export class FileSystemMemoryStore implements IMemoryStore {
+  constructor(private homeDirectory: string) {}
+
   async saveRawMemory(channelId: string, entries: RawMemoryEntry[]): Promise<void> {
     // Convert interface format to storage format and append each entry
     for (const entry of entries) {
@@ -100,6 +102,6 @@ export class FileSystemMemoryStore implements IMemoryStore {
   }
 
   getChannelMemoryPath(channelId: string): string {
-    return getMemoriesPath(channelId);
+    return getMemoriesPath(channelId, this.homeDirectory);
   }
 }

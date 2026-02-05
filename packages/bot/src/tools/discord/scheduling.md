@@ -28,6 +28,12 @@ jobs:
     schedule: "0 14 * * 1"  # Monday at 2 PM
     task: Announce the new feature launch
     oneTime: true  # Automatically removed after execution
+
+  - name: poll-results
+    schedule: "0 14 10 2 *"  # Feb 10 at 2 PM
+    responseThreadId: "123456789"  # Send final message to this thread
+    oneTime: true
+    task: Get poll results and analyze
 ```
 
 ## File-Based State Management
@@ -431,6 +437,97 @@ Bot reads `reminders.json`, adds new reminder with calculated `dueTime`, writes 
 
 **Scheduled execution**:
 The cron job runs every 5 minutes, checks for due reminders, sends them, and cleans up.
+
+## Thread-Aware Scheduled Tasks
+
+**New Feature:** Cron jobs can send their final message to a specific thread instead of the channel!
+
+### Problem
+```
+User in Thread #123: "Create a poll about meeting times"
+Bot: Creates poll, schedules result check
+[2 days later]
+Cron job: Results ready... but WHERE to send them?
+```
+
+### Solution: Use `responseThreadId` Field
+
+```yaml
+jobs:
+  - name: poll-results
+    schedule: "0 14 10 2 *"
+    responseThreadId: "123456789"  # ← Send to this thread
+    oneTime: true
+    task: Get poll results and analyze
+```
+
+**How it works:**
+- ✅ If `responseThreadId` is set → Final message goes to that thread
+- ✅ If not set → Final message goes to the channel (default behavior)
+- ✅ Preserves conversation context when responding in threads
+
+### Example: Poll Created in Thread
+
+**User in Thread #planning:**
+```
+Create a poll about meeting times, check results in 48 hours
+```
+
+**Bot creates cron.yaml entry:**
+```yaml
+jobs:
+  - name: meeting-poll-results
+    schedule: "30 14 12 2 *"  # 48 hours from now
+    responseThreadId: "planning-thread-id"  # ← Original thread
+    oneTime: true
+    task: |
+      Get results from poll message 999888777.
+      Announce winner and create calendar event.
+```
+
+**Result:** When the cron job runs, the final message appears in Thread #planning where the request originated!
+
+### Benefits
+1. **Context Preservation** - Results appear where user asked
+2. **Conversation Continuity** - Feels like bot "remembers" and follows up
+3. **Better UX** - User doesn't have to hunt for results
+4. **No Extra State** - Thread ID stored directly in cron.yaml
+
+### Complete Workflow Example
+
+**Step 1: User requests in thread**
+```
+User in Thread #support: "Fetch the latest sales data and summarize it"
+```
+
+**Step 2: Bot creates one-time cron job**
+```yaml
+# Bot adds to cron.yaml
+jobs:
+  - name: fetch-sales-data
+    schedule: "45 15 5 2 *"  # 10 minutes from now
+    responseThreadId: "support-thread-id"  # ← Goes back to this thread
+    oneTime: true
+    task: |
+      Fetch sales data from https://api.example.com/sales.
+      Summarize key metrics and trends.
+```
+
+**Step 3: Bot confirms**
+```
+Bot in Thread #support: "✅ I'll fetch the data and get back to you here in ~10 minutes"
+```
+
+**Step 4: Cron job executes**
+```
+[10 minutes later]
+Bot in Thread #support: "📊 Sales Data Summary
+- Total: $45,320
+- Growth: +12% vs last week
+..."
+```
+
+**Context preserved!** The response appears in the same thread where it was requested.
 
 ## Integration with Regular Messages
 

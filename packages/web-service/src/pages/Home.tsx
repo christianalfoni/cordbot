@@ -19,14 +19,15 @@ const REDIRECT_URI = import.meta.env.VITE_DISCORD_REDIRECT_URI ||
   `${window.location.origin}/auth/discord/callback`;
 
 const carouselSlides = [
+  '@Cord, create a poll to decide which day next week to play Helldivers 2, then add the result as an event',
   '@Cord, create a new channel called #game-night and give everyone with the @Members role access',
+  '@Cord, every Monday at 9am, research AI news from the past week and post a summary',
+  '@Cord, create a poll asking which game we should play this weekend, check results in 24 hours',
+  '@Cord, schedule a team meeting event for Friday at 3pm in the Voice Lounge',
+  '@Cord, create a forum channel for bug reports with tags: urgent, low-priority, and under-review',
   '@Cord, what are the current best practices for Discord community moderation in 2026?',
-  '@Cord, every Monday at 9am, research AI news and post a summary',
-  '@Cord, create a movie night event for Friday at 8pm',
-  '@Cord, create a poll asking which game we should play: Minecraft, Valorant, or Among Us',
   '@Cord, remind me what we decided about the tournament rules?',
   '@Cord, find the best budget gaming laptops under $1000 and compare them',
-  '@Cord, analyze this spreadsheet and create a summary report',
 ];
 
 const pricing = {

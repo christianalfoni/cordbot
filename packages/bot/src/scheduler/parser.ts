@@ -6,6 +6,7 @@ export interface CronJob {
   schedule: string;
   task: string;
   oneTime?: boolean;
+  responseThreadId?: string; // Optional: send final message to this thread instead of channel
 }
 
 export interface CronConfig {
@@ -55,6 +56,7 @@ export function parseCronFile(filePath: string): CronConfig {
         schedule: job.schedule,
         task: job.task,
         oneTime: job.oneTime === true, // Optional field, defaults to false
+        responseThreadId: job.responseThreadId || undefined, // Optional field
       };
     });
 

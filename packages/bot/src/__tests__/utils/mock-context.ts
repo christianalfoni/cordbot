@@ -862,6 +862,7 @@ export function createMockContext(guildId: string = 'test-guild-id'): IBotContex
 } {
   return {
     guildId,
+    homeDirectory: '/tmp/test-home',
     discord: new MockDiscordAdapter(),
     queryExecutor: new MockQueryExecutor(),
     sessionStore: new MockSessionStore(),

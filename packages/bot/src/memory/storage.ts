@@ -30,37 +30,37 @@ export interface RawMemoryEntry {
 /**
  * Get the memories directory path for a channel
  */
-export function getMemoriesPath(channelId: string): string {
-  const homeDir = os.homedir(); // /workspace (set via ENV HOME=/workspace)
-  return path.join(homeDir, '.claude', 'channels', channelId, 'memories');
+export function getMemoriesPath(channelId: string, homeDirectory?: string): string {
+  const home = homeDirectory || process.env.HOME || os.homedir();
+  return path.join(home, '.claude', 'channels', channelId, 'memories');
 }
 
 /**
  * Get the raw memories directory path
  */
-export function getRawMemoriesPath(channelId: string): string {
-  return path.join(getMemoriesPath(channelId), 'raw');
+export function getRawMemoriesPath(channelId: string, homeDirectory?: string): string {
+  return path.join(getMemoriesPath(channelId, homeDirectory), 'raw');
 }
 
 /**
  * Get the daily memories directory path
  */
-export function getDailyMemoriesPath(channelId: string): string {
-  return path.join(getMemoriesPath(channelId), 'daily');
+export function getDailyMemoriesPath(channelId: string, homeDirectory?: string): string {
+  return path.join(getMemoriesPath(channelId, homeDirectory), 'daily');
 }
 
 /**
  * Get the weekly memories directory path
  */
-export function getWeeklyMemoriesPath(channelId: string): string {
-  return path.join(getMemoriesPath(channelId), 'weekly');
+export function getWeeklyMemoriesPath(channelId: string, homeDirectory?: string): string {
+  return path.join(getMemoriesPath(channelId, homeDirectory), 'weekly');
 }
 
 /**
  * Get the monthly memories directory path
  */
-export function getMonthlyMemoriesPath(channelId: string): string {
-  return path.join(getMemoriesPath(channelId), 'monthly');
+export function getMonthlyMemoriesPath(channelId: string, homeDirectory?: string): string {
+  return path.join(getMemoriesPath(channelId, homeDirectory), 'monthly');
 }
 
 /**

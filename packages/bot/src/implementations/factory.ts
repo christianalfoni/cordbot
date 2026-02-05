@@ -45,6 +45,9 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
     discordClient.login(config.discordToken).catch(reject);
   });
 
+  // Get home directory from environment
+  const homeDirectory = process.env.HOME || os.homedir();
+
   // Create Discord adapter
   const discord = new DiscordJsAdapter(discordClient);
 
@@ -52,11 +55,11 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
   const queryExecutor = new ClaudeSDKQueryExecutor();
 
   // Create session store
-  const storageDir = path.join(os.homedir(), '.claude', 'storage');
+  const storageDir = path.join(homeDirectory, '.claude', 'storage');
   const sessionStore = new FileSystemSessionStore(storageDir);
 
   // Create memory store
-  const memoryStore = new FileSystemMemoryStore();
+  const memoryStore = new FileSystemMemoryStore(homeDirectory);
 
   // Create scheduler
   const scheduler = new NodeCronScheduler();
@@ -74,6 +77,7 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
 
   const context: IBotContext = {
     guildId: config.guildId,
+    homeDirectory,
     discord,
     queryExecutor,
     sessionStore,
@@ -98,6 +102,7 @@ export function isValidBotContext(context: any): context is IBotContext {
     context &&
     typeof context === 'object' &&
     'guildId' in context &&
+    'homeDirectory' in context &&
     'discord' in context &&
     'queryExecutor' in context &&
     'sessionStore' in context &&

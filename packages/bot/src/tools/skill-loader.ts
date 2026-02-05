@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { ToolManifest } from '../service/types.js';
 
 export interface ToolSkill {
@@ -44,9 +43,8 @@ export function discoverToolSkills(
  * Install tool skills to global skills directory
  * Each skill gets its own subdirectory: ~/.claude/skills/{domain}_{toolName}/SKILL.md
  */
-export function installGlobalSkills(skills: ToolSkill[]): void {
-  const homeDir = os.homedir(); // /workspace (set via ENV HOME=/workspace)
-  const globalSkillsDir = path.join(homeDir, '.claude', 'skills');
+export function installGlobalSkills(skills: ToolSkill[], homeDirectory: string): void {
+  const globalSkillsDir = path.join(homeDirectory, '.claude', 'skills');
 
   fs.mkdirSync(globalSkillsDir, { recursive: true });
 

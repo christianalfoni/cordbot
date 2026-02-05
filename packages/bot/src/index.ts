@@ -32,35 +32,6 @@ export async function startBot(cwd: string): Promise<void> {
     console.log("\n✨ First run detected - initialized project structure\n");
   }
 
-  // Install Discord management skills
-  console.log("🔧 Installing Discord management skills...");
-  const toolsDir = path.join(__dirname, 'tools');
-  const discordToolsDir = path.join(toolsDir, 'discord');
-
-  const skillFiles = [
-    { name: 'poll_management', path: path.join(discordToolsDir, 'poll_management.md') },
-    { name: 'channel_management', path: path.join(discordToolsDir, 'channel_management.md') },
-    { name: 'forum_management', path: path.join(discordToolsDir, 'forum_management.md') },
-    { name: 'role_management', path: path.join(discordToolsDir, 'role_management.md') },
-    { name: 'event_management', path: path.join(discordToolsDir, 'event_management.md') },
-    { name: 'scheduling', path: path.join(discordToolsDir, 'scheduling.md') },
-  ];
-
-  const skills = skillFiles
-    .filter(skill => existsSync(skill.path))
-    .map(skill => ({
-      domain: 'discord',
-      toolName: skill.name,
-      sourcePath: skill.path,
-    }));
-
-  if (skills.length > 0) {
-    installGlobalSkills(skills);
-    console.log(`✅ Installed ${skills.length} Discord management skills\n`);
-  } else {
-    console.log("⚠️  No Discord management skills found\n");
-  }
-
   // Validate environment variables
   const token = process.env.DISCORD_BOT_TOKEN;
   const guildId = process.env.DISCORD_GUILD_ID;
@@ -91,6 +62,35 @@ export async function startBot(cwd: string): Promise<void> {
     memoryContextSize,
     serviceUrl: process.env.SERVICE_URL,
   });
+
+  // Install Discord management skills (after context is created)
+  console.log("🔧 Installing Discord management skills...");
+  const toolsDir = path.join(__dirname, 'tools');
+  const discordToolsDir = path.join(toolsDir, 'discord');
+
+  const skillFiles = [
+    { name: 'poll_management', path: path.join(discordToolsDir, 'poll_management.md') },
+    { name: 'channel_management', path: path.join(discordToolsDir, 'channel_management.md') },
+    { name: 'forum_management', path: path.join(discordToolsDir, 'forum_management.md') },
+    { name: 'role_management', path: path.join(discordToolsDir, 'role_management.md') },
+    { name: 'event_management', path: path.join(discordToolsDir, 'event_management.md') },
+    { name: 'scheduling', path: path.join(discordToolsDir, 'scheduling.md') },
+  ];
+
+  const skills = skillFiles
+    .filter(skill => existsSync(skill.path))
+    .map(skill => ({
+      domain: 'discord',
+      toolName: skill.name,
+      sourcePath: skill.path,
+    }));
+
+  if (skills.length > 0) {
+    installGlobalSkills(skills, context.homeDirectory);
+    console.log(`✅ Installed ${skills.length} Discord management skills\n`);
+  } else {
+    console.log("⚠️  No Discord management skills found\n");
+  }
 
   // Check active sessions
   const activeSessions = context.sessionStore.getAllActive();

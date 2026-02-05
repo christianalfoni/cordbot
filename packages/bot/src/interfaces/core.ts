@@ -21,6 +21,12 @@ export interface IBotContext {
   guildId: string;
 
   /**
+   * The home directory path (from HOME environment variable)
+   * Use this instead of process.env.HOME or os.homedir()
+   */
+  homeDirectory: string;
+
+  /**
    * Discord operations adapter
    */
   discord: IDiscordAdapter;
