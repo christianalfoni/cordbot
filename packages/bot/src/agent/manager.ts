@@ -2,10 +2,13 @@ import type { Query, SdkMcpToolDefinition, McpSdkServerConfigWithInstance } from
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "crypto";
 import { loadBuiltinTools } from "../tools/builtin-loader.js";
+import { loadDiscordTools } from "../tools/discord/loader.js";
 import { spawn } from "child_process";
 import { populateMemorySection } from "../discord/sync.js";
 import type { IBotContext } from "../interfaces/core.js";
 import type { ITextChannel, IThreadChannel } from "../interfaces/discord.js";
+import type { IPermissionManager } from "../interfaces/permission.js";
+import type { Client } from "discord.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -42,7 +45,8 @@ export class SessionManager {
     private sessionsDir: string,
     private workspaceRoot: string,
     memoryContextSize: number = 10000,
-    private discordTools: SdkMcpToolDefinition<any>[] = []
+    private discordClient?: Client,
+    private permissionManager?: IPermissionManager
   ) {
     this.memoryContextSize = memoryContextSize;
   }
@@ -70,8 +74,23 @@ export class SessionManager {
       }
     );
 
-    // Combine built-in and Discord tools (Discord tools passed via constructor)
-    const allTools = [...builtinTools, ...this.discordTools];
+    // Load Discord tools if Discord client is provided
+    let discordTools: SdkMcpToolDefinition<any>[] = [];
+    if (this.discordClient && this.permissionManager) {
+      discordTools = loadDiscordTools(
+        this.discordClient,
+        this.permissionManager,
+        () => {
+          // Get the channel for the currently executing session
+          const entries = Array.from(this.currentChannels.entries());
+          return entries.length > 0 ? entries[0][1] : null;
+        },
+        this.context.guildId
+      );
+    }
+
+    // Combine built-in and Discord tools
+    const allTools = [...builtinTools, ...discordTools];
 
     if (allTools.length > 0) {
       // Create SDK MCP server with all tools
@@ -80,7 +99,7 @@ export class SessionManager {
         version: '1.0.0',
         tools: allTools
       });
-      this.context.logger.info(`✅ Total tools available: ${allTools.length} (${builtinTools.length} built-in + ${this.discordTools.length} Discord)`);
+      this.context.logger.info(`✅ Total tools available: ${allTools.length} (${builtinTools.length} built-in + ${discordTools.length} Discord)`);
     }
   }
 

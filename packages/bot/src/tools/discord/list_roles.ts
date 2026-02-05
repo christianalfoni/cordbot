@@ -4,18 +4,19 @@ import type { Client } from 'discord.js';
 
 const schema = z.object({});
 
-export function createListRolesTool(client: Client) {
+export function createListRolesTool(client: Client, guildId: string) {
   return tool(
     'discord_list_roles',
     'List all roles in the Discord server',
     schema.shape,
     async () => {
       try {
-        const guild = client.guilds.cache.first();
+        // Use the configured guild ID from context (NEVER use client.guilds.cache)
+        const guild = await client.guilds.fetch(guildId);
 
         if (!guild) {
           return {
-            content: [{ type: 'text', text: 'Error: No guild found' }],
+            content: [{ type: 'text', text: `Error: Guild ${guildId} not found` }],
             isError: true,
           };
         }

@@ -7,7 +7,7 @@ const schema = z.object({
   limit: z.number().optional().describe('Maximum number of users to return (default: 100)'),
 });
 
-export function createGetEventUsersTool(client: Client, getCurrentChannel: () => any) {
+export function createGetEventUsersTool(client: Client, getCurrentChannel: () => any, guildId: string) {
   return tool(
     'discord_get_event_users',
     'Get list of users interested in/attending an event',
@@ -22,10 +22,11 @@ export function createGetEventUsersTool(client: Client, getCurrentChannel: () =>
           };
         }
 
-        const guild = contextChannel.guild;
+        // Use the configured guild ID from context (NEVER use client.guilds.cache)
+        const guild = await client.guilds.fetch(guildId);
         if (!guild) {
           return {
-            content: [{ type: 'text', text: 'Error: Not in a guild context' }],
+            content: [{ type: 'text', text: `Error: Guild ${guildId} not found` }],
             isError: true,
           };
         }

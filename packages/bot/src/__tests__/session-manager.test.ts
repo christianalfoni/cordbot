@@ -58,8 +58,20 @@ describe('Session Manager', () => {
       expect(loadBuiltinTools).toHaveBeenCalled();
     });
 
-    it('should load Discord tools', async () => {
-      await sessionManager.initialize('test-token');
+    it('should load Discord tools when Discord client is provided', async () => {
+      // Create a SessionManager with Discord client and permission manager
+      const mockDiscordClient = {} as any;
+      const mockPermissionManager = {} as any;
+      const sessionManagerWithDiscord = new SessionManager(
+        context,
+        '/mock/sessions',
+        '/mock/workspace',
+        10000,
+        mockDiscordClient,
+        mockPermissionManager
+      );
+
+      await sessionManagerWithDiscord.initialize();
 
       const { loadDiscordTools } = await import('../tools/discord/loader.js');
       expect(loadDiscordTools).toHaveBeenCalled();

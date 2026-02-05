@@ -182,23 +182,41 @@ export function setupEventHandlers(
       const userId = interaction.user.id;
 
       if (context.permissionManager.isPending(requestId)) {
+        // CRITICAL: Defer the interaction immediately to prevent "Unknown interaction" error
+        // Discord requires a response within 3 seconds
+        try {
+          await interaction.deferUpdate();
+        } catch (deferError) {
+          logger.error('Failed to defer interaction:', deferError);
+          return;
+        }
+
+        // Now handle the permission (this resolves the promise and continues tool execution)
         if (approved) {
           context.permissionManager.handleApproval(requestId, userId);
         } else {
           context.permissionManager.handleDenial(requestId, userId);
         }
 
-        // Successfully handled - update the message
-        await interaction.update({
-          content: `${interaction.message.content}\n\n${approved ? '✅ Approved' : '❌ Denied'}`,
-          components: [], // Remove buttons
-        });
+        // Update the message after handling (we have 15 minutes after deferring)
+        try {
+          await interaction.editReply({
+            content: `${interaction.message.content}\n\n${approved ? '✅ Approved' : '❌ Denied'}`,
+            components: [], // Remove buttons
+          });
+        } catch (editError) {
+          logger.error('Failed to edit interaction reply:', editError);
+        }
       } else {
         // Not found or already handled - respond ephemerally
-        await interaction.reply({
-          content: '⚠️ This permission request has already been handled or expired.',
-          ephemeral: true,
-        });
+        try {
+          await interaction.reply({
+            content: '⚠️ This permission request has already been handled or expired.',
+            ephemeral: true,
+          });
+        } catch (replyError) {
+          logger.error('Failed to reply to interaction:', replyError);
+        }
       }
     }
   });

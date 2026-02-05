@@ -11,7 +11,8 @@ const schema = z.object({
 export function createKickMemberTool(
   client: Client,
   permissionManager: IPermissionManager,
-  getCurrentChannel: () => any
+  getCurrentChannel: () => any,
+  guildId: string
 ) {
   return tool(
     'discord_kick_member',
@@ -27,10 +28,11 @@ export function createKickMemberTool(
           };
         }
 
-        const guild = client.guilds.cache.first();
+        // Use the configured guild ID from context (NEVER use client.guilds.cache)
+        const guild = await client.guilds.fetch(guildId);
         if (!guild) {
           return {
-            content: [{ type: 'text', text: 'Error: No guild found' }],
+            content: [{ type: 'text', text: `Error: Guild ${guildId} not found` }],
             isError: true,
           };
         }

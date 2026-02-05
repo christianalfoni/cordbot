@@ -6,7 +6,7 @@ const schema = z.object({
   eventId: z.string().describe('The event ID to fetch'),
 });
 
-export function createGetEventTool(client: Client, getCurrentChannel: () => any) {
+export function createGetEventTool(client: Client, getCurrentChannel: () => any, guildId: string) {
   return tool(
     'discord_get_event',
     'Get detailed information about a scheduled event',
@@ -21,10 +21,11 @@ export function createGetEventTool(client: Client, getCurrentChannel: () => any)
           };
         }
 
-        const guild = contextChannel.guild;
+        // Use the configured guild ID from context (NEVER use client.guilds.cache)
+        const guild = await client.guilds.fetch(guildId);
         if (!guild) {
           return {
-            content: [{ type: 'text', text: 'Error: Not in a guild context' }],
+            content: [{ type: 'text', text: `Error: Guild ${guildId} not found` }],
             isError: true,
           };
         }

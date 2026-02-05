@@ -16,7 +16,8 @@ const schema = z.object({
 export function createCreateEventTool(
   client: Client,
   permissionManager: IPermissionManager,
-  getCurrentChannel: () => any
+  getCurrentChannel: () => any,
+  guildId: string
 ) {
   return tool(
     'discord_create_event',
@@ -32,10 +33,11 @@ export function createCreateEventTool(
           };
         }
 
-        const guild = contextChannel.guild;
+        // Use the configured guild ID from context (NEVER use client.guilds.cache)
+        const guild = await client.guilds.fetch(guildId);
         if (!guild) {
           return {
-            content: [{ type: 'text', text: 'Error: Not in a guild context' }],
+            content: [{ type: 'text', text: `Error: Guild ${guildId} not found` }],
             isError: true,
           };
         }

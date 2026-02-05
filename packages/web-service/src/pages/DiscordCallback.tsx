@@ -4,6 +4,7 @@ import { CheckIcon } from '@heroicons/react/20/solid';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContextProvider';
 import type { Guild, Subscription } from '../context/types';
+import { useNotification } from '../context/NotificationContext';
 
 type StepStatus = 'pending' | 'in_progress' | 'completed' | 'error';
 
@@ -20,6 +21,7 @@ function classNames(...classes: string[]) {
 export function DiscordCallback() {
   const { user } = useAuth();
   const ctx = useAppContext();
+  const { showNotification } = useNotification();
   const userId = user?.id || null;
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -224,7 +226,7 @@ export function DiscordCallback() {
 
     // Only starter and pro tiers are supported for subscription creation
     if (guildInfo.tier !== 'starter' && guildInfo.tier !== 'pro') {
-      alert('Invalid tier for subscription creation');
+      showNotification('error', 'Invalid tier for subscription creation');
       return;
     }
 
@@ -250,7 +252,7 @@ export function DiscordCallback() {
         details: error.details,
         fullError: JSON.stringify(error, null, 2),
       });
-      alert(`Failed to create subscription: ${error.message || 'Unknown error'}`);
+      showNotification('error', `Failed to create subscription: ${error.message || 'Unknown error'}`);
     } finally {
       setIsCreatingSubscription(false);
     }

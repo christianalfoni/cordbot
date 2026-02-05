@@ -53,7 +53,7 @@ export async function startBot(cwd: string): Promise<void> {
 
   // Create bot context with all dependencies
   console.log("🔌 Initializing bot context...\n");
-  const { context, discordTools } = await createProductionBotContext({
+  const { context, discordClient, permissionManager } = await createProductionBotContext({
     discordToken: token,
     anthropicApiKey: apiKey,
     guildId,
@@ -66,8 +66,8 @@ export async function startBot(cwd: string): Promise<void> {
   const activeSessions = context.sessionStore.getAllActive();
   console.log(`📊 Active sessions: ${activeSessions.length}\n`);
 
-  // Initialize session manager with context and Discord tools
-  const sessionManager = new SessionManager(context, sessionsDir, cwd, memoryContextSize, discordTools);
+  // Initialize session manager with context, Discord client, and permission manager
+  const sessionManager = new SessionManager(context, sessionsDir, cwd, memoryContextSize, discordClient, permissionManager);
   await sessionManager.initialize();
   console.log("");
 

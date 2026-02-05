@@ -7,6 +7,8 @@ import { Header } from '../components/Header';
 import { db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useNotification } from '../context/NotificationContext';
+import { useConfirmation } from '../context/ConfirmationContext';
 
 interface GuildsListProps {
   userData: UserData | null;
@@ -25,6 +27,8 @@ interface Subscription {
 
 export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsListProps) {
   const { guilds, isListening, restartGuild, deployUpdate, deprovisionGuild } = useGuilds(userData?.id ?? '');
+  const { showNotification } = useNotification();
+  const { confirm } = useConfirmation();
   const [subscriptions, setSubscriptions] = useState<Record<string, Subscription>>({});
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
@@ -55,7 +59,13 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
   }, [guilds]);
 
   const handleUpdate = async (guildId: string) => {
-    if (confirm('Deploy the latest version?')) {
+    const confirmed = await confirm({
+      title: 'Deploy Update',
+      message: 'Deploy the latest version?',
+      confirmText: 'Deploy',
+    });
+
+    if (confirmed) {
       try {
         await deployUpdate(guildId, 'latest');
       } catch (error) {
@@ -65,7 +75,13 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
   };
 
   const handleRestart = async (guildId: string) => {
-    if (confirm('Are you sure you want to restart this bot?')) {
+    const confirmed = await confirm({
+      title: 'Restart Bot',
+      message: 'Are you sure you want to restart this bot?',
+      confirmText: 'Restart',
+    });
+
+    if (confirmed) {
       try {
         await restartGuild(guildId);
       } catch (error) {
@@ -79,7 +95,14 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
       ? 'Are you sure you want to delete this bot? This will immediately cancel your subscription and remove the bot. This action cannot be undone.'
       : 'Are you sure you want to delete this bot? This action cannot be undone.';
 
-    if (confirm(message)) {
+    const confirmed = await confirm({
+      title: 'Delete Bot',
+      message,
+      confirmText: 'Delete',
+      isDangerous: true,
+    });
+
+    if (confirmed) {
       try {
         await deprovisionGuild(guildId);
       } catch (error) {
@@ -101,7 +124,7 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
       window.open(result.data.url, '_blank');
     } catch (error) {
       console.error('Failed to open billing portal:', error);
-      alert('Failed to open billing portal. Please try again.');
+      showNotification('error', 'Failed to open billing portal. Please try again.');
     } finally {
       setLoadingAction(null);
     }

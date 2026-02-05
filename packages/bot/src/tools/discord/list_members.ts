@@ -6,18 +6,19 @@ const schema = z.object({
   limit: z.number().optional().describe('Maximum number of members to return (default: 50)'),
 });
 
-export function createListMembersTool(client: Client) {
+export function createListMembersTool(client: Client, guildId: string) {
   return tool(
     'discord_list_members',
     'List members in the Discord server',
     schema.shape,
     async ({ limit = 50 }) => {
       try {
-        const guild = client.guilds.cache.first();
+        // Use the configured guild ID from context (NEVER use client.guilds.cache)
+        const guild = await client.guilds.fetch(guildId);
 
         if (!guild) {
           return {
-            content: [{ type: 'text', text: 'Error: No guild found' }],
+            content: [{ type: 'text', text: `Error: Guild ${guildId} not found` }],
             isError: true,
           };
         }

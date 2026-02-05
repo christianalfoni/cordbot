@@ -12,6 +12,9 @@ import { OAuthSuccess } from './pages/OAuthSuccess';
 import { DiscordCallback } from './pages/DiscordCallback';
 import { StripeSuccess } from './pages/StripeSuccess';
 import { StripeCancel } from './pages/StripeCancel';
+import { NotificationProvider } from './context/NotificationContext';
+import { NotificationContainer } from './components/NotificationContainer';
+import { ConfirmationProvider } from './context/ConfirmationContext';
 
 function AppContent() {
   const { user, userData, loading, signInWithDiscord, signOut } = useAuth();
@@ -55,7 +58,12 @@ function AppContent() {
 function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <NotificationProvider>
+        <ConfirmationProvider>
+          <AppContent />
+          <NotificationContainer />
+        </ConfirmationProvider>
+      </NotificationProvider>
     </BrowserRouter>
   );
 }

@@ -6,18 +6,19 @@ const schema = z.object({
   userId: z.string().describe('Discord user ID'),
 });
 
-export function createGetMemberTool(client: Client) {
+export function createGetMemberTool(client: Client, guildId: string) {
   return tool(
     'discord_get_member',
     'Get detailed information about a Discord server member',
     schema.shape,
     async ({ userId }) => {
       try {
-        const guild = client.guilds.cache.first();
+        // Use the configured guild ID from context (NEVER use client.guilds.cache)
+        const guild = await client.guilds.fetch(guildId);
 
         if (!guild) {
           return {
-            content: [{ type: 'text', text: 'Error: No guild found' }],
+            content: [{ type: 'text', text: `Error: Guild ${guildId} not found` }],
             isError: true,
           };
         }

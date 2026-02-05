@@ -5,18 +5,19 @@ import { ChannelType } from 'discord.js';
 
 const schema = z.object({});
 
-export function createListChannelsTool(client: Client) {
+export function createListChannelsTool(client: Client, guildId: string) {
   return tool(
     'discord_list_channels',
     'List all channels in the Discord server',
     schema.shape,
     async () => {
       try {
-        const guild = client.guilds.cache.first();
+        // Use the configured guild ID from context (NEVER use client.guilds.cache)
+        const guild = await client.guilds.fetch(guildId);
 
         if (!guild) {
           return {
-            content: [{ type: 'text', text: 'Error: No guild found' }],
+            content: [{ type: 'text', text: `Error: Guild ${guildId} not found` }],
             isError: true,
           };
         }

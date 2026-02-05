@@ -422,6 +422,10 @@ class DiscordButtonInteractionWrapper implements IButtonInteraction {
   async deferUpdate(): Promise<void> {
     await this.interaction.deferUpdate();
   }
+
+  async editReply(content: { content?: string; components?: any[] }): Promise<void> {
+    await this.interaction.editReply(content);
+  }
 }
 
 /**

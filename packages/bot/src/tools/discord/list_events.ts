@@ -4,7 +4,7 @@ import type { Client } from 'discord.js';
 
 const schema = z.object({});
 
-export function createListEventsTool(client: Client, getCurrentChannel: () => any) {
+export function createListEventsTool(client: Client, getCurrentChannel: () => any, guildId: string) {
   return tool(
     'discord_list_events',
     'List all scheduled events in the Discord server',
@@ -19,10 +19,11 @@ export function createListEventsTool(client: Client, getCurrentChannel: () => an
           };
         }
 
-        const guild = contextChannel.guild;
+        // Use the configured guild ID from context (NEVER use client.guilds.cache)
+        const guild = await client.guilds.fetch(guildId);
         if (!guild) {
           return {
-            content: [{ type: 'text', text: 'Error: Not in a guild context' }],
+            content: [{ type: 'text', text: `Error: Guild ${guildId} not found` }],
             isError: true,
           };
         }

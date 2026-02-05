@@ -251,6 +251,7 @@ export interface IButtonInteraction {
   reply(content: string | { content?: string; ephemeral?: boolean }): Promise<void>;
   update(content: { content?: string; components?: any[] }): Promise<void>;
   deferUpdate(): Promise<void>;
+  editReply(content: { content?: string; components?: any[] }): Promise<void>;
 
   _raw?: DiscordButtonInteraction;
 }

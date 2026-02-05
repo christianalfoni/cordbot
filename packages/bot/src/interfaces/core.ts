@@ -16,6 +16,12 @@ import type { IFileStore } from './file';
  */
 export interface IBotContext {
   /**
+   * The configured Discord guild ID from environment variable
+   * This should ALWAYS be used instead of client.guilds.cache
+   */
+  guildId: string;
+
+  /**
    * Discord operations adapter
    */
   discord: IDiscordAdapter;

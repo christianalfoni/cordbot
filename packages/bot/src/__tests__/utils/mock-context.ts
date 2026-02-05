@@ -913,7 +913,7 @@ export class MockFileStore implements IFileStore {
 /**
  * Create a complete mock bot context for testing
  */
-export function createMockContext(): IBotContext & {
+export function createMockContext(guildId: string = 'test-guild-id'): IBotContext & {
   // Testing utilities
   discord: MockDiscordAdapter;
   queryExecutor: MockQueryExecutor;
@@ -926,6 +926,7 @@ export function createMockContext(): IBotContext & {
   fileStore: MockFileStore;
 } {
   return {
+    guildId,
     discord: new MockDiscordAdapter(),
     queryExecutor: new MockQueryExecutor(),
     sessionStore: new MockSessionStore(),

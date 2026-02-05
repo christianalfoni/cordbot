@@ -5,6 +5,8 @@ import { UserData } from '../hooks/useAuth';
 import { db } from '../firebase';
 import { Guild, useGuilds } from '../hooks/useGuilds';
 import { Navigation } from '../components/Navigation';
+import { useNotification } from '../context/NotificationContext';
+import { useConfirmation } from '../context/ConfirmationContext';
 
 interface GuildPageProps {
   userData: UserData;
@@ -15,6 +17,8 @@ export function GuildPage({ userData, onSignOut }: GuildPageProps) {
   const { guildId } = useParams<{ guildId: string }>();
   const navigate = useNavigate();
   const { guilds, restartGuild, deployUpdate, deprovisionGuild, isLoading } = useGuilds(userData.id);
+  const { showNotification } = useNotification();
+  const { confirm } = useConfirmation();
   const [guild, setGuild] = useState<Guild | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -47,42 +51,60 @@ export function GuildPage({ userData, onSignOut }: GuildPageProps) {
   }, [guildId]);
 
   const handleRestart = async () => {
-    if (!guildId || !window.confirm('Restart the bot for this guild?')) return;
+    if (!guildId) return;
+
+    const confirmed = await confirm({
+      title: 'Restart Bot',
+      message: 'Restart the bot for this guild?',
+      confirmText: 'Restart',
+    });
+
+    if (!confirmed) return;
 
     setIsRestarting(true);
     try {
       await restartGuild(guildId);
-      alert('Bot restarted successfully');
+      showNotification('success', 'Bot restarted successfully');
     } catch (error: any) {
-      alert(`Failed to restart: ${error.message}`);
+      showNotification('error', `Failed to restart: ${error.message}`);
     } finally {
       setIsRestarting(false);
     }
   };
 
   const handleDeployUpdate = async () => {
-    if (!guildId || !window.confirm('Deploy latest version of the bot?')) return;
+    if (!guildId) return;
+
+    const confirmed = await confirm({
+      title: 'Deploy Update',
+      message: 'Deploy latest version of the bot?',
+      confirmText: 'Deploy',
+    });
+
+    if (!confirmed) return;
 
     setIsUpdating(true);
     try {
       await deployUpdate(guildId, 'latest');
       // Status will change from active -> provisioning -> active automatically
     } catch (error: any) {
-      alert(`Failed to deploy update: ${error.message}`);
+      showNotification('error', `Failed to deploy update: ${error.message}`);
     } finally {
       setIsUpdating(false);
     }
   };
 
   const handleDelete = async () => {
-    if (
-      !guildId ||
-      !window.confirm(
-        `Are you sure you want to delete the bot for "${guild?.guildName}"? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+    if (!guildId) return;
+
+    const confirmed = await confirm({
+      title: 'Delete Bot',
+      message: `Are you sure you want to delete the bot for "${guild?.guildName}"? This cannot be undone.`,
+      confirmText: 'Delete',
+      isDangerous: true,
+    });
+
+    if (!confirmed) return;
 
     setIsDeleting(true);
     setDeleteStatus('Deprovisioning bot...');
