@@ -1,404 +1,255 @@
+const whatIsCordbot = [
+  {
+    id: 1,
+    title: 'Cloud-Deployed AI Agent',
+    description: (
+      <>
+        Cordbot deploys a{' '}
+        <a href="https://claude.ai" target="_blank" rel="noopener noreferrer" className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+          Claude
+        </a>{' '}
+        agent on a{' '}
+        <a href="https://fly.io" target="_blank" rel="noopener noreferrer" className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+          Fly.io
+        </a>{' '}
+        machine that runs 24/7, providing continuous AI assistance to your Discord community
+      </>
+    ),
+  },
+  {
+    id: 2,
+    title: 'Server Observer',
+    description: 'The bot observes all conversations across your Discord server, building long-term memory of discussions, decisions, and project context',
+  },
+  {
+    id: 3,
+    title: 'Community Assistant',
+    description: (
+      <>
+        Helps your community by answering questions, providing information, and assisting with tasks using the full power of{' '}
+        <a href="https://claude.ai" target="_blank" rel="noopener noreferrer" className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+          Claude
+        </a>
+      </>
+    ),
+  },
+  {
+    id: 4,
+    title: 'Autonomous Operation',
+    description: 'Runs independently on dedicated infrastructure, ensuring reliable availability and consistent performance for your server',
+  },
+]
+
+const basicCapabilities = [
+  {
+    id: 1,
+    title: 'Web Search',
+    description: 'Search the web for current information and lookup online resources',
+  },
+  {
+    id: 2,
+    title: 'File Operations',
+    description: 'Read, write, edit, and manage files in the workspace',
+  },
+  {
+    id: 3,
+    title: 'Image Analysis',
+    description: 'View and analyze images attached to Discord messages',
+  },
+  {
+    id: 4,
+    title: 'Conversation Memory',
+    description: 'Access and recall information from previous conversations observed in Discord channels',
+  },
+  {
+    id: 5,
+    title: 'Workspace Management',
+    description: 'Each Discord channel has its own dedicated folder in the workspace for organizing files and work',
+  },
+  {
+    id: 6,
+    title: 'Scheduled Tasks',
+    description: 'Configure autonomous tasks that run on a schedule using cron jobs',
+  },
+]
+
+const discordCapabilities = [
+  {
+    id: 1,
+    title: 'Thread Management',
+    description: 'Create, archive, and manage Discord threads for organizing conversations',
+  },
+  {
+    id: 2,
+    title: 'Message Operations',
+    description: 'Send, edit, delete messages, and handle file attachments in channels and threads',
+  },
+  {
+    id: 3,
+    title: 'Channel Management',
+    description: 'Create, update, and delete channels with permission checks for server organization',
+  },
+  {
+    id: 4,
+    title: 'Member Management',
+    description: 'View member information, manage roles, and perform moderation actions with appropriate permissions',
+  },
+  {
+    id: 5,
+    title: 'Role Management',
+    description: 'Create roles, assign them to members, and manage role permissions for access control',
+  },
+  {
+    id: 6,
+    title: 'Scheduled Events',
+    description: 'Create and manage Discord scheduled events for meetings and community activities',
+  },
+  {
+    id: 7,
+    title: 'Polls',
+    description: 'Create polls with multiple options for gathering community feedback and making decisions',
+  },
+  {
+    id: 8,
+    title: 'Forum Channels',
+    description: 'Create forum channels and posts with tags for organized community discussions',
+  },
+]
+
+const openSource = [
+  {
+    id: 1,
+    title: 'Fully Open Source',
+    description: 'The entire Cordbot project is open source, allowing anyone to inspect, modify, and improve the code',
+  },
+  {
+    id: 2,
+    title: 'Self-Hosted Deployment',
+    description: 'Deploy Cordbot on your own infrastructure or self-hosted machines for complete control over your bot',
+  },
+  {
+    id: 3,
+    title: 'Free with Your API Key',
+    description: (
+      <>
+        Bring your own{' '}
+        <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+          Claude API key
+        </a>{' '}
+        and use Cordbot completely free, paying only for your API usage
+      </>
+    ),
+  },
+  {
+    id: 4,
+    title: 'Community Collaboration',
+    description: 'Open source enables the community to collaborate, share improvements, and collectively build a more useful bot',
+  },
+  {
+    id: 5,
+    title: 'Transparency & Trust',
+    description: 'When AI integrates with your community, transparency is crucial. Open source code ensures you know exactly what the bot does',
+  },
+  {
+    id: 6,
+    title: 'Customization Freedom',
+    description: 'Modify the bot to fit your specific needs, add custom features, or contribute improvements back to the project',
+  },
+]
+
 export function Documentation() {
   return (
-    <div className="space-y-12">
-      {/* Introduction */}
-      <div>
-        <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
-          How Cordbot Works
-        </h2>
-        <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
-          Cordbot is a directory-based Discord bot that syncs channels to local folders and maintains persistent AI conversations.
-        </p>
-      </div>
-
-      {/* Channels */}
-      <div className="border-t border-gray-200 dark:border-white/10 pt-8">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          📁 Channels
-        </h3>
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <p className="text-gray-600 dark:text-gray-300">
-            When you run <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">cordbot</code> in a directory,
-            it syncs Discord channels to local folders. Each synced channel becomes a folder in your project directory.
-          </p>
-
-          <div className="mt-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-mono">Workspace structure:</p>
-            <pre className="text-xs text-gray-700 dark:text-gray-300 font-mono">
-{`workspace/
-├── .claude/                 # Bot management (auto-created)
-│   ├── config.json          # Bot configuration
-│   ├── storage/             # Session state
-│   ├── sessions/            # Active conversations
-│   ├── skills/              # Global skills
-│   └── channels/            # Channel data
-│       ├── 123.../          # Channel ID
-│       │   ├── CLAUDE.md    # Channel instructions
-│       │   └── cron.yaml    # Scheduled jobs
-│       └── 456.../
-│           └── ...
-├── general/                 # #general work folder
-│   └── (your files)
-└── backend/                 # #backend work folder
-    └── (your files)`}
-            </pre>
-          </div>
-
-          <p className="mt-4 text-gray-600 dark:text-gray-300">
-            Each channel has two locations:
-          </p>
-          <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside ml-4">
-            <li><strong>Work folder</strong> (e.g., <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">workspace/general/</code>) - Contains files uploaded to or created for the channel</li>
-            <li><strong>Data folder</strong> (e.g., <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/channels/{'{'}channel-id{'}'}/</code>) - Contains the channel's CLAUDE.md instructions and cron.yaml configuration</li>
-          </ul>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="border-t border-gray-200 dark:border-white/10 pt-8">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          💬 Messages
-        </h3>
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <p className="text-gray-600 dark:text-gray-300">
-            Simply message the bot in any synced Discord channel to start a conversation. The bot will automatically
-            create a thread for the conversation.
-          </p>
-
-          <div className="mt-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Example:</p>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-start gap-2">
-                <span className="text-blue-600 dark:text-blue-400 font-semibold">You:</span>
-                <span className="text-gray-700 dark:text-gray-300">Hey Claude, what's the latest commit?</span>
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 italic">
-                [Bot creates thread: "You: Hey Claude, what's the latest..."]
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-purple-600 dark:text-purple-400 font-semibold">Claude:</span>
-                <span className="text-gray-700 dark:text-gray-300">The latest commit is "fix auth flow" (abc123) from 2 hours ago.</span>
-              </div>
-            </div>
-          </div>
-
-          <p className="mt-4 text-gray-600 dark:text-gray-300">
-            Claude has access to files in the channel's work folder and can read, write, and execute commands.
-            The working directory for each conversation is the channel's work folder (e.g., <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">workspace/general/</code>).
-          </p>
-        </div>
-      </div>
-
-      {/* File Attachments */}
-      <div className="border-t border-gray-200 dark:border-white/10 pt-8">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          📎 File Attachments
-        </h3>
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <p className="text-gray-600 dark:text-gray-300">
-            You can send files to Claude by attaching them to Discord messages, and Claude can share files back with you.
-          </p>
-
-          <div className="mt-4 space-y-4">
-            <div>
-              <p className="font-medium text-gray-900 dark:text-white text-sm">Sending Files to Claude</p>
-              <p className="text-gray-600 dark:text-gray-300 text-sm mt-1">
-                Simply attach files to your Discord message (images, code, documents, etc.). The bot will:
-              </p>
-              <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside ml-4">
-                <li>Automatically download attachments to the channel's work folder</li>
-                <li>Make files available for Claude to read, edit, and process</li>
-                <li>Overwrite existing files with the same name</li>
-              </ul>
-            </div>
-
-            <div>
-              <p className="font-medium text-gray-900 dark:text-white text-sm">Receiving Files from Claude</p>
-              <p className="text-gray-600 dark:text-gray-300 text-sm mt-1">
-                Claude can use the <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">shareFile</code> tool
-                to send files back to you. Files are attached to Discord after Claude's response completes.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Example:</p>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-start gap-2">
-                <span className="text-blue-600 dark:text-blue-400 font-semibold">You:</span>
-                <span className="text-gray-700 dark:text-gray-300">[Attach config.json] "Can you increase the timeout?"</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-gray-500 dark:text-gray-400 font-mono text-xs">📄 Read:</span>
-                <span className="text-gray-700 dark:text-gray-300 text-xs">config.json</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-gray-500 dark:text-gray-400 font-mono text-xs">✏️ Edit:</span>
-                <span className="text-gray-700 dark:text-gray-300 text-xs">config.json</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-gray-500 dark:text-gray-400 font-mono text-xs">📎 shareFile:</span>
-                <span className="text-gray-700 dark:text-gray-300 text-xs">config.json</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-purple-600 dark:text-purple-400 font-semibold">Claude:</span>
-                <span className="text-gray-700 dark:text-gray-300">I've updated the timeout to 30 seconds.</span>
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 italic">
-                [Discord attachment: config.json]
-              </div>
-            </div>
-          </div>
-
-          <p className="mt-4 text-gray-600 dark:text-gray-300">
-            This works with any file type: images, code files, documents, spreadsheets, diagrams, and more.
-          </p>
-        </div>
-      </div>
-
-      {/* Threads */}
-      <div className="border-t border-gray-200 dark:border-white/10 pt-8">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          🧵 Threads
-        </h3>
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <p className="text-gray-600 dark:text-gray-300">
-            Each Discord thread maintains a persistent Claude session. This means Claude remembers the entire
-            conversation history and can reference previous messages, decisions, and changes.
-          </p>
-
-          <div className="mt-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Example thread conversation:</p>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-start gap-2">
-                <span className="text-blue-600 dark:text-blue-400 font-semibold">You:</span>
-                <span className="text-gray-700 dark:text-gray-300">Can you explain the auth changes?</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-purple-600 dark:text-purple-400 font-semibold">Claude:</span>
-                <span className="text-gray-700 dark:text-gray-300">That commit fixed the JWT validation logic...</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-blue-600 dark:text-blue-400 font-semibold">You:</span>
-                <span className="text-gray-700 dark:text-gray-300">Can you run the tests?</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-gray-500 dark:text-gray-400 font-mono text-xs">bash:</span>
-                <span className="text-gray-700 dark:text-gray-300 text-xs font-mono">npm test</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-purple-600 dark:text-purple-400 font-semibold">Claude:</span>
-                <span className="text-gray-700 dark:text-gray-300">All tests passed! ✓ 23 tests</span>
-              </div>
-            </div>
-          </div>
-
-          <p className="mt-4 text-gray-600 dark:text-gray-300">
-            Sessions are stored locally in the <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/sessions/</code> directory
-            with state tracked in <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/storage/</code>.
-            Sessions persist across bot restarts and you can archive inactive threads after a configurable number of days.
-          </p>
-        </div>
-      </div>
-
-      {/* Memory System */}
-      <div className="border-t border-gray-200 dark:border-white/10 pt-8">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          💾 Long-Term Memory
-        </h3>
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <p className="text-gray-600 dark:text-gray-300">
-            Cordbot features an intelligent hierarchical memory system that provides long-term context across all conversations in a channel.
-            This allows Claude to remember and reference past discussions, decisions, and learnings even after thread sessions end.
-          </p>
-
-          <div className="mt-4 space-y-4">
-            <div>
-              <p className="font-medium text-gray-900 dark:text-white text-sm">How It Works</p>
-              <ol className="mt-2 space-y-2 text-sm text-gray-600 dark:text-gray-300 list-decimal list-inside ml-4">
-                <li><strong>Real-time Capture:</strong> Final responses from each conversation are automatically captured</li>
-                <li><strong>Daily Compression:</strong> At midnight, raw messages are compressed into concise daily summaries using Claude</li>
-                <li><strong>Hierarchical Compression:</strong> Daily summaries are progressively compressed into weekly, monthly, and yearly summaries</li>
-              </ol>
-            </div>
-
-            <div>
-              <p className="font-medium text-gray-900 dark:text-white text-sm">Memory Loading</p>
-              <p className="text-gray-600 dark:text-gray-300 text-sm mt-1">
-                Before each query, memories are loaded working backwards from most recent to oldest until the token budget is reached:
-              </p>
-              <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside ml-4">
-                <li>Today's raw messages (full detail)</li>
-                <li>Recent daily summaries</li>
-                <li>Weekly summaries</li>
-                <li>Monthly summaries</li>
-                <li>Yearly summaries</li>
-              </ul>
-            </div>
-
-            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Memory structure per channel:</p>
-              <pre className="text-xs text-gray-700 dark:text-gray-300 font-mono overflow-x-auto">
-{`.claude/channels/[channel-id]/memory/
-  raw/
-    2026-01-31.jsonl      # Today's conversations
-  daily/
-    2026-01-31.md         # Daily summaries
-  weekly/
-    2026-W04.md           # Weekly summaries
-  monthly/
-    2026-01.md            # Monthly summaries
-  yearly/
-    2026.md               # Yearly summaries`}
-              </pre>
-            </div>
-
-            <div>
-              <p className="font-medium text-gray-900 dark:text-white text-sm">Configuration</p>
-              <p className="text-gray-600 dark:text-gray-300 text-sm mt-1">
-                Control the memory depth in the <strong>Memory Settings</strong> section:
-              </p>
-              <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside ml-4">
-                <li><strong>5,000-10,000 tokens:</strong> Recommended for most use cases (recent conversations + key summaries)</li>
-                <li><strong>10,000-25,000 tokens:</strong> Extended memory for long-running projects</li>
-                <li><strong>25,000-100,000 tokens:</strong> Maximum long-term memory with extensive historical context</li>
-              </ul>
-              <p className="text-gray-600 dark:text-gray-300 text-sm mt-2">
-                Higher values increase API costs but provide richer historical context for Claude to draw upon.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
-              💡 Why This Matters
-            </p>
-            <p className="mt-1 text-sm text-blue-800 dark:text-blue-300">
-              Unlike standard chat sessions that forget past conversations, Cordbot's memory system allows Claude to:
-              reference decisions from weeks ago, recall bug fixes and their outcomes, remember project architecture and patterns,
-              and maintain continuity across unlimited conversations.
+    <div className="bg-white dark:bg-gray-900">
+      <div className="mx-auto max-w-7xl px-6 py-16 sm:py-24 lg:px-8">
+        {/* What is Cordbot Section */}
+        <div>
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-4xl font-semibold tracking-tight text-gray-900 sm:text-5xl dark:text-white">
+              What is Cordbot
+            </h2>
+            <p className="mt-6 text-base/7 text-gray-600 dark:text-gray-400">
+              An AI-powered Discord bot that deploys a Claude agent to help your community
             </p>
           </div>
-        </div>
-      </div>
-
-      {/* Cron Jobs */}
-      <div className="border-t border-gray-200 dark:border-white/10 pt-8">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          ⏰ Scheduled Jobs (Cron)
-        </h3>
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <p className="text-gray-600 dark:text-gray-300">
-            Configure autonomous scheduled tasks using <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">cron.yaml</code> files
-            in each channel's data folder (<code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/channels/{'{'}channel-id{'}'}/cron.yaml</code>).
-            Claude will execute these tasks automatically on the specified schedule.
-          </p>
-
-          <div className="mt-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Example cron.yaml file:</p>
-            <pre className="text-xs text-gray-700 dark:text-gray-300 font-mono overflow-x-auto">
-{`jobs:
-  - name: "Daily summary"
-    schedule: "0 9 * * *"
-    task: "Summarize recent git commits and post to channel"
-    postTo: "thread"
-
-  - name: "Weekly report"
-    schedule: "0 9 * * 1"
-    task: "Generate weekly progress report"
-    postTo: "channel"`}
-            </pre>
+          <div className="mt-20">
+            <dl className="space-y-16 sm:grid sm:grid-cols-2 sm:space-y-0 sm:gap-x-6 sm:gap-y-16 lg:gap-x-10">
+              {whatIsCordbot.map((item) => (
+                <div key={item.id}>
+                  <dt className="text-base/7 font-semibold text-gray-900 dark:text-white">{item.title}</dt>
+                  <dd className="mt-2 text-base/7 text-gray-600 dark:text-gray-400">
+                    {typeof item.description === 'string' ? item.description : item.description}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </div>
+        </div>
 
-          <div className="mt-4 space-y-3">
-            <div>
-              <p className="font-medium text-gray-900 dark:text-white text-sm">Schedule Format</p>
-              <p className="text-gray-600 dark:text-gray-300 text-sm mt-1">
-                Uses standard cron format: <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">minute hour day month weekday</code>
-              </p>
-              <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside">
-                <li><code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">0 9 * * *</code> - Daily at 9:00 AM</li>
-                <li><code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">*/30 * * * *</code> - Every 30 minutes</li>
-                <li><code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">0 0 * * 0</code> - Weekly on Sunday at midnight</li>
-              </ul>
-            </div>
-
-            <div>
-              <p className="font-medium text-gray-900 dark:text-white text-sm">Post Destinations</p>
-              <ul className="mt-1 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside">
-                <li><code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">postTo: "channel"</code> - Posts result as a new message in the channel</li>
-                <li><code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">postTo: "thread"</code> - Creates or continues a thread for the job</li>
-              </ul>
-            </div>
+        {/* Basic Capabilities Section */}
+        <div className="mt-32">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-4xl font-semibold tracking-tight text-gray-900 sm:text-5xl dark:text-white">
+              Basic Capabilities
+            </h2>
+            <p className="mt-6 text-base/7 text-gray-600 dark:text-gray-400">
+              Core AI capabilities that Claude provides to assist your community
+            </p>
           </div>
-
-          <p className="mt-4 text-gray-600 dark:text-gray-300">
-            Cron files are watched for changes and automatically reloaded. You can also manage jobs programmatically
-            using the built-in cron management tools that Claude has access to.
-          </p>
+          <div className="mt-20">
+            <dl className="space-y-16 sm:grid sm:grid-cols-2 sm:space-y-0 sm:gap-x-6 sm:gap-y-16 lg:gap-x-10">
+              {basicCapabilities.map((capability) => (
+                <div key={capability.id}>
+                  <dt className="text-base/7 font-semibold text-gray-900 dark:text-white">{capability.title}</dt>
+                  <dd className="mt-2 text-base/7 text-gray-600 dark:text-gray-400">{capability.description}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </div>
-      </div>
 
-      {/* Service Integrations */}
-      <div className="border-t border-gray-200 dark:border-white/10 pt-8">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          🔌 Service Integrations
-        </h3>
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <p className="text-gray-600 dark:text-gray-300">
-            Connect external services in the "Service Integrations" section to give Claude access to additional tools.
-            When you connect a service (like Gmail), the bot automatically receives tools to interact with that service.
-          </p>
-
-          <p className="mt-4 text-gray-600 dark:text-gray-300">
-            For example, connecting Gmail gives Claude tools to:
-          </p>
-          <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300 list-disc list-inside">
-            <li>List and search emails</li>
-            <li>Read email contents</li>
-            <li>Send emails on your behalf</li>
-          </ul>
-
-          <p className="mt-4 text-gray-600 dark:text-gray-300">
-            All OAuth tokens are securely stored and refreshed automatically. The bot fetches available tools
-            when it starts based on your connected services.
-          </p>
+        {/* Discord API Capabilities Section */}
+        <div className="mt-32">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-4xl font-semibold tracking-tight text-gray-900 sm:text-5xl dark:text-white">
+              Discord Capabilities
+            </h2>
+            <p className="mt-6 text-base/7 text-gray-600 dark:text-gray-400">
+              Discord-specific features for managing and enhancing your server
+            </p>
+          </div>
+          <div className="mt-20">
+            <dl className="space-y-16 sm:grid sm:grid-cols-2 sm:space-y-0 sm:gap-x-6 sm:gap-y-16 lg:gap-x-10">
+              {discordCapabilities.map((capability) => (
+                <div key={capability.id}>
+                  <dt className="text-base/7 font-semibold text-gray-900 dark:text-white">{capability.title}</dt>
+                  <dd className="mt-2 text-base/7 text-gray-600 dark:text-gray-400">{capability.description}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </div>
-      </div>
 
-      {/* Getting Started */}
-      <div className="border-t border-gray-200 dark:border-white/10 pt-8">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          🚀 Getting Started
-        </h3>
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ol className="space-y-3 text-sm text-gray-600 dark:text-gray-300 list-decimal list-inside">
-            <li>
-              Complete the "Bot Setup" to configure your Discord bot token and server
-              <div className="mt-2 ml-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
-                <p className="text-xs font-medium text-yellow-900 dark:text-yellow-200 mb-1">
-                  Important: Enable Privileged Gateway Intents
-                </p>
-                <p className="text-xs text-yellow-800 dark:text-yellow-300">
-                  In the Discord Developer Portal, go to Bot → Privileged Gateway Intents and enable "MESSAGE CONTENT INTENT".
-                  Without this, your bot will fail to connect.
-                </p>
-              </div>
-            </li>
-            <li>Navigate to the workspace directory you want to give the agent and run <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">npx @cordbot/agent</code></li>
-            <li>The bot will create a <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/</code> folder and sync your Discord channels to work folders</li>
-            <li>Message the bot in Discord to start a conversation</li>
-            <li>Optionally, edit <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">cron.yaml</code> files in <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">.claude/channels/{'{'}channel-id{'}'}/</code> to schedule autonomous tasks</li>
-          </ol>
-
-          <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-            <p className="text-sm font-medium text-yellow-900 dark:text-yellow-200">
-              ⚠️ Security Warning
+        {/* Open Source Section */}
+        <div className="mt-32">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-4xl font-semibold tracking-tight text-gray-900 sm:text-5xl dark:text-white">
+              Open Source
+            </h2>
+            <p className="mt-6 text-base/7 text-gray-600 dark:text-gray-400">
+              Built transparently by the community, for the community
             </p>
-            <p className="mt-1 text-sm text-yellow-800 dark:text-yellow-300">
-              Cordbot runs with full system access (dangerous mode). It can read/write files, execute commands,
-              and make network requests. Only use in trusted environments with controlled Discord access.
-            </p>
+          </div>
+          <div className="mt-20">
+            <dl className="space-y-16 sm:grid sm:grid-cols-2 sm:space-y-0 sm:gap-x-6 sm:gap-y-16 lg:gap-x-10">
+              {openSource.map((item) => (
+                <div key={item.id}>
+                  <dt className="text-base/7 font-semibold text-gray-900 dark:text-white">{item.title}</dt>
+                  <dd className="mt-2 text-base/7 text-gray-600 dark:text-gray-400">
+                    {typeof item.description === 'string' ? item.description : item.description}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </div>
         </div>
       </div>
