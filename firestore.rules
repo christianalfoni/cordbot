@@ -3,26 +3,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users collection - users can only read/write their own profile
+    // Users collection - read-only from client, all writes via Cloud Functions
     match /users/{userId} {
       // Allow authenticated users to read their own document
       allow read: if request.auth != null && request.auth.uid == userId;
 
-      // Ensure required fields are present on create
-      allow create: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.data.keys().hasAll(['id', 'createdAt', 'lastLoginAt']);
-
-      // Allow update with consistent userId and restrictions on hosting fields
-      allow update: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.data.id == userId
-                    // Users can only set hostingBetaRequested to true
-                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hostingBetaApproved', 'hostedBot'])
-                        || request.resource.data.hostingBetaRequested == true)
-                    // Prevent direct modification of hostedBot (Cloud Functions only)
-                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hostedBot'])
-                        || !('hostedBot' in request.resource.data));
+      // All writes (create/update/delete) must go through Cloud Functions
+      allow write: if false;
 
       // Bots subcollection - users can read their own bots
       match /bots/{botId} {

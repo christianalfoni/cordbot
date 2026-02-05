@@ -32,10 +32,6 @@ describe('MockContext', () => {
     expect(ctx.initiateGmailOAuth).toBeDefined();
     expect(ctx.exchangeGmailToken).toBeDefined();
     expect(ctx.disconnectGmail).toBeDefined();
-    expect(ctx.validateBotToken).toBeDefined();
-    expect(ctx.saveBotToken).toBeDefined();
-    expect(ctx.saveGuildSelection).toBeDefined();
-    expect(ctx.clearBotToken).toBeDefined();
     expect(ctx.logger).toBeDefined();
     expect(ctx.getCurrentTime).toBeDefined();
     expect(ctx.generateOAuthState).toBeDefined();

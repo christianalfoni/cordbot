@@ -54,8 +54,6 @@ export interface UserData {
   discordUsername?: string;
   createdAt: string;
   lastLoginAt: string;
-  botToken?: string;
-  guildId?: string;
   memoryContextSize?: number;
   toolsManifest?: ToolsManifest;
   oauthConnections?: {
@@ -66,6 +64,8 @@ export interface UserData {
   };
   hostingBetaRequested?: boolean;
   hostingBetaApproved?: boolean;
+  freeTierBotDeployed?: boolean;
+  freeTierBotDeployedAt?: string;
 }
 
 export interface Guild {
@@ -109,28 +109,6 @@ export interface Subscription {
   id: string;
   status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'incomplete';
   tier: 'starter' | 'pro';
-}
-
-export interface BotInfo {
-  id: string;
-  username: string;
-  discriminator: string;
-  avatar: string | null;
-}
-
-export interface BotGuild {
-  id: string;
-  name: string;
-  icon: string | null;
-  owner: boolean;
-  permissions: string;
-}
-
-export interface BotValidationResult {
-  valid: boolean;
-  bot?: BotInfo;
-  guilds?: BotGuild[];
-  error?: string;
 }
 
 export interface GmailAuthResult {

@@ -5,7 +5,6 @@ import type {
   GuildStatus,
   GuildLogs,
   Subscription,
-  BotValidationResult,
   GmailAuthResult,
   DiscordOAuthParams,
   SubscriptionCheckoutResult,
@@ -195,35 +194,6 @@ export interface AppContext {
    * @param botId The bot ID
    */
   disconnectGmail(userId: string, botId: string): Promise<void>;
-
-  // ============ Bot Token Validation ============
-
-  /**
-   * Validate a Discord bot token
-   * @param botToken The Discord bot token
-   * @returns Validation result with bot info and guilds
-   */
-  validateBotToken(botToken: string): Promise<BotValidationResult>;
-
-  /**
-   * Save bot token to user document
-   * @param userId The user's Firebase UID
-   * @param botToken The Discord bot token
-   */
-  saveBotToken(userId: string, botToken: string): Promise<void>;
-
-  /**
-   * Save guild selection to user document
-   * @param userId The user's Firebase UID
-   * @param guildId The selected guild ID
-   */
-  saveGuildSelection(userId: string, guildId: string): Promise<void>;
-
-  /**
-   * Clear bot token and guild selection from user document
-   * @param userId The user's Firebase UID
-   */
-  clearBotToken(userId: string): Promise<void>;
 
   // ============ Utilities ============
 

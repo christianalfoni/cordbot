@@ -134,6 +134,17 @@ export class GuildProvisioningService {
       // Provision the guild (this now creates the deployment doc for all tiers)
       // Status already updated above, so skip redundant update
       const provisionResult = await this.provisionGuild({ guildId, skipStatusUpdate: true });
+
+      // Mark user as having deployed a free tier bot
+      const guild = await this.ctx.firestore.getGuild(guildId);
+      if (guild) {
+        await this.ctx.firestore.updateUser(guild.userId, {
+          freeTierBotDeployed: true,
+          freeTierBotDeployedAt: this.ctx.getCurrentTime().toISOString(),
+        });
+        this.ctx.logger.info(`Marked user ${guild.userId} as having deployed free tier bot`);
+      }
+
       return provisionResult;
     } catch (error) {
       // If provisioning fails, decrement the slot (best effort)

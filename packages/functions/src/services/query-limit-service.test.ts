@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { QueryLimitService } from './query-limit-service.js';
 import { MockFunctionContext } from '../context.mock.js';
-import type { Guild, GuildDeployment } from '../types.js';
+import type { Guild, GuildDeployment } from '../context.js';
 
 describe('QueryLimitService', () => {
   let ctx: MockFunctionContext;
@@ -17,32 +17,48 @@ describe('QueryLimitService', () => {
     service = new QueryLimitService(ctx);
   });
 
+  // Helper function to create mock Guild
+  const createMockGuild = (overrides?: Partial<Guild>): Guild => ({
+    guildName: 'Test Guild',
+    guildIcon: null,
+    status: 'active',
+    userId: 'user-123',
+    tier: 'pro',
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+    memoryContextSize: 10000,
+    periodStart: '2024-01-01T00:00:00Z',
+    periodEnd: null,
+    lastDeployedAt: '2024-01-01T00:00:00Z',
+    ...overrides,
+  });
+
+  // Helper function to create mock GuildDeployment
+  const createMockDeployment = (overrides?: Partial<GuildDeployment>): GuildDeployment => ({
+    guildId: 'guild-123',
+    deploymentType: 'pro',
+    queriesTotal: 1000,
+    queriesRemaining: 500,
+    queriesUsed: 500,
+    totalCost: 10.0,
+    costThisPeriod: 10.0,
+    queryTypes: {},
+    costByType: {},
+    lastQueryAt: '2024-01-01T00:00:00Z',
+    appName: 'test-app',
+    machineId: 'test-machine',
+    volumeId: 'test-volume',
+    region: 'sjc',
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+    ...overrides,
+  });
+
   describe('checkQueryLimit', () => {
     it('should allow queries when guild is active and has queries remaining', async () => {
       // Arrange
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'pro',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
-
-      const deployment: GuildDeployment = {
-        guildId: 'guild-123',
-        deploymentType: 'pro',
-        queriesTotal: 1000,
-        queriesRemaining: 500,
-        queriesUsed: 500,
-        totalCost: 10.0,
-        costThisPeriod: 10.0,
-        queryTypes: {},
-        costByType: {},
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild();
+      const deployment = createMockDeployment();
 
       ctx.firestore.getGuild.mockResolvedValue(guild);
       ctx.firestore.getGuildDeployment.mockResolvedValue(deployment);
@@ -65,16 +81,7 @@ describe('QueryLimitService', () => {
 
     it('should block queries when guild is suspended', async () => {
       // Arrange
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'suspended',
-        suspendedReason: 'query_limit',
-        userId: 'user-123',
-        tier: 'free',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild({ status: 'suspended', suspendedReason: 'query_limit', tier: 'free' });
 
       ctx.firestore.getGuild.mockResolvedValue(guild);
 
@@ -94,29 +101,16 @@ describe('QueryLimitService', () => {
 
     it('should block queries when queries remaining is zero', async () => {
       // Arrange
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'free',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild({ tier: 'free' });
 
-      const deployment: GuildDeployment = {
-        guildId: 'guild-123',
+      const deployment = createMockDeployment({
         deploymentType: 'free',
         queriesTotal: 100,
         queriesRemaining: 0,
         queriesUsed: 100,
         totalCost: 2.0,
         costThisPeriod: 2.0,
-        queryTypes: {},
-        costByType: {},
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      });
 
       ctx.firestore.getGuild.mockResolvedValue(guild);
       ctx.firestore.getGuildDeployment.mockResolvedValue(deployment);
@@ -152,15 +146,7 @@ describe('QueryLimitService', () => {
 
     it('should block when deployment does not exist', async () => {
       // Arrange
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'free',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild({ tier: 'free' });
 
       ctx.firestore.getGuild.mockResolvedValue(guild);
       ctx.firestore.getGuildDeployment.mockResolvedValue(null);
@@ -180,29 +166,12 @@ describe('QueryLimitService', () => {
   describe('trackQueryLimit', () => {
     it('should track message_query and reduce query count', async () => {
       // Arrange
-      const deployment: GuildDeployment = {
-        guildId: 'guild-123',
-        deploymentType: 'pro',
-        queriesTotal: 1000,
-        queriesRemaining: 500,
-        queriesUsed: 500,
-        totalCost: 10.0,
-        costThisPeriod: 10.0,
+      const deployment = createMockDeployment({
         queryTypes: { message_query: 100 },
         costByType: { message_query: 5.0 },
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      });
 
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'pro',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild();
 
       // Mock transaction
       ctx.firestore.runTransaction.mockImplementation(async (callback: any) => {
@@ -263,8 +232,7 @@ describe('QueryLimitService', () => {
 
     it('should track scheduled_query and reduce query count', async () => {
       // Arrange
-      const deployment: GuildDeployment = {
-        guildId: 'guild-123',
+      const deployment = createMockDeployment({
         deploymentType: 'starter',
         queriesTotal: 500,
         queriesRemaining: 250,
@@ -273,19 +241,9 @@ describe('QueryLimitService', () => {
         costThisPeriod: 5.0,
         queryTypes: { scheduled_query: 50 },
         costByType: { scheduled_query: 2.5 },
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      });
 
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'starter',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild({ tier: 'starter' });
 
       ctx.firestore.runTransaction.mockImplementation(async (callback: any) => {
         const transaction = {
@@ -338,29 +296,12 @@ describe('QueryLimitService', () => {
 
     it('should track summarize_query WITHOUT reducing query count', async () => {
       // Arrange
-      const deployment: GuildDeployment = {
-        guildId: 'guild-123',
-        deploymentType: 'pro',
-        queriesTotal: 1000,
-        queriesRemaining: 500,
-        queriesUsed: 500,
-        totalCost: 10.0,
-        costThisPeriod: 10.0,
+      const deployment = createMockDeployment({
         queryTypes: { message_query: 100 },
         costByType: { message_query: 5.0 },
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      });
 
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'pro',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild();
 
       ctx.firestore.runTransaction.mockImplementation(async (callback: any) => {
         const transaction = {
@@ -417,29 +358,16 @@ describe('QueryLimitService', () => {
 
     it('should suspend guild when limit reached', async () => {
       // Arrange
-      const deployment: GuildDeployment = {
-        guildId: 'guild-123',
+      const deployment = createMockDeployment({
         deploymentType: 'free',
         queriesTotal: 100,
         queriesRemaining: 1, // Last query
         queriesUsed: 99,
         totalCost: 2.0,
         costThisPeriod: 2.0,
-        queryTypes: {},
-        costByType: {},
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      });
 
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'free',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild({ tier: 'free' });
 
       ctx.firestore.runTransaction.mockImplementation(async (callback: any) => {
         const transaction = {
@@ -492,29 +420,14 @@ describe('QueryLimitService', () => {
 
     it('should mark for deprovisioning only for free tier', async () => {
       // Arrange - Pro tier
-      const deployment: GuildDeployment = {
-        guildId: 'guild-123',
-        deploymentType: 'pro',
-        queriesTotal: 1000,
+      const deployment = createMockDeployment({
         queriesRemaining: 1,
         queriesUsed: 999,
         totalCost: 50.0,
         costThisPeriod: 50.0,
-        queryTypes: {},
-        costByType: {},
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      });
 
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'pro',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild();
 
       ctx.firestore.runTransaction.mockImplementation(async (callback: any) => {
         const transaction = {
@@ -546,30 +459,17 @@ describe('QueryLimitService', () => {
 
     it('should set firstQueryAt if not already set', async () => {
       // Arrange
-      const deployment: GuildDeployment = {
-        guildId: 'guild-123',
+      const deployment = createMockDeployment({
         deploymentType: 'free',
         queriesTotal: 100,
         queriesRemaining: 100,
         queriesUsed: 0,
         totalCost: 0,
         costThisPeriod: 0,
-        queryTypes: {},
-        costByType: {},
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
         // firstQueryAt not set
-      };
+      });
 
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'free',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild({ tier: 'free' });
 
       ctx.firestore.runTransaction.mockImplementation(async (callback: any) => {
         const transaction = {
@@ -630,28 +530,20 @@ describe('QueryLimitService', () => {
 
     it('should handle undefined queryTypes and costByType fields', async () => {
       // Arrange - Deployment without queryTypes or costByType
-      const deployment: GuildDeployment = {
-        guildId: 'guild-123',
-        deploymentType: 'free',
-        queriesTotal: 100,
-        queriesRemaining: 100,
-        queriesUsed: 0,
-        totalCost: 0,
-        costThisPeriod: 0,
-        // queryTypes and costByType are undefined
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
+      const deployment = {
+        ...createMockDeployment({
+          deploymentType: 'free',
+          queriesTotal: 100,
+          queriesRemaining: 100,
+          queriesUsed: 0,
+          totalCost: 0,
+          costThisPeriod: 0,
+        }),
+        queryTypes: undefined,
+        costByType: undefined,
       } as any;
 
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'free',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild({ tier: 'free' });
 
       ctx.firestore.runTransaction.mockImplementation(async (callback: any) => {
         const transaction = {
@@ -693,8 +585,7 @@ describe('QueryLimitService', () => {
 
     it('should handle multiple query types and costs correctly', async () => {
       // Arrange
-      const deployment: GuildDeployment = {
-        guildId: 'guild-123',
+      const deployment = createMockDeployment({
         deploymentType: 'business',
         queriesTotal: 5000,
         queriesRemaining: 2500,
@@ -711,19 +602,9 @@ describe('QueryLimitService', () => {
           scheduled_query: 40.0,
           summarize_query: 10.0,
         },
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      });
 
-      const guild: Guild = {
-        guildId: 'guild-123',
-        guildName: 'Test Guild',
-        status: 'active',
-        userId: 'user-123',
-        tier: 'business',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      };
+      const guild = createMockGuild({ tier: 'business' });
 
       ctx.firestore.runTransaction.mockImplementation(async (callback: any) => {
         const transaction = {

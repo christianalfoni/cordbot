@@ -7,7 +7,6 @@ import type {
   GuildStatus,
   GuildLogs,
   Subscription,
-  BotValidationResult,
   GmailAuthResult,
   DiscordOAuthParams,
   SubscriptionCheckoutResult,
@@ -55,12 +54,6 @@ export class MockContext implements AppContext {
   initiateGmailOAuth: MockFn<(userId: string, botId: string) => void> = vi.fn();
   exchangeGmailToken: MockFn<(code: string, userId: string, botId: string, redirectUri: string) => Promise<GmailAuthResult>> = vi.fn();
   disconnectGmail: MockFn<(userId: string, botId: string) => Promise<void>> = vi.fn();
-
-  // Bot Token
-  validateBotToken: MockFn<(botToken: string) => Promise<BotValidationResult>> = vi.fn();
-  saveBotToken: MockFn<(userId: string, botToken: string) => Promise<void>> = vi.fn();
-  saveGuildSelection: MockFn<(userId: string, guildId: string) => Promise<void>> = vi.fn();
-  clearBotToken: MockFn<(userId: string) => Promise<void>> = vi.fn();
 
   // Utilities
   logger: Logger = {

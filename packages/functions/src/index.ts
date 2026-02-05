@@ -815,3 +815,6 @@ export { processDiscordOAuth } from './process-oauth.js';
 
 // Export Firestore triggers
 export { onGuildCreated } from './guild-triggers.js';
+
+// Export Auth triggers
+export { onUserCreate, updateLastLogin } from './auth-triggers.js';

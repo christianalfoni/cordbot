@@ -13,7 +13,6 @@ import {
   getFirestore,
   doc,
   getDoc,
-  setDoc,
   updateDoc,
   onSnapshot,
   collection,
@@ -32,7 +31,6 @@ import type {
   GuildStatus,
   GuildLogs,
   Subscription,
-  BotValidationResult,
   GmailAuthResult,
   DiscordOAuthParams,
   SubscriptionCheckoutResult,
@@ -114,19 +112,14 @@ export class FirebaseContext implements AppContext {
     const result = await signInWithPopup(this.auth, this.discordProvider);
     const user = this.transformFirebaseUser(result.user);
 
-    const userDocRef = doc(this.db, 'users', user.id);
-    const userDoc = await getDoc(userDocRef);
-
-    const userData: UserData = {
-      id: user.id,
-      email: user.email,
-      displayName: user.displayName,
-      photoURL: user.photoURL,
-      createdAt: userDoc.exists() ? userDoc.data().createdAt : new Date().toISOString(),
-      lastLoginAt: new Date().toISOString(),
-    };
-
-    await setDoc(userDocRef, userData, { merge: true });
+    // Update lastLoginAt via Cloud Function
+    const updateLastLoginFunc = httpsCallable(this.functions, 'updateLastLogin');
+    try {
+      await updateLastLoginFunc({});
+    } catch (error) {
+      // Log error but don't fail sign-in if lastLoginAt update fails
+      console.error('Failed to update lastLoginAt:', error);
+    }
 
     return user;
   }
@@ -161,30 +154,17 @@ export class FirebaseContext implements AppContext {
   watchUserData(userId: string, listener: UserDataListener): Unsubscribe {
     const userDocRef = doc(this.db, 'users', userId);
 
-    // First check if document exists, create if not
-    getDoc(userDocRef).then((docSnap) => {
-      if (!docSnap.exists() && this.currentUser) {
-        // Create initial user document
-        const initialData: UserData = {
-          id: userId,
-          email: this.currentUser.email,
-          displayName: this.currentUser.displayName,
-          photoURL: this.currentUser.photoURL,
-          createdAt: new Date().toISOString(),
-          lastLoginAt: new Date().toISOString(),
-        };
-        setDoc(userDocRef, initialData);
-      }
-    });
-
+    // User document is created by Cloud Function auth trigger (onUserCreate)
+    // Just watch for changes
     return onSnapshot(userDocRef, (docSnap) => {
       listener(docSnap.exists() ? (docSnap.data() as UserData) : null);
     });
   }
 
-  async updateUserData(userId: string, data: Partial<UserData>): Promise<void> {
-    const userDocRef = doc(this.db, 'users', userId);
-    await updateDoc(userDocRef, data as Record<string, unknown>);
+  async updateUserData(_userId: string, _data: Partial<UserData>): Promise<void> {
+    // User documents are read-only from the client
+    // All updates must go through Cloud Functions
+    throw new Error('User documents are read-only. Updates must be done via Cloud Functions.');
   }
 
   // ============ Guilds ============
@@ -325,32 +305,6 @@ export class FirebaseContext implements AppContext {
     await updateDoc(botRef, {
       'oauthConnections.gmail': deleteField(),
       'toolsConfig.gmail': deleteField(),
-    });
-  }
-
-  // ============ Bot Token Validation ============
-
-  async validateBotToken(botToken: string): Promise<BotValidationResult> {
-    const validateBotTokenFunc = httpsCallable(this.functions, 'validateBotToken');
-    const result = await validateBotTokenFunc({ botToken });
-    return result.data as BotValidationResult;
-  }
-
-  async saveBotToken(userId: string, botToken: string): Promise<void> {
-    const userRef = doc(this.db, 'users', userId);
-    await updateDoc(userRef, { botToken });
-  }
-
-  async saveGuildSelection(userId: string, guildId: string): Promise<void> {
-    const userRef = doc(this.db, 'users', userId);
-    await updateDoc(userRef, { guildId });
-  }
-
-  async clearBotToken(userId: string): Promise<void> {
-    const userRef = doc(this.db, 'users', userId);
-    await updateDoc(userRef, {
-      botToken: null,
-      guildId: null,
     });
   }
 

@@ -61,6 +61,18 @@ export class DiscordOAuthService {
   }): Promise<{ name: string; icon: string | null }> {
     const { code, guildId, redirectUri, userId, tier } = params;
 
+    // Check if user is trying to create another free tier bot
+    if (tier === 'free') {
+      const user = await this.ctx.firestore.getUser(userId);
+      if (user?.freeTierBotDeployed) {
+        this.ctx.logger.warn('User attempted to create multiple free tier bots', { userId });
+        throw new HttpsError(
+          'failed-precondition',
+          'You can only create one free tier bot. Please upgrade to a paid tier to create additional bots.'
+        );
+      }
+    }
+
     // Step 1: Exchange code for access token
     const tokenResponse = await this.ctx.http.fetch('https://discord.com/api/v10/oauth2/token', {
       method: 'POST',

@@ -159,6 +159,8 @@ export interface User {
   hostingBetaRequestedAt?: string;
   hostingBetaApproved?: boolean;
   stripeCustomerId?: string;
+  freeTierBotDeployed?: boolean;      // Flag to track if user has deployed a free tier bot
+  freeTierBotDeployedAt?: string;     // Timestamp of when free tier bot was deployed
 }
 
 export interface GuildDeployment {
