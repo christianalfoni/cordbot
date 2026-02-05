@@ -2,6 +2,7 @@
   "name": "@cordbot/web-service",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.0.0",
   "description": "Web service for Cordbot authentication and management",
   "type": "module",
   "scripts": {
