@@ -137,7 +137,7 @@ export interface Guild {
   guildIcon: string | null;
   status: 'pending' | 'provisioning' | 'active' | 'error' | 'suspended' | 'deprovisioning' | 'deleted';
   userId: string;       // Firebase Auth UID
-  tier?: 'free' | 'starter' | 'pro' | 'business';  // Selected tier (used during provisioning)
+  tier?: 'free' | 'starter' | 'pro';  // Selected tier (used during provisioning)
   subscriptionId?: string | null;  // Links to subscriptions/{subscriptionId}
   createdAt: string;
   updatedAt: string;
@@ -147,6 +147,7 @@ export interface Guild {
   suspendedAt?: string;
   // Bot configuration
   memoryContextSize: number;
+  memoryRetentionMonths: number;
   // Billing period
   periodStart: string;
   periodEnd: string | null;
@@ -165,7 +166,7 @@ export interface User {
 
 export interface GuildDeployment {
   guildId: string;
-  deploymentType: 'free' | 'starter' | 'pro' | 'business';
+  deploymentType: 'free' | 'starter' | 'pro';
   queriesTotal: number;
   queriesRemaining: number;
   queriesUsed: number;

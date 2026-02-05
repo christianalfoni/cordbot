@@ -31,6 +31,54 @@ interface FlyMachineConfig {
   };
 }
 
+/**
+ * Get memory context size (token budget) for a tier
+ */
+export function getTierMemoryContextSize(tier: 'free' | 'starter' | 'pro'): number {
+  switch (tier) {
+    case 'free': return 5000;
+    case 'starter': return 10000;
+    case 'pro': return 20000;
+    default: return 0;
+  }
+}
+
+/**
+ * Get memory retention months for a tier
+ */
+export function getTierMemoryRetentionMonths(tier: 'free' | 'starter' | 'pro'): number {
+  switch (tier) {
+    case 'free': return 1;
+    case 'starter': return 6;
+    case 'pro': return 24;
+    default: return 0;
+  }
+}
+
+/**
+ * Build environment variables for guild deployment
+ * This shared function ensures all deployment scenarios use consistent env vars
+ */
+function buildGuildEnvironment(params: {
+  guildId: string;
+  memoryContextSize: number;
+  memoryRetentionMonths: number;
+  discordBotToken: string;
+  anthropicApiKey: string;
+  serviceUrl: string;
+}): Record<string, string> {
+  return {
+    HOME: '/workspace',
+    DISCORD_BOT_TOKEN: params.discordBotToken,
+    DISCORD_GUILD_ID: params.guildId,
+    ANTHROPIC_API_KEY: params.anthropicApiKey,
+    BOT_ID: params.guildId,
+    MEMORY_CONTEXT_SIZE: String(params.memoryContextSize ?? 0),
+    MEMORY_RETENTION_MONTHS: String(params.memoryRetentionMonths ?? 0),
+    SERVICE_URL: params.serviceUrl,
+  };
+}
+
 export class GuildProvisioningService {
   constructor(private ctx: FunctionContext) {}
 
@@ -253,15 +301,14 @@ export class GuildProvisioningService {
         cpus: 1,
         memory_mb: 2048,
       },
-      env: {
-        HOME: '/workspace',
-        DISCORD_BOT_TOKEN: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
-        DISCORD_GUILD_ID: guildId,
-        ANTHROPIC_API_KEY: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
-        BOT_ID: guildId,
-        MEMORY_CONTEXT_SIZE: String(guildData.memoryContextSize),
-        SERVICE_URL: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
-      },
+      env: buildGuildEnvironment({
+        guildId,
+        memoryContextSize: guildData.memoryContextSize,
+        memoryRetentionMonths: guildData.memoryRetentionMonths,
+        discordBotToken: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
+        anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
+        serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
+      }),
       mounts: [
         {
           volume: volumeResponse.id,
@@ -293,7 +340,7 @@ export class GuildProvisioningService {
     this.ctx.logger.info(`ABOUT TO CREATE DEPLOYMENT DOC for guild ${guildId}`);
     const tier = guildData.tier || 'free';
     this.ctx.logger.info(`Guild tier is: ${tier}`);
-    const deploymentType = tier as 'free' | 'starter' | 'pro' | 'business';
+    const deploymentType = tier as 'free' | 'starter' | 'pro';
 
     // Determine query limits based on tier
     let queriesTotal: number;
@@ -305,7 +352,8 @@ export class GuildProvisioningService {
     } else if (tier === 'pro') {
       queriesTotal = 1200;
     } else {
-      queriesTotal = 3000; // business
+      // Fallback for any unknown tier
+      queriesTotal = 0;
     }
 
     const now = this.ctx.getCurrentTime().toISOString();
@@ -479,12 +527,19 @@ export class GuildProvisioningService {
 
   /**
    * Restart a guild's machine
+   * Also refreshes environment variables to ensure they're up to date
    */
   async restartGuild(params: { userId: string; guildId: string }): Promise<{ success: true; message: string }> {
     const { userId, guildId } = params;
 
     // Verify ownership
     await this.verifyGuildOwnership(userId, guildId);
+
+    // Get guild data for memory configuration
+    const guildData = await this.ctx.firestore.getGuild(guildId);
+    if (!guildData) {
+      throw new HttpsError('not-found', 'Guild not found');
+    }
 
     // Get deployment info
     const deployment = await this.ctx.firestore.getGuildDeployment(guildId);
@@ -494,7 +549,7 @@ export class GuildProvisioningService {
 
     const { appName, machineId } = deployment;
 
-    this.ctx.logger.info(`Restarting guild ${guildId}`, { appName, machineId });
+    this.ctx.logger.info(`Restarting guild ${guildId} with env refresh`, { appName, machineId });
 
     try {
       // Set status to provisioning
@@ -503,7 +558,43 @@ export class GuildProvisioningService {
         updatedAt: this.ctx.getCurrentTime().toISOString(),
       });
 
-      // Restart machine
+      // Get current machine config to preserve settings
+      const currentMachine = await this.flyRequest(`/apps/${appName}/machines/${machineId}`, {
+        method: 'GET',
+      });
+
+      // Ensure mounts are present
+      const mounts = currentMachine.config?.mounts || [];
+      if (mounts.length === 0 && deployment.volumeId) {
+        this.ctx.logger.info(`Adding missing volume mount during restart for guild ${guildId}`, {
+          volumeId: deployment.volumeId,
+        });
+        mounts.push({
+          volume: deployment.volumeId,
+          path: '/workspace',
+        });
+      }
+
+      // Update machine config with refreshed environment variables
+      await this.flyRequest(`/apps/${appName}/machines/${machineId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          config: {
+            ...currentMachine.config,
+            env: buildGuildEnvironment({
+              guildId,
+              memoryContextSize: guildData.memoryContextSize,
+              memoryRetentionMonths: guildData.memoryRetentionMonths,
+              discordBotToken: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
+              anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
+              serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
+            }),
+            mounts,
+          },
+        }),
+      });
+
+      // Now restart the machine with updated config
       await this.flyRequest(`/apps/${appName}/machines/${machineId}/restart`, {
         method: 'POST',
       });
@@ -514,11 +605,11 @@ export class GuildProvisioningService {
         updatedAt: this.ctx.getCurrentTime().toISOString(),
       });
 
-      this.ctx.logger.info(`Successfully restarted guild ${guildId}`);
+      this.ctx.logger.info(`Successfully restarted guild ${guildId} with refreshed env vars`);
 
       return {
         success: true,
-        message: 'Guild restarted successfully',
+        message: 'Guild restarted successfully with updated configuration',
       };
     } catch (error) {
       // Set status to error if restart fails
@@ -587,15 +678,14 @@ export class GuildProvisioningService {
         body: JSON.stringify({
           config: {
             ...currentMachine.config,
-            env: {
-              HOME: '/workspace',
-              DISCORD_BOT_TOKEN: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
-              DISCORD_GUILD_ID: guildId,
-              ANTHROPIC_API_KEY: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
-              BOT_ID: guildId,
-              MEMORY_CONTEXT_SIZE: String(guildData.memoryContextSize),
-              SERVICE_URL: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
-            },
+            env: buildGuildEnvironment({
+              guildId,
+              memoryContextSize: guildData.memoryContextSize,
+              memoryRetentionMonths: guildData.memoryRetentionMonths,
+              discordBotToken: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
+              anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
+              serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
+            }),
             mounts,
             init: {
               cwd: '/workspace',
@@ -703,15 +793,14 @@ export class GuildProvisioningService {
           cpus: 1,
           memory_mb: 2048,
         },
-        env: {
-          HOME: '/workspace',
-          DISCORD_BOT_TOKEN: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
-          DISCORD_GUILD_ID: guildId,
-          ANTHROPIC_API_KEY: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
-          BOT_ID: guildId,
-          MEMORY_CONTEXT_SIZE: String(guildData.memoryContextSize),
-          SERVICE_URL: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
-        },
+        env: buildGuildEnvironment({
+          guildId,
+          memoryContextSize: guildData.memoryContextSize,
+          memoryRetentionMonths: guildData.memoryRetentionMonths,
+          discordBotToken: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
+          anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
+          serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
+        }),
         mounts,
         init: {
           cwd: '/workspace',

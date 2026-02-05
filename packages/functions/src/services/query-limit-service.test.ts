@@ -27,6 +27,7 @@ describe('QueryLimitService', () => {
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
     memoryContextSize: 10000,
+    memoryRetentionMonths: 6,
     periodStart: '2024-01-01T00:00:00Z',
     periodEnd: null,
     lastDeployedAt: '2024-01-01T00:00:00Z',
@@ -586,10 +587,10 @@ describe('QueryLimitService', () => {
     it('should handle multiple query types and costs correctly', async () => {
       // Arrange
       const deployment = createMockDeployment({
-        deploymentType: 'business',
-        queriesTotal: 5000,
-        queriesRemaining: 2500,
-        queriesUsed: 2500,
+        deploymentType: 'pro',
+        queriesTotal: 1200,
+        queriesRemaining: 600,
+        queriesUsed: 600,
         totalCost: 100.0,
         costThisPeriod: 100.0,
         queryTypes: {
@@ -604,7 +605,7 @@ describe('QueryLimitService', () => {
         },
       });
 
-      const guild = createMockGuild({ tier: 'business' });
+      const guild = createMockGuild({ tier: 'pro' });
 
       ctx.firestore.runTransaction.mockImplementation(async (callback: any) => {
         const transaction = {

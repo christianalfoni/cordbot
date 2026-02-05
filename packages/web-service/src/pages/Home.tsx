@@ -46,7 +46,7 @@ const pricing = {
       id: 'free',
       price: '$0',
       description: 'Try CordBot with limited queries',
-      features: ['25 total queries'],
+      features: ['25 total queries', '1 month memory'],
       featured: false,
       disabled: false,
     },

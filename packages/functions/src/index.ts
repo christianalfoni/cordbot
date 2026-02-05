@@ -268,8 +268,8 @@ export const upgradeGuild = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'guildId and targetTier are required');
   }
 
-  if (!['starter', 'pro', 'business'].includes(targetTier)) {
-    throw new HttpsError('invalid-argument', 'Invalid targetTier. Must be starter, pro, or business');
+  if (!['starter', 'pro'].includes(targetTier)) {
+    throw new HttpsError('invalid-argument', 'Invalid targetTier. Must be starter or pro');
   }
 
   const ctx = new ProductionFunctionContext();

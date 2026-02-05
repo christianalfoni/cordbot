@@ -7,6 +7,7 @@
 
 import { HttpsError } from 'firebase-functions/v2/https';
 import type { FunctionContext, Guild } from '../context.js';
+import { getTierMemoryContextSize, getTierMemoryRetentionMonths } from './guild-provisioning-service.js';
 
 export class DiscordOAuthService {
   constructor(private ctx: FunctionContext) {}
@@ -20,7 +21,7 @@ export class DiscordOAuthService {
     permissions: string;  // Received from Discord but not stored (same for all bots)
     redirectUri: string;
     firebaseUserId: string;
-    tier?: 'free' | 'starter' | 'pro' | 'business';
+    tier?: 'free' | 'starter' | 'pro';
   }): Promise<{
     success: true;
     guildId: string;
@@ -57,7 +58,7 @@ export class DiscordOAuthService {
     guildId: string;
     redirectUri: string;
     userId: string;
-    tier: 'free' | 'starter' | 'pro' | 'business';
+    tier: 'free' | 'starter' | 'pro';
   }): Promise<{ name: string; icon: string | null }> {
     const { code, guildId, redirectUri, userId, tier } = params;
 
@@ -133,7 +134,8 @@ export class DiscordOAuthService {
       tier,
       createdAt: now,
       updatedAt: now,
-      memoryContextSize: 10000,
+      memoryContextSize: getTierMemoryContextSize(tier),
+      memoryRetentionMonths: getTierMemoryRetentionMonths(tier),
       periodStart: now,
       periodEnd: null,
       lastDeployedAt: now,

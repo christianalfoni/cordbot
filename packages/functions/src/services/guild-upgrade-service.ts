@@ -18,10 +18,6 @@ const TIER_CONFIGS = {
     queriesTotal: 1200,
     monthlyQueries: 1200,
   },
-  business: {
-    queriesTotal: 3000,
-    monthlyQueries: 3000,
-  },
 };
 
 export class GuildUpgradeService {
@@ -33,7 +29,7 @@ export class GuildUpgradeService {
   async upgradeGuild(params: {
     userId: string;
     guildId: string;
-    targetTier: 'starter' | 'pro' | 'business';
+    targetTier: 'starter' | 'pro';
   }): Promise<{ success: true }> {
     const { userId, guildId, targetTier } = params;
 
