@@ -43,6 +43,11 @@ export interface IPermissionManager {
   handleDenial(requestId: string, userId: string): void;
 
   /**
+   * Handle an expired permission request (called when interaction times out)
+   */
+  handleExpired(requestId: string, errorMessage: string): void;
+
+  /**
    * Get the permission level required for a tool
    */
   getPermissionLevel(toolId: string): PermissionLevel;

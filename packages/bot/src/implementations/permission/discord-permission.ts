@@ -77,29 +77,41 @@ export class DiscordPermissionManager implements IPermissionManager {
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(approveButton, denyButton);
 
-    // Send permission request message using interface method
-    const permissionMsg = await channel.send({
-      content: `🔐 **Permission Required**\n${message}`,
-      components: [row],
-    });
-
-    // Wait for user response
+    // Create the promise and register as pending BEFORE sending the message
+    // This prevents a race condition where the user clicks before we register
     return new Promise((resolve, reject) => {
+      // Register as pending FIRST
       this.pendingRequests.set(requestId, {
         resolve,
         reject,
-        messageId: permissionMsg.id,
+        messageId: '', // Will be set after message is sent
         timestamp: Date.now(),
       });
 
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        if (this.pendingRequests.has(requestId)) {
-          this.pendingRequests.delete(requestId);
-          permissionMsg.delete().catch(() => {});
-          reject(new Error('Permission request timed out'));
+      // NOW send the message
+      channel.send({
+        content: `🔐 **Permission Required**\n${message}`,
+        components: [row],
+      }).then(permissionMsg => {
+        // Update with message ID
+        const request = this.pendingRequests.get(requestId);
+        if (request) {
+          request.messageId = permissionMsg.id;
         }
-      }, 5 * 60 * 1000);
+
+        // Timeout after 5 minutes
+        setTimeout(() => {
+          if (this.pendingRequests.has(requestId)) {
+            this.pendingRequests.delete(requestId);
+            permissionMsg.delete().catch(() => {});
+            reject(new Error('Permission request timed out'));
+          }
+        }, 5 * 60 * 1000);
+      }).catch(error => {
+        // Failed to send message - clean up and reject
+        this.pendingRequests.delete(requestId);
+        reject(error);
+      });
     });
   }
 
@@ -131,6 +143,17 @@ export class DiscordPermissionManager implements IPermissionManager {
       userId,
       timestamp: Date.now(),
     });
+  }
+
+  handleExpired(requestId: string, errorMessage: string): void {
+    const request = this.pendingRequests.get(requestId);
+
+    if (!request) {
+      return;
+    }
+
+    this.pendingRequests.delete(requestId);
+    request.reject(new Error(errorMessage));
   }
 
   getPermissionLevel(toolId: string): PermissionLevel {

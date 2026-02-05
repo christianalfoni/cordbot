@@ -51,7 +51,7 @@ export function GuildPage({ userData, onSignOut }: GuildPageProps) {
   }, [guildId]);
 
   const handleRestart = async () => {
-    if (!guildId) return;
+    if (!guildId || !guild) return;
 
     const confirmed = await confirm({
       title: 'Restart Bot',
@@ -62,18 +62,25 @@ export function GuildPage({ userData, onSignOut }: GuildPageProps) {
     if (!confirmed) return;
 
     setIsRestarting(true);
+
+    // Optimistic update - immediately set status to provisioning
+    setGuild(prev => prev ? { ...prev, status: 'provisioning' } : null);
+
     try {
       await restartGuild(guildId);
       showNotification('success', 'Bot restarted successfully');
+      // Real-time listener will update with actual status
     } catch (error: any) {
       showNotification('error', `Failed to restart: ${error.message}`);
+      // Rollback optimistic update
+      setGuild(prev => prev ? { ...prev, status: 'active' } : null);
     } finally {
       setIsRestarting(false);
     }
   };
 
   const handleDeployUpdate = async () => {
-    if (!guildId) return;
+    if (!guildId || !guild) return;
 
     const confirmed = await confirm({
       title: 'Deploy Update',
@@ -84,22 +91,28 @@ export function GuildPage({ userData, onSignOut }: GuildPageProps) {
     if (!confirmed) return;
 
     setIsUpdating(true);
+
+    // Optimistic update - immediately set status to provisioning
+    setGuild(prev => prev ? { ...prev, status: 'provisioning' } : null);
+
     try {
       await deployUpdate(guildId, 'latest');
-      // Status will change from active -> provisioning -> active automatically
+      // Real-time listener will update with actual status
     } catch (error: any) {
       showNotification('error', `Failed to deploy update: ${error.message}`);
+      // Rollback optimistic update
+      setGuild(prev => prev ? { ...prev, status: 'active' } : null);
     } finally {
       setIsUpdating(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!guildId) return;
+    if (!guildId || !guild) return;
 
     const confirmed = await confirm({
       title: 'Delete Bot',
-      message: `Are you sure you want to delete the bot for "${guild?.guildName}"? This cannot be undone.`,
+      message: `Are you sure you want to delete the bot for "${guild.guildName}"? This cannot be undone.`,
       confirmText: 'Delete',
       isDangerous: true,
     });
@@ -109,14 +122,20 @@ export function GuildPage({ userData, onSignOut }: GuildPageProps) {
     setIsDeleting(true);
     setDeleteStatus('Deprovisioning bot...');
 
+    // Optimistic update - immediately set status to deprovisioning
+    setGuild(prev => prev ? { ...prev, status: 'deprovisioning' } : null);
+
     try {
       await deprovisionGuild(guildId);
       setDeleteStatus('Bot deleted successfully');
       setTimeout(() => navigate('/'), 2000);
+      // Real-time listener will remove the guild once deleted from Firestore
     } catch (error: any) {
       console.error('Delete error:', error);
       setDeleteStatus(`Failed to delete: ${error.message}`);
       setIsDeleting(false);
+      // Rollback optimistic update
+      setGuild(prev => prev ? { ...prev, status: 'active' } : null);
     }
   };
 
@@ -151,6 +170,8 @@ export function GuildPage({ userData, onSignOut }: GuildPageProps) {
       case 'provisioning':
       case 'pending':
         return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
+      case 'deprovisioning':
+        return 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300';
       case 'error':
         return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
       case 'suspended':
@@ -219,6 +240,12 @@ export function GuildPage({ userData, onSignOut }: GuildPageProps) {
             <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 p-6">
               <p className="text-sm text-yellow-800 dark:text-yellow-300">
                 Bot is being provisioned... This usually takes about 30 seconds.
+              </p>
+            </div>
+          ) : guild.status === 'deprovisioning' ? (
+            <div className="rounded-lg bg-orange-50 dark:bg-orange-900/20 p-6">
+              <p className="text-sm text-orange-800 dark:text-orange-300">
+                Bot is being removed... This will take a moment.
               </p>
             </div>
           ) : (

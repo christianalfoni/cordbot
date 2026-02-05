@@ -712,6 +712,14 @@ export class MockPermissionManager implements IPermissionManager {
     }
   }
 
+  handleExpired(requestId: string, errorMessage: string): void {
+    const request = this.pendingRequests.get(requestId);
+    if (request) {
+      request.reject(new Error(errorMessage));
+      this.pendingRequests.delete(requestId);
+    }
+  }
+
   getPermissionLevel(toolId: string): any {
     return 'low';
   }

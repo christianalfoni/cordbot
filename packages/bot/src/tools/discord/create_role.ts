@@ -47,7 +47,7 @@ export function createCreateRoleTool(
           );
         } catch (permError) {
           return {
-            content: [{ type: 'text', text: '❌ Permission denied' }],
+            content: [{ type: 'text', text: `❌ ${permError instanceof Error ? permError.message : 'Permission denied'}` }],
             isError: true,
           };
         }

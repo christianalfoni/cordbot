@@ -144,10 +144,10 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
             </p>
           </div>
 
-          {isListening ? (
+          {loading || isListening ? (
             <div className="mt-12 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto mb-4"></div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Loading guilds...</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{loading ? 'Authenticating...' : 'Loading guilds...'}</p>
             </div>
           ) : guilds.length === 0 ? (
             <div className="mt-12 text-center">

@@ -73,11 +73,27 @@ export function useGuilds(userId: string | null) {
       setIsLoading(true);
       setError(null);
 
+      // Optimistic update - immediately set status to provisioning
+      setGuilds(prev =>
+        prev.map(g =>
+          g.id === guildId ? { ...g, status: 'provisioning' as GuildStatus } : g
+        )
+      );
+
       try {
         await ctx.restartGuild(guildId);
+        // Real-time listener will update with actual status
       } catch (err: any) {
         const errorMessage = err.message || 'Failed to restart guild bot';
         setError(errorMessage);
+
+        // Rollback optimistic update - revert to previous status
+        setGuilds(prev =>
+          prev.map(g =>
+            g.id === guildId ? { ...g, status: 'active' as GuildStatus } : g
+          )
+        );
+
         throw err;
       } finally {
         setIsLoading(false);
@@ -91,11 +107,27 @@ export function useGuilds(userId: string | null) {
       setIsLoading(true);
       setError(null);
 
+      // Optimistic update - immediately set status to provisioning
+      setGuilds(prev =>
+        prev.map(g =>
+          g.id === guildId ? { ...g, status: 'provisioning' as GuildStatus } : g
+        )
+      );
+
       try {
         await ctx.deployGuildUpdate(guildId, version);
+        // Real-time listener will update with actual status
       } catch (err: any) {
         const errorMessage = err.message || 'Failed to deploy update';
         setError(errorMessage);
+
+        // Rollback optimistic update - revert to previous status
+        setGuilds(prev =>
+          prev.map(g =>
+            g.id === guildId ? { ...g, status: 'active' as GuildStatus } : g
+          )
+        );
+
         throw err;
       } finally {
         setIsLoading(false);
@@ -109,11 +141,27 @@ export function useGuilds(userId: string | null) {
       setIsLoading(true);
       setError(null);
 
+      // Optimistic update - immediately set status to deprovisioning
+      setGuilds(prev =>
+        prev.map(g =>
+          g.id === guildId ? { ...g, status: 'deprovisioning' as GuildStatus } : g
+        )
+      );
+
       try {
         await ctx.deprovisionGuild(guildId);
+        // Real-time listener will remove the guild once it's deleted from Firestore
       } catch (err: any) {
         const errorMessage = err.message || 'Failed to delete guild bot';
         setError(errorMessage);
+
+        // Rollback optimistic update - revert to previous status
+        setGuilds(prev =>
+          prev.map(g =>
+            g.id === guildId ? { ...g, status: 'active' as GuildStatus } : g
+          )
+        );
+
         throw err;
       } finally {
         setIsLoading(false);

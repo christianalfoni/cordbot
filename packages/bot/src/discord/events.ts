@@ -172,6 +172,41 @@ export function setupEventHandlers(
     const customId = interaction.customId;
 
     if (customId.startsWith('permission_')) {
+      // CRITICAL: Defer IMMEDIATELY before any processing
+      // Discord requires acknowledgment within 3 seconds
+      let deferred = false;
+      try {
+        await interaction.deferUpdate();
+        deferred = true;
+      } catch (deferError) {
+        logger.error('Failed to defer interaction (interaction may have expired):', deferError);
+
+        // Parse customId to get requestId
+        const parts = customId.split('_');
+        const [, action, ...requestIdParts] = parts;
+        const requestId = requestIdParts.join('_');
+
+        // If there's a pending permission request, reject it with a helpful error
+        if (context.permissionManager.isPending(requestId)) {
+          context.permissionManager.handleExpired(
+            requestId,
+            'The permission button took too long to process (>3 seconds). This usually happens when the bot is under heavy load or experiencing delays. Please try the operation again.'
+          );
+        }
+
+        // Try to send ephemeral reply (might also fail if interaction is expired)
+        try {
+          await interaction.reply({
+            content: '⚠️ This permission request expired due to processing delays. Please try again.',
+            ephemeral: true,
+          });
+        } catch (replyError) {
+          // Nothing we can do - interaction is too old
+        }
+        return;
+      }
+
+      // Now that we've deferred, we have 15 minutes to process
       // Parse customId - handle underscores in requestId
       const parts = customId.split('_');
       const [, action, ...requestIdParts] = parts;
@@ -182,16 +217,7 @@ export function setupEventHandlers(
       const userId = interaction.user.id;
 
       if (context.permissionManager.isPending(requestId)) {
-        // CRITICAL: Defer the interaction immediately to prevent "Unknown interaction" error
-        // Discord requires a response within 3 seconds
-        try {
-          await interaction.deferUpdate();
-        } catch (deferError) {
-          logger.error('Failed to defer interaction:', deferError);
-          return;
-        }
-
-        // Now handle the permission (this resolves the promise and continues tool execution)
+        // Handle the permission (this resolves the promise and continues tool execution)
         if (approved) {
           context.permissionManager.handleApproval(requestId, userId);
         } else {
@@ -208,14 +234,14 @@ export function setupEventHandlers(
           logger.error('Failed to edit interaction reply:', editError);
         }
       } else {
-        // Not found or already handled - respond ephemerally
+        // Not found or already handled - update the deferred response
         try {
-          await interaction.reply({
+          await interaction.editReply({
             content: '⚠️ This permission request has already been handled or expired.',
-            ephemeral: true,
+            components: [],
           });
-        } catch (replyError) {
-          logger.error('Failed to reply to interaction:', replyError);
+        } catch (editError) {
+          logger.error('Failed to edit interaction reply:', editError);
         }
       }
     }
