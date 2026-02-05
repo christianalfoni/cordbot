@@ -4,9 +4,7 @@
 
 import { beforeUserCreated } from 'firebase-functions/v2/identity';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { getFirestore } from 'firebase-admin/firestore';
-
-const db = getFirestore();
+import { db } from './index.js';
 
 /**
  * Create user document when Firebase Auth user is created
