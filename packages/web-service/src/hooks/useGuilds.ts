@@ -76,7 +76,7 @@ export function useGuilds(userId: string | null) {
       // Optimistic update - immediately set status to provisioning
       setGuilds(prev =>
         prev.map(g =>
-          g.id === guildId ? { ...g, status: 'provisioning' as GuildStatus } : g
+          g.id === guildId ? { ...g, status: 'provisioning' } : g
         )
       );
 
@@ -90,7 +90,7 @@ export function useGuilds(userId: string | null) {
         // Rollback optimistic update - revert to previous status
         setGuilds(prev =>
           prev.map(g =>
-            g.id === guildId ? { ...g, status: 'active' as GuildStatus } : g
+            g.id === guildId ? { ...g, status: 'active' } : g
           )
         );
 
@@ -110,7 +110,7 @@ export function useGuilds(userId: string | null) {
       // Optimistic update - immediately set status to provisioning
       setGuilds(prev =>
         prev.map(g =>
-          g.id === guildId ? { ...g, status: 'provisioning' as GuildStatus } : g
+          g.id === guildId ? { ...g, status: 'provisioning' } : g
         )
       );
 
@@ -124,7 +124,7 @@ export function useGuilds(userId: string | null) {
         // Rollback optimistic update - revert to previous status
         setGuilds(prev =>
           prev.map(g =>
-            g.id === guildId ? { ...g, status: 'active' as GuildStatus } : g
+            g.id === guildId ? { ...g, status: 'active' } : g
           )
         );
 
@@ -144,7 +144,7 @@ export function useGuilds(userId: string | null) {
       // Optimistic update - immediately set status to deprovisioning
       setGuilds(prev =>
         prev.map(g =>
-          g.id === guildId ? { ...g, status: 'deprovisioning' as GuildStatus } : g
+          g.id === guildId ? { ...g, status: 'deprovisioning' } : g
         )
       );
 
@@ -158,7 +158,7 @@ export function useGuilds(userId: string | null) {
         // Rollback optimistic update - revert to previous status
         setGuilds(prev =>
           prev.map(g =>
-            g.id === guildId ? { ...g, status: 'active' as GuildStatus } : g
+            g.id === guildId ? { ...g, status: 'active' } : g
           )
         );
 
