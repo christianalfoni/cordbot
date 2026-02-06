@@ -9,6 +9,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useNotification } from '../context/NotificationContext';
 import { useConfirmation } from '../context/ConfirmationContext';
+import { useAppContext } from '../context/AppContextProvider';
 
 interface GuildsListProps {
   userData: UserData | null;
@@ -26,6 +27,7 @@ interface Subscription {
 }
 
 export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsListProps) {
+  const ctx = useAppContext();
   const { guilds, isListening, restartGuild, deployUpdate, deprovisionGuild } = useGuilds(userData?.id ?? '');
   const { showNotification } = useNotification();
   const { confirm } = useConfirmation();
@@ -133,7 +135,15 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
 
   return (
     <div className="bg-white dark:bg-gray-900 min-h-screen">
-      <Header userData={userData} onSignOut={onSignOut} onSignIn={onSignIn} loading={loading} />
+      <Header
+        userData={userData}
+        onSignOut={onSignOut}
+        onSignIn={onSignIn}
+        loading={loading}
+        confirm={confirm}
+        ctx={ctx}
+        showNotification={showNotification}
+      />
 
       <main className="mx-auto max-w-7xl px-6 lg:px-8 py-24 sm:py-32">
         <div className="mx-auto max-w-2xl lg:max-w-none">

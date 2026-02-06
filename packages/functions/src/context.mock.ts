@@ -13,6 +13,7 @@ import type {
   ISecretsManager,
   ILogger,
   IStripe,
+  IAuth,
 } from './context.js';
 
 /**
@@ -31,6 +32,7 @@ export class MockFirestore implements IFirestore {
   deleteGuild = vi.fn();
   getUser = vi.fn();
   updateUser = vi.fn();
+  deleteUser = vi.fn();
   getGuildDeployment = vi.fn();
   createGuildDeployment = vi.fn();
   updateGuildDeployment = vi.fn();
@@ -95,6 +97,13 @@ export class MockStripe implements IStripe {
 }
 
 /**
+ * Mock Auth - all methods are vitest mocks
+ */
+export class MockAuth implements IAuth {
+  deleteUser = vi.fn();
+}
+
+/**
  * Mock Function Context - combines all mock adapters
  */
 export class MockFunctionContext implements FunctionContext {
@@ -103,6 +112,7 @@ export class MockFunctionContext implements FunctionContext {
   public readonly secrets: MockSecretsManager;
   public readonly logger: MockLogger;
   public readonly stripe: MockStripe;
+  public readonly auth: MockAuth;
 
   constructor() {
     this.firestore = new MockFirestore();
@@ -110,6 +120,7 @@ export class MockFunctionContext implements FunctionContext {
     this.secrets = new MockSecretsManager();
     this.logger = new MockLogger();
     this.stripe = new MockStripe();
+    this.auth = new MockAuth();
   }
 
   getCurrentTime = vi.fn(() => new Date('2024-01-01T00:00:00Z'));

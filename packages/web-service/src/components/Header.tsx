@@ -1,14 +1,20 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Dialog, DialogPanel } from '@headlessui/react';
+import { Dialog, DialogPanel, Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import { UserData } from '../hooks/useAuth';
+import { AppContext } from '../context/context';
+import { ConfirmationOptions } from '../context/ConfirmationContext';
+import { NotificationType } from '../context/NotificationContext';
 
 interface HeaderProps {
   userData: UserData | null;
   onSignOut: () => void;
   onSignIn: () => Promise<void>;
   loading: boolean;
+  confirm: (options: ConfirmationOptions) => Promise<boolean>;
+  ctx: AppContext;
+  showNotification: (type: NotificationType, message: string) => void;
 }
 
 const navigation = [
@@ -17,8 +23,27 @@ const navigation = [
   { name: 'Guilds', href: '/guilds' },
 ];
 
-export function Header({ userData, onSignOut, onSignIn, loading }: HeaderProps) {
+export function Header({ userData, onSignOut, onSignIn, loading, confirm, ctx, showNotification }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    const confirmed = await confirm({
+      title: 'Delete Account',
+      message: 'This will permanently delete your account, cancel all active subscriptions, and remove all bots. This action cannot be undone.',
+      confirmText: 'Delete Account',
+      isDangerous: true,
+    });
+
+    if (confirmed) {
+      try {
+        await ctx.deleteAccount();
+        showNotification('success', 'Account successfully deleted');
+      } catch (error) {
+        console.error('Failed to delete account:', error);
+        showNotification('error', 'Failed to delete account. Please try again.');
+      }
+    }
+  };
 
   return (
     <header>
@@ -47,17 +72,68 @@ export function Header({ userData, onSignOut, onSignIn, loading }: HeaderProps) 
         </div>
         <div className="hidden lg:flex lg:flex-1 lg:justify-end">
           {loading ? (
-            <div className="h-6 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+            <div className="size-9 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"></div>
+          ) : userData ? (
+            <Menu as="div" className="relative">
+              <MenuButton className="flex items-center">
+                <span className="sr-only">Open user menu</span>
+                {userData.photoURL ? (
+                  <img
+                    src={userData.photoURL}
+                    alt=""
+                    className="size-9 rounded-full bg-gray-50 outline -outline-offset-1 outline-black/5 dark:bg-gray-800 dark:outline-white/10"
+                  />
+                ) : (
+                  <div className="size-9 rounded-full bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center">
+                    <span className="text-sm font-medium text-white">
+                      {userData.displayName?.charAt(0).toUpperCase() || 'U'}
+                    </span>
+                  </div>
+                )}
+              </MenuButton>
+              <MenuItems
+                transition
+                className="absolute right-0 z-10 mt-2 w-48 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg outline-1 outline-black/5 transition data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in dark:divide-white/10 dark:bg-gray-800 dark:shadow-none dark:-outline-offset-1 dark:outline-white/10"
+              >
+                <div className="py-1">
+                  <MenuItem>
+                    {({ focus }) => (
+                      <button
+                        onClick={handleDeleteAccount}
+                        className={`group flex w-full items-center px-4 py-2 text-sm text-red-700 dark:text-red-400 ${
+                          focus ? 'bg-gray-100 dark:bg-white/5' : ''
+                        }`}
+                      >
+                        Delete account
+                      </button>
+                    )}
+                  </MenuItem>
+                </div>
+                <div className="py-1">
+                  <MenuItem>
+                    {({ focus }) => (
+                      <button
+                        onClick={onSignOut}
+                        className={`group flex w-full items-center px-4 py-2 text-sm ${
+                          focus
+                            ? 'bg-gray-100 text-gray-900 dark:bg-white/5 dark:text-white'
+                            : 'text-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        Sign out
+                      </button>
+                    )}
+                  </MenuItem>
+                </div>
+              </MenuItems>
+            </Menu>
           ) : (
-            userData ? (
-              <button onClick={onSignOut} className="text-sm/6 font-semibold text-gray-900 dark:text-white">
-                Logout <span aria-hidden="true">&rarr;</span>
-              </button>
-            ) : (
-              <button onClick={onSignIn} className="text-sm/6 font-semibold text-gray-900 dark:text-white">
-                Login <span aria-hidden="true">&rarr;</span>
-              </button>
-            )
+            <button
+              onClick={onSignIn}
+              className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 dark:bg-indigo-500 dark:shadow-none dark:hover:bg-indigo-400"
+            >
+              Sign in
+            </button>
           )}
         </div>
       </nav>
@@ -96,18 +172,26 @@ export function Header({ userData, onSignOut, onSignIn, loading }: HeaderProps) 
                     <div className="h-7 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
                   </div>
                 ) : userData ? (
-                  <button
-                    onClick={onSignOut}
-                    className="-mx-3 block rounded-lg px-3 py-2.5 text-base/7 font-semibold text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-white/5 w-full text-left"
-                  >
-                    Logout
-                  </button>
+                  <>
+                    <button
+                      onClick={handleDeleteAccount}
+                      className="-mx-3 block rounded-lg px-3 py-2.5 text-base/7 font-semibold text-red-600 hover:bg-gray-50 dark:text-red-400 dark:hover:bg-white/5 w-full text-left"
+                    >
+                      Delete Account
+                    </button>
+                    <button
+                      onClick={onSignOut}
+                      className="-mx-3 block rounded-lg px-3 py-2.5 text-base/7 font-semibold text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-white/5 w-full text-left"
+                    >
+                      Sign out
+                    </button>
+                  </>
                 ) : (
                   <button
                     onClick={onSignIn}
                     className="-mx-3 block rounded-lg px-3 py-2.5 text-base/7 font-semibold text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-white/5 w-full text-left"
                   >
-                    Login
+                    Sign in
                   </button>
                 )}
               </div>

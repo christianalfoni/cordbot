@@ -6,6 +6,8 @@ import { Header } from '../components/Header';
 import { db } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useAppContext } from '../context/AppContextProvider';
+import { useConfirmation } from '../context/ConfirmationContext';
+import { useNotification } from '../context/NotificationContext';
 
 interface HomeProps {
   userData: UserData | null;
@@ -82,6 +84,8 @@ const pricing = {
 
 export function Home({ userData, onSignOut, onSignIn, loading }: HomeProps) {
   const ctx = useAppContext();
+  const { confirm } = useConfirmation();
+  const { showNotification } = useNotification();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [freeTierConfig, setFreeTierConfig] = useState<{
     maxSlots: number;
@@ -146,7 +150,15 @@ export function Home({ userData, onSignOut, onSignIn, loading }: HomeProps) {
 
   return (
     <div className="bg-white dark:bg-gray-900">
-      <Header userData={userData} onSignOut={onSignOut} onSignIn={onSignIn} loading={loading} />
+      <Header
+        userData={userData}
+        onSignOut={onSignOut}
+        onSignIn={onSignIn}
+        loading={loading}
+        confirm={confirm}
+        ctx={ctx}
+        showNotification={showNotification}
+      />
 
       <main>
         {/* Pricing section */}

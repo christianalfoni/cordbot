@@ -6,6 +6,7 @@
  */
 
 import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 import { logger } from 'firebase-functions/v2';
 import type {
   FunctionContext,
@@ -14,6 +15,7 @@ import type {
   ISecretsManager,
   ILogger,
   IStripe,
+  IAuth,
   Bot,
   Guild,
   User,
@@ -164,6 +166,10 @@ class FirestoreAdapter implements IFirestore {
 
   async updateUser(userId: string, data: Partial<User>): Promise<void> {
     await this.db.collection('users').doc(userId).update(data);
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    await this.db.collection('users').doc(userId).delete();
   }
 
   async getGuildDeployment(guildId: string): Promise<GuildDeployment | null> {
@@ -347,8 +353,15 @@ class LoggerAdapter implements ILogger {
 }
 
 /**
- * Production context - combines all production adapters
+ * Auth adapter - wraps Firebase Auth operations
  */
+class AuthAdapter implements IAuth {
+  async deleteUser(userId: string): Promise<void> {
+    const auth = getAuth();
+    await auth.deleteUser(userId);
+  }
+}
+
 /**
  * Stripe adapter - wraps Stripe SDK operations
  */
@@ -381,6 +394,7 @@ export class ProductionFunctionContext implements FunctionContext {
   public readonly secrets: ISecretsManager;
   public readonly logger: ILogger;
   public readonly stripe: IStripe;
+  public readonly auth: IAuth;
 
   constructor(secretDefinitions?: Record<string, any>) {
     this.firestore = new FirestoreAdapter();
@@ -388,6 +402,7 @@ export class ProductionFunctionContext implements FunctionContext {
     this.secrets = new SecretsAdapter(secretDefinitions);
     this.logger = new LoggerAdapter();
     this.stripe = new StripeAdapter(this.secrets);
+    this.auth = new AuthAdapter();
   }
 
   getCurrentTime(): Date {

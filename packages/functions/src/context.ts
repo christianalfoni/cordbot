@@ -14,6 +14,7 @@ export interface FunctionContext {
   secrets: ISecretsManager;
   logger: ILogger;
   stripe: IStripe;
+  auth: IAuth;
   getCurrentTime(): Date;
 }
 
@@ -55,6 +56,7 @@ export interface IFirestore {
   // User operations
   getUser(userId: string): Promise<User | null>;
   updateUser(userId: string, data: Partial<User>): Promise<void>;
+  deleteUser(userId: string): Promise<void>;
 
   // Subscription operations
   createSubscription(id: string, data: Subscription): Promise<void>;
@@ -95,6 +97,13 @@ export interface ILogger {
  */
 export interface IStripe {
   cancelSubscriptionImmediately(subscriptionId: string): Promise<void>;
+}
+
+/**
+ * Firebase Auth operations interface
+ */
+export interface IAuth {
+  deleteUser(userId: string): Promise<void>;
 }
 
 // Type definitions

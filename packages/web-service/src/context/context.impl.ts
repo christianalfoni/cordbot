@@ -209,6 +209,18 @@ export class FirebaseContext implements AppContext {
     await deprovisionGuildFunc({ guildId });
   }
 
+  async deleteAccount(): Promise<void> {
+    const deleteUserAccountFunc = httpsCallable(this.functions, 'deleteUserAccount');
+    try {
+      await deleteUserAccountFunc({});
+      this.logger.info('Account deleted successfully');
+      await this.signOut();
+    } catch (error) {
+      this.logger.error('Failed to delete account:', error instanceof Error ? error : undefined);
+      throw error;
+    }
+  }
+
   async triggerPaidTierProvisioning(guildId: string): Promise<void> {
     const provisionPaidTierGuildFunc = httpsCallable(this.functions, 'provisionPaidTierGuild');
     await provisionPaidTierGuildFunc({ guildId });

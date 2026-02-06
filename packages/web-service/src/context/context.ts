@@ -111,6 +111,12 @@ export interface AppContext {
   deprovisionGuild(guildId: string): Promise<void>;
 
   /**
+   * Delete the user's account and all associated data
+   * This will delete all guilds, subscriptions, and user data
+   */
+  deleteAccount(): Promise<void>;
+
+  /**
    * Trigger provisioning for a paid tier guild
    * @param guildId The guild ID
    */

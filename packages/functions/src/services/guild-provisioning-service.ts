@@ -526,6 +526,72 @@ export class GuildProvisioningService {
   }
 
   /**
+   * Delete a user's entire account, including all guilds and subscriptions
+   * This will:
+   * 1. Delete all guilds (which handles subscription cancellation and Fly.io cleanup)
+   * 2. Delete the user document from Firestore
+   * 3. Delete the Firebase Auth user
+   */
+  async deleteUserAccount(params: { userId: string }): Promise<{
+    success: true;
+    deletedGuilds: number;
+    errors: string[];
+  }> {
+    const { userId } = params;
+    const errors: string[] = [];
+
+    this.ctx.logger.info(`Starting account deletion for user ${userId}`);
+
+    // 1. Get all guilds for this user
+    const guilds = await this.ctx.firestore.queryGuildsByUser(userId);
+    this.ctx.logger.info(`Found ${guilds.length} guilds to delete`);
+
+    // 2. Delete each guild (handles subscription, Fly.io, deployment)
+    for (const { id: guildId } of guilds) {
+      try {
+        await this.deprovisionGuild({ userId, guildId });
+        this.ctx.logger.info(`Successfully deleted guild ${guildId}`);
+      } catch (error) {
+        const errorMsg = `Failed to delete guild ${guildId}: ${error}`;
+        this.ctx.logger.error(errorMsg);
+        errors.push(errorMsg);
+        // Continue with next guild
+      }
+    }
+
+    // 3. Delete user document from Firestore
+    try {
+      await this.ctx.firestore.deleteUser(userId);
+      this.ctx.logger.info(`Deleted user document for ${userId}`);
+    } catch (error) {
+      const errorMsg = `Failed to delete user document: ${error}`;
+      this.ctx.logger.error(errorMsg);
+      errors.push(errorMsg);
+    }
+
+    // 4. Delete Firebase Auth user
+    try {
+      await this.ctx.auth.deleteUser(userId);
+      this.ctx.logger.info(`Deleted Firebase Auth user ${userId}`);
+    } catch (error) {
+      const errorMsg = `Failed to delete auth user: ${error}`;
+      this.ctx.logger.error(errorMsg);
+      errors.push(errorMsg);
+    }
+
+    this.ctx.logger.info(`Account deletion complete for user ${userId}`, {
+      deletedGuilds: guilds.length,
+      errorCount: errors.length,
+    });
+
+    return {
+      success: true,
+      deletedGuilds: guilds.length,
+      errors,
+    };
+  }
+
+  /**
    * Restart a guild's machine
    * Also refreshes environment variables to ensure they're up to date
    */

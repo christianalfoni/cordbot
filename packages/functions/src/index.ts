@@ -437,6 +437,31 @@ export const deprovisionGuild = onCall({ secrets: [flyApiToken, stripeApiKey] },
 });
 
 /**
+ * Delete user account and all associated data (called by web UI)
+ */
+export const deleteUserAccount = onCall({ secrets: [flyApiToken, stripeApiKey] }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const ctx = new ProductionFunctionContext({
+    FLY_API_TOKEN: flyApiToken,
+    STRIPE_API_KEY: stripeApiKey,
+  });
+
+  try {
+    const service = new GuildProvisioningService(ctx);
+    return await service.deleteUserAccount({ userId: request.auth.uid });
+  } catch (error) {
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    ctx.logger.error('Error deleting user account:', error);
+    throw new HttpsError('internal', 'An error occurred while deleting account');
+  }
+});
+
+/**
  * Restart a guild's machine (called by web UI)
  */
 export const restartGuild = onCall({ secrets: [flyApiToken] }, async (request) => {
