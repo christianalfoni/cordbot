@@ -12,13 +12,14 @@ import { createTool as createShareFile } from './share_file.js';
 export function loadBuiltinTools(
   getCurrentWorkingDir: () => string,
   getCurrentChannelId: () => string,
-  queueFileForSharing: (filePath: string) => void
+  queueFileForSharing: (filePath: string) => void,
+  getCurrentChannel?: () => any
 ): SdkMcpToolDefinition<any>[] {
   const tools: SdkMcpToolDefinition<any>[] = [];
 
   // Load cron management tools (now using centralized storage via channel ID)
   tools.push(createListJobs(getCurrentChannelId));
-  tools.push(createAddJob(getCurrentChannelId));
+  tools.push(createAddJob(getCurrentChannelId, getCurrentChannel));
   tools.push(createRemoveJob(getCurrentChannelId));
   tools.push(createUpdateJob(getCurrentChannelId));
 

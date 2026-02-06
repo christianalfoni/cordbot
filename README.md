@@ -84,6 +84,14 @@ Run the bot directly with npx:
    npx @cordbot/agent
    ```
 
+   **Note for local development:** When running the bot on your local machine, set the `HOME` environment variable to the current directory to ensure all bot data (configuration, memory, channels) is scoped to your workspace:
+
+   ```bash
+   HOME=$(pwd) npx @cordbot/agent
+   ```
+
+   This prevents the bot from using your system's home directory and keeps everything contained in your workspace.
+
 The bot will start observing your Discord server and responding to messages. It will create channel folders and configuration files in this workspace directory.
 
 ## Deploy to Fly.io

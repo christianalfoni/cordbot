@@ -33,6 +33,10 @@ export function createGetPollResultsTool(client: Client) {
         }
 
         const poll = message.poll;
+
+        // Fetch current poll data to ensure vote counts are up-to-date
+        await poll.fetch();
+
         const question = poll.question.text;
         const totalVotes = poll.answers.reduce((sum, answer) => sum + answer.voteCount, 0);
 

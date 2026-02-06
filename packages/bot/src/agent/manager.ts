@@ -69,6 +69,11 @@ export class SessionManager {
           const sessionId = entries[0][0];
           this.queueFileForSharing(sessionId, filePath);
         }
+      },
+      () => {
+        // Get the channel for the currently executing session
+        const entries = Array.from(this.currentChannels.entries());
+        return entries.length > 0 ? entries[0][1] : null;
       }
     );
 

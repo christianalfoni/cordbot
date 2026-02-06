@@ -6,7 +6,7 @@ const schema = z.object({
   channelId: z.string().describe('The Discord channel ID to post the poll in'),
   question: z.string().describe('The poll question'),
   answers: z.array(z.string()).min(2).max(10).describe('Poll answer options (2-10 options)'),
-  duration: z.number().optional().describe('Poll duration in hours (default: 24)'),
+  duration: z.number().optional().describe('Poll duration in hours (default: 24, minimum: 1)'),
   allowMultiselect: z.boolean().optional().describe('Allow selecting multiple answers (default: false)'),
 });
 
@@ -37,6 +37,14 @@ export function createCreatePollTool(
           };
         }
 
+        // Validate duration (Discord minimum is 1 hour)
+        if (duration < 1) {
+          return {
+            content: [{ type: 'text', text: 'Error: Poll duration must be at least 1 hour (Discord minimum)' }],
+            isError: true,
+          };
+        }
+
         // Create poll
         const poll = {
           question: { text: question },
@@ -47,10 +55,15 @@ export function createCreatePollTool(
 
         const message = await (channel as TextChannel).send({ poll });
 
+        // Format duration for display
+        const durationDisplay = duration >= 24
+          ? `${Math.round(duration / 24)} day${duration >= 48 ? 's' : ''}`
+          : `${duration} hour${duration !== 1 ? 's' : ''}`;
+
         return {
           content: [{
             type: 'text',
-            text: `✅ Poll created in <#${channelId}>\n**Question:** ${question}\n**Duration:** ${duration} hours\n**Message ID:** ${message.id}`
+            text: `✅ Poll created in <#${channelId}>\n**Question:** ${question}\n**Duration:** ${durationDisplay}\n**Message ID:** ${message.id}`
           }],
         };
       } catch (error: any) {

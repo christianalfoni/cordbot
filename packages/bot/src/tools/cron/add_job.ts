@@ -9,10 +9,11 @@ const schema = z.object({
   name: z.string().describe('Unique name for this cron job (e.g., "Daily summary", "Weekly report")'),
   schedule: z.string().describe('Cron schedule in 5-field format: "minute hour day month weekday". Examples: "0 9 * * *" (daily at 9am), "0 9 * * 1" (Mondays at 9am), "*/30 * * * *" (every 30 minutes)'),
   task: z.string().describe('Description of the task for Claude to execute when this job runs (e.g., "Summarize recent changes", "Generate weekly report")'),
-  oneTime: z.boolean().optional().describe('Set to true for one-time tasks that should be removed after execution. Default: false')
+  oneTime: z.boolean().optional().describe('Set to true for one-time tasks that should be removed after execution. Default: false'),
+  replyInThread: z.boolean().optional().describe('Set to true to send the final cron job response to this thread instead of the channel. Only works when called from a thread. Default: false')
 });
 
-export function createTool(getChannelId: () => string) {
+export function createTool(getChannelId: () => string, getCurrentChannel?: () => any) {
   return tool(
     'cron_add_job',
     'Add a new scheduled cron job to this Discord channel. Use this instead of bash cron/at commands - jobs will execute autonomously and post results directly to the Discord channel. Always list jobs first to avoid duplicate names.',
@@ -61,12 +62,23 @@ export function createTool(getChannelId: () => string) {
           };
         }
 
+        // Determine responseThreadId if replyInThread is requested
+        let responseThreadId: string | undefined;
+        if (params.replyInThread && getCurrentChannel) {
+          const channel = getCurrentChannel();
+          // Check if current context is a thread
+          if (channel && channel.isThread && channel.isThread()) {
+            responseThreadId = channel.id;
+          }
+        }
+
         // Add new job
         config.jobs.push({
           name: params.name,
           schedule: params.schedule,
           task: params.task,
-          oneTime: params.oneTime || false
+          oneTime: params.oneTime || false,
+          ...(responseThreadId && { responseThreadId })
         });
 
         // Write back to file
@@ -84,9 +96,12 @@ export function createTool(getChannelId: () => string) {
                   name: params.name,
                   schedule: params.schedule,
                   task: params.task,
-                  oneTime: params.oneTime || false
+                  oneTime: params.oneTime || false,
+                  ...(responseThreadId && { responseThreadId })
                 },
-                note: 'The job will be automatically scheduled and will start running according to the schedule. Results will be posted to this Discord channel.'
+                note: responseThreadId
+                  ? 'The job will be automatically scheduled and will start running according to the schedule. Results will be posted to this thread.'
+                  : 'The job will be automatically scheduled and will start running according to the schedule. Results will be posted to this Discord channel.'
               }, null, 2)
             }
           ]

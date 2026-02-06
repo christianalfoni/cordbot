@@ -66,6 +66,7 @@ export interface UserData {
   hostingBetaApproved?: boolean;
   freeTierBotDeployed?: boolean;
   freeTierBotDeployedAt?: string;
+  notifyFreeTier?: boolean;
 }
 
 export interface Guild {

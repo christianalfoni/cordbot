@@ -301,20 +301,28 @@ async function handleMessage(
 
     // Determine thread context
     let threadId: string;
-    let targetForStream: IMessage | ITextChannel | IThreadChannel;
-    let isTargetMessage: boolean;
+    let targetForStream: ITextChannel | IThreadChannel;
 
     if (message.channel.isThreadChannel()) {
       // User is replying in an existing thread
       threadId = message.channel.id;
       targetForStream = message.channel;
-      isTargetMessage = false;
     } else {
-      // User is writing in the channel - defer thread creation
-      // Pass message to streamToDiscord for lazy creation
-      threadId = `pending-${message.id}`;
-      targetForStream = message;
-      isTargetMessage = true;
+      // User is writing in the channel - CREATE THREAD NOW (before calling Claude)
+      // This ensures thread context is available when tools execute
+      logger.info(`✨ Creating thread for new conversation`);
+
+      const thread = await (message.channel as ITextChannel).threads.create({
+        name: 'Claude conversation',
+        autoArchiveDuration: 1440,
+        reason: 'Claude conversation',
+        startMessage: message,
+      });
+
+      threadId = thread.id;
+      targetForStream = thread;
+
+      logger.info(`✅ Thread created: ${thread.id}`);
     }
 
     // Determine session ID and working directory
@@ -378,12 +386,8 @@ async function handleMessage(
         logger.error(`❌ Working directory does not exist: ${workingDir}`);
         logger.error(`   This likely means the persistent volume is not mounted.`);
 
-        // Send error to the appropriate target
-        const errorTarget: ITextChannel | IThreadChannel = isTargetMessage
-          ? message.channel
-          : (targetForStream as ITextChannel | IThreadChannel);
-
-        await errorTarget.send(
+        // Send error to the thread
+        await targetForStream.send(
           `❌ Error: Working directory not found. Please check server configuration.`
         );
         return;
@@ -398,12 +402,7 @@ async function handleMessage(
       }
     }
 
-    // Set channel context for permission requests
-    // For lazy thread creation, use the message channel temporarily
-    const contextChannel: ITextChannel | IThreadChannel = isTargetMessage
-      ? message.channel
-      : (targetForStream as ITextChannel | IThreadChannel);
-    sessionManager.setChannelContext(sessionId, contextChannel);
+    // Note: Channel context is already set above before creating the query
 
     // Set working directory context for built-in tools (cron, etc.)
     sessionManager.setWorkingDirContext(sessionId, workingDir);
@@ -503,15 +502,18 @@ async function handleMessage(
       if (queryLimitManager) {
         const canProceed = await queryLimitManager.canProceedWithQuery();
         if (!canProceed) {
-          const errorTarget: ITextChannel | IThreadChannel = isTargetMessage
-            ? message.channel
-            : (targetForStream as ITextChannel | IThreadChannel);
-          await errorTarget.send(
+          await targetForStream.send(
             '⚠️ Query limit reached. Please upgrade your plan to continue using the bot.'
           );
           return;
         }
       }
+
+      // Set channel context BEFORE creating query
+      // This ensures tools like cron_add_job have access to thread context
+      sessionManager.setChannelContext(sessionId, targetForStream);
+      sessionManager.setWorkingDirContext(sessionId, workingDir);
+      sessionManager.setChannelIdContext(sessionId, parentChannelId);
 
       // Create query for Claude
       // For new sessions, pass null to let SDK create a fresh session
@@ -529,10 +531,7 @@ async function handleMessage(
         );
       } catch (queryError) {
         logger.error('Error creating query:', queryError);
-        const errorTarget: ITextChannel | IThreadChannel = isTargetMessage
-          ? message.channel
-          : (targetForStream as ITextChannel | IThreadChannel);
-        await errorTarget.send(
+        await targetForStream.send(
           `❌ Failed to create query: ${queryError instanceof Error ? queryError.message : 'Unknown error'}`
         );
         return;
@@ -556,12 +555,8 @@ async function handleMessage(
       } catch (streamError) {
         logger.error('Error streaming to Discord:', streamError);
 
-        // Send error to the appropriate target
-        const errorTarget: ITextChannel | IThreadChannel = isTargetMessage
-          ? message.channel
-          : (targetForStream as ITextChannel | IThreadChannel);
-
-        await errorTarget.send(
+        // Send error to the thread
+        await targetForStream.send(
           `❌ Failed to stream response: ${streamError instanceof Error ? streamError.message : 'Unknown error'}`
         );
       } finally {

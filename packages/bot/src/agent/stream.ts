@@ -22,11 +22,7 @@ interface StreamState {
   sessionId: string;
   workspaceRoot: string;
   isCronJob: boolean;
-  // For lazy thread creation
-  threadCreated: boolean;
-  originalMessage: IMessage | null;
-  threadName: string | null;
-  parentChannel: ITextChannel | null;
+  // Note: Thread creation now happens before streamToDiscord is called
   // For cron jobs: collect all messages and only send the last one
   collectedAssistantMessages: string[];
   // Usage information from query result
@@ -42,7 +38,7 @@ export interface StreamResult {
 
 export async function streamToDiscord(
   queryResult: Query,
-  target: ITextChannel | IThreadChannel | IMessage,
+  target: ITextChannel | IThreadChannel,
   sessionManager: SessionManager,
   sessionId: string,
   workingDir: string,
@@ -52,35 +48,8 @@ export async function streamToDiscord(
   parentChannelId?: string,
   isCronJob?: boolean
 ): Promise<StreamResult> {
-  // Prepare for lazy thread creation (don't create yet)
-  let channel: ITextChannel | IThreadChannel;
-  let threadCreated = false;
-  let originalMessage: IMessage | null = null;
-  let threadName: string | null = null;
-  let parentChannel: ITextChannel | null = null;
-
-  // Check if target is a message by checking for message-specific properties
-  const isMessage = 'author' in target && 'content' in target;
-
-  if (isMessage) {
-    // Target is IMessage - store info for lazy thread creation
-    const message = target as IMessage;
-    originalMessage = message;
-
-    // Get channel from message
-    const messageChannel = message.channel;
-    parentChannel = messageChannel.isThreadChannel() ? null : (messageChannel as ITextChannel);
-    channel = messageChannel;
-
-    // Clean the message content by removing Discord mentions
-    const cleanContent = message.content.replace(/<@!?\d+>/g, '').trim();
-
-    threadName = `${cleanContent.slice(0, 80)}${cleanContent.length > 80 ? '...' : ''}`;
-  } else {
-    // Already in a thread or channel
-    channel = target as ITextChannel | IThreadChannel;
-    threadCreated = true; // No need to create
-  }
+  // Thread is already created before this function is called
+  let channel: ITextChannel | IThreadChannel = target;
 
   // Extract workspace root from workingDir (workingDir is workspace/channel-name)
   const workspaceRoot = workingDir.split('/').slice(0, -1).join('/');
@@ -102,10 +71,6 @@ export async function streamToDiscord(
     sessionId,
     workspaceRoot,
     isCronJob: isCronJob || false,
-    threadCreated,
-    originalMessage,
-    threadName,
-    parentChannel,
     collectedAssistantMessages: [],
   };
 
@@ -377,27 +342,8 @@ async function sendCompleteMessage(
 ): Promise<ITextChannel | IThreadChannel> {
   logger.info(`📤 Sending message to Discord (${content.length} chars)`);
 
-  // Create thread now if needed (lazy thread creation)
-  let targetChannel = channel;
-  if (!state.threadCreated && state.originalMessage && state.parentChannel && state.threadName) {
-    logger.info(`✨ Creating thread: ${state.threadName}`);
-    const thread = await state.parentChannel.threads.create({
-      name: state.threadName,
-      autoArchiveDuration: 1440,
-      reason: 'Claude conversation',
-      startMessage: state.originalMessage,
-    });
-    targetChannel = thread;
-    state.threadCreated = true;
-
-    // IMPORTANT: Update session manager's channel context to the new thread
-    // This ensures permission requests and other channel-specific operations
-    // use the thread, not the parent channel
-    sessionManager.setChannelContext(state.sessionId, thread);
-
-    // Note: Keep state.channelId as parent channel ID for memory operations
-    // Don't update it to thread.id
-  }
+  // Thread is already created before streamToDiscord is called
+  const targetChannel = channel;
 
   // Prepend prefix if provided
   let fullContent = content;

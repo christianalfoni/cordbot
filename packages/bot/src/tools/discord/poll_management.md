@@ -20,9 +20,22 @@ Create a poll in the general channel asking "What should we work on next week?" 
 ```
 
 Options:
-- Set duration in hours (default: 24)
+- Set duration in hours (default: 24, minimum: 1)
 - Enable multiselect to allow multiple answers
 - Polls automatically show vote counts and percentages
+
+**IMPORTANT: Discord enforces a minimum poll duration of 1 hour**
+
+Duration must be at least 1 hour. Values less than 1 will return an error.
+
+**Duration Examples:**
+- 1 hour → `duration: 1`
+- 4 hours → `duration: 4`
+- 24 hours → `duration: 24`
+- 2 days → `duration: 48`
+- 1 week → `duration: 168`
+
+**Note:** Poll duration (how long it stays open) is separate from when you check results. You can schedule a cron job to check a 24-hour poll after just 30 minutes to see intermediate results.
 
 ### Getting Poll Results
 
@@ -42,10 +55,10 @@ Results include:
 
 1. **Clear Questions** - Make poll questions specific and unambiguous
 2. **Reasonable Options** - Keep answer options concise (2-10 options)
-3. **Appropriate Duration** - Choose duration based on urgency:
+3. **Appropriate Duration** - Choose duration based on urgency (minimum 1 hour):
    - Quick decisions: 1-4 hours
-   - Team feedback: 24-48 hours
-   - Community votes: 3-7 days
+   - Team feedback: 24-48 hours (1-2 days)
+   - Community votes: 72-168 hours (3-7 days)
 4. **Channel Selection** - Post polls in appropriate channels where the target audience is active
 
 ## Automating Poll Result Announcements
@@ -59,7 +72,7 @@ Instead of tracking polls in a separate file, **create a one-time cron job** whe
 **User Request (in Thread #planning):**
 ```
 Create a poll asking "Preferred meeting time?" with options: 9 AM, 2 PM, 5 PM.
-Run for 48 hours, then announce results here.
+Run for 48 hours, then announce results here and schedule the winning time.
 ```
 
 **Bot Actions:**
@@ -71,25 +84,32 @@ Note the poll message ID (e.g., 123456789).
 Calculate end time: current time + 48 hours = 2026-02-12T14:30:00Z
 ```
 
-**2. Create one-time cron job**
+**2. Create one-time cron job (if in a thread)**
+
+Use `cron_add_job` with `replyInThread: true` to send results back to the thread:
+
+```
+cron_add_job({
+  name: "poll-meeting-time-results",
+  schedule: "30 14 12 2 *",  # 48 hours from now
+  task: "Get results from poll message 123456789 in channel #general. Find the option with most votes. Create recurring calendar event for that time. Reply with results and event details.",
+  oneTime: true,
+  replyInThread: true  # ← Automatically captures thread ID!
+})
+```
+
+This creates in cron.yaml:
 ```yaml
-# Add to cron.yaml
 jobs:
   - name: poll-meeting-time-results
-    schedule: "30 14 12 2 *"  # Exact end time
+    schedule: "30 14 12 2 *"
+    responseThreadId: "planning-thread-id"  # ← Automatically set!
     oneTime: true
     task: |
       Get results from poll message 123456789 in channel #general.
-
-      Send results to thread #planning (where request came from):
-      "📊 Poll Results: Preferred meeting time?
-
-       Results:
-       - 9 AM: [count] votes ([percent]%)
-       - 2 PM: [count] votes ([percent]%)
-       - 5 PM: [count] votes ([percent]%)
-
-       Winner: [option with most votes] ✨"
+      Find the option with most votes.
+      Create recurring calendar event for that time.
+      Reply with results and event details.
 ```
 
 **3. Reply to user**

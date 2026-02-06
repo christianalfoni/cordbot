@@ -440,7 +440,7 @@ The cron job runs every 5 minutes, checks for due reminders, sends them, and cle
 
 ## Thread-Aware Scheduled Tasks
 
-**New Feature:** Cron jobs can send their final message to a specific thread instead of the channel!
+**Feature:** Cron jobs can send their final message to the thread where they were created!
 
 ### Problem
 ```
@@ -450,21 +450,32 @@ Bot: Creates poll, schedules result check
 Cron job: Results ready... but WHERE to send them?
 ```
 
-### Solution: Use `responseThreadId` Field
+### Solution: Use `replyInThread` Parameter
 
+When creating a cron job from a thread, use the `replyInThread: true` parameter to automatically capture the thread ID:
+
+```
+User in Thread #planning: "Check poll results in 2 days"
+
+Bot uses cron_add_job with replyInThread: true
+```
+
+This automatically creates:
 ```yaml
 jobs:
   - name: poll-results
     schedule: "0 14 10 2 *"
-    responseThreadId: "123456789"  # ← Send to this thread
+    responseThreadId: "planning-thread-id"  # ← Automatically captured!
     oneTime: true
     task: Get poll results and analyze
 ```
 
 **How it works:**
-- ✅ If `responseThreadId` is set → Final message goes to that thread
-- ✅ If not set → Final message goes to the channel (default behavior)
+- ✅ Set `replyInThread: true` when calling `cron_add_job` from a thread
+- ✅ Bot automatically captures the thread ID and writes it to `responseThreadId`
+- ✅ Final message goes to that thread instead of the channel
 - ✅ Preserves conversation context when responding in threads
+- ✅ If called from a channel (not a thread), `replyInThread` is ignored
 
 ### Example: Poll Created in Thread
 
