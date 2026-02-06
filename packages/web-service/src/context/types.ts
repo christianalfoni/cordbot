@@ -62,8 +62,6 @@ export interface UserData {
   toolsConfig?: {
     [domain: string]: string[];
   };
-  hostingBetaRequested?: boolean;
-  hostingBetaApproved?: boolean;
   freeTierBotDeployed?: boolean;
   freeTierBotDeployedAt?: string;
   notifyFreeTier?: boolean;

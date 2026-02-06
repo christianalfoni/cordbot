@@ -48,9 +48,7 @@ describe('StripeService', () => {
       // Arrange - Note: This test would require mocking Stripe SDK
       // For now, we can just verify the user lookup happens
       const userId = 'user123';
-      ctx.firestore.getUser.mockResolvedValue({
-        hostingBetaRequested: false,
-      });
+      ctx.firestore.getUser.mockResolvedValue({});
 
       // This test would need Stripe SDK mocking to fully work
       // For demonstration, we'll just verify the getUser call
@@ -146,9 +144,7 @@ describe('StripeService', () => {
 
     it('should throw error if user exists but has no customer ID', async () => {
       // Arrange
-      ctx.firestore.getUser.mockResolvedValue({
-        hostingBetaRequested: false,
-      });
+      ctx.firestore.getUser.mockResolvedValue({});
 
       // Act & Assert
       await expect(

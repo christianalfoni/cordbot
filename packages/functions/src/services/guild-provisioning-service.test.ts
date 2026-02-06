@@ -274,12 +274,13 @@ describe('GuildProvisioningService', () => {
 
       const body = JSON.parse(machineCreateCall![1]!.body as string);
       expect(body.config.env).toEqual({
+        HOME: '/workspace',
         DISCORD_BOT_TOKEN: 'test-bot-token',
         DISCORD_GUILD_ID: 'guild-123',
         ANTHROPIC_API_KEY: 'test-api-key',
-        BOT_MODE: 'shared',
         BOT_ID: 'guild-123',
         MEMORY_CONTEXT_SIZE: '10000',
+        MEMORY_RETENTION_MONTHS: '6',
         SERVICE_URL: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
       });
     });

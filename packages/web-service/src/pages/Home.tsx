@@ -272,7 +272,7 @@ export function Home({ userData, onSignOut, onSignIn, loading }: HomeProps) {
                           handleAddToDiscord(tier.id as 'free' | 'starter' | 'pro');
                         }
                       }}
-                      disabled={loading || (userData && !userData.hostingBetaApproved) || (tier.id === 'free' && userData?.freeTierBotDeployed)}
+                      disabled={loading || (tier.id === 'free' && userData?.freeTierBotDeployed)}
                       aria-describedby={tier.id}
                       className="mt-6 block w-full rounded-md px-3 py-2 text-center text-sm/6 font-semibold text-white bg-indigo-600 shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:bg-indigo-500 dark:hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
