@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { loadMemoriesForChannel, formatMemoriesForClaudeMd } from '../memory/loader.js';
+import { loadMemoriesForChannel, formatMemoriesForClaudeMd, loadMemoriesForServer, formatMemoriesForServerWideClaudeMd } from '../memory/loader.js';
 import { logMemoryLoaded } from '../memory/logger.js';
 import type { IDiscordAdapter, ITextChannel } from '../interfaces/discord.js';
 
@@ -14,7 +14,6 @@ export interface ChannelMapping {
   channelName: string;
   folderPath: string;
   claudeMdPath: string;
-  cronPath: string;
 }
 
 export interface BotConfig {
@@ -25,9 +24,10 @@ export interface BotConfig {
 export async function syncChannelsOnStartup(
   discord: IDiscordAdapter,
   guildId: string,
-  basePath: string,
+  workspaceRoot: string,
+  workingDirectory: string,
   botConfig?: BotConfig
-): Promise<ChannelMapping[]> {
+): Promise<{ mappings: ChannelMapping[]; cronPath: string }> {
   const guild = await discord.getGuild(guildId);
 
   if (!guild) {
@@ -35,6 +35,15 @@ export async function syncChannelsOnStartup(
   }
 
   console.log(`🔄 Syncing channels for guild: ${guild.name}`);
+
+  // Sync server description to a file
+  const serverDescPath = path.join(workspaceRoot, '.claude', 'SERVER_DESCRIPTION.md');
+  const serverDescDir = path.dirname(serverDescPath);
+  if (!fs.existsSync(serverDescDir)) {
+    fs.mkdirSync(serverDescDir, { recursive: true });
+  }
+  await updateServerDescription(serverDescPath, guild.description || '');
+  console.log(`📄 Synced server description`);
 
   const mappings: ChannelMapping[] = [];
 
@@ -45,25 +54,31 @@ export async function syncChannelsOnStartup(
     return ch.type === 0;
   });
 
+  // Ensure the shared working directory exists
+  if (!fs.existsSync(workingDirectory)) {
+    fs.mkdirSync(workingDirectory, { recursive: true });
+    console.log(`📁 Created shared working directory: ${workingDirectory}`);
+  }
+
+  // Single shared cron.yaml file in the workspace root
+  const cronPath = path.join(workspaceRoot, 'cron.yaml');
+  if (!fs.existsSync(cronPath)) {
+    fs.writeFileSync(cronPath, 'jobs: []\n', 'utf-8');
+    console.log(`⏰ Created shared cron.yaml at ${cronPath}`);
+  }
+
   for (const channel of textChannels) {
     // Type guard ensures this is ITextChannel
     if (!channel.isTextChannel()) continue;
 
     const channelName = channel.name;
-    const folderPath = path.join(basePath, channelName);
+    const folderPath = workingDirectory; // Shared working directory for all channels
 
-    // Centralized channel data directory (use basePath instead of homedir for persistence)
-    const channelClaudeDir = path.join(basePath, '.claude', 'channels', channel.id);
+    // Channel-specific config paths
+    const channelClaudeDir = path.join(workspaceRoot, '.claude', 'channels', channel.id);
     const claudeMdPath = path.join(channelClaudeDir, 'CLAUDE.md');
-    const cronPath = path.join(channelClaudeDir, 'cron.yaml');
 
-    // Create channel folder (clean - just for work files)
-    if (!fs.existsSync(folderPath)) {
-      fs.mkdirSync(folderPath, { recursive: true });
-      console.log(`📁 Created folder for #${channelName}`);
-    }
-
-    // Create centralized channel data directory
+    // Ensure directory exists for writing config files
     if (!fs.existsSync(channelClaudeDir)) {
       fs.mkdirSync(channelClaudeDir, { recursive: true });
     }
@@ -77,24 +92,17 @@ export async function syncChannelsOnStartup(
       await updateChannelClaudeMdTopic(claudeMdPath, channel.topic || '');
     }
 
-    // Create empty cron.yaml if missing (Claude will manage via skill)
-    if (!fs.existsSync(cronPath)) {
-      fs.writeFileSync(cronPath, 'jobs: []\n', 'utf-8');
-      console.log(`⏰ Created cron.yaml for #${channelName}`);
-    }
-
     mappings.push({
       channelId: channel.id,
       channelName,
       folderPath,
       claudeMdPath,
-      cronPath,
     });
   }
 
   console.log(`✅ Synced ${mappings.length} channels`);
 
-  return mappings;
+  return { mappings, cronPath };
 }
 
 async function createChannelClaudeMd(
@@ -169,7 +177,7 @@ async function createChannelClaudeMd(
 
   // 3. Workspace & Files
   content += `### 3. Workspace & Files\n`;
-  content += `- This channel has its own workspace directory for files\n`;
+  content += `- You have access to a workspace directory for files\n`;
   content += `- You can create, read, edit, and manage files\n`;
   content += `- Share files back to Discord with the \`shareFile\` tool\n`;
   content += `- Organize project files, docs, or any community resources\n\n`;
@@ -194,14 +202,6 @@ async function createChannelClaudeMd(
   content += `- Use Discord markdown (bold, italic, code blocks, etc.)\n`;
   content += `- Ask clarifying questions when you need more context\n`;
   content += `- Be proactive in offering help, but not pushy\n\n`;
-
-  // Channel-specific section
-  content += `## Channel Context\n`;
-  content += `**Channel:** #${channelName}\n`;
-  if (discordTopic) {
-    content += `**Topic:** ${discordTopic}\n`;
-  }
-  content += `\n`;
 
   // Your Role
   content += `## Your Role\n`;
@@ -261,6 +261,22 @@ export async function updateChannelClaudeMdTopic(
   fs.writeFileSync(claudeMdPath, updatedLines.join('\n'), 'utf-8');
 }
 
+export async function updateServerDescription(
+  serverDescPath: string,
+  description: string
+): Promise<void> {
+  // Create or update the server description file
+  let content = '';
+
+  if (description) {
+    content = `# Server Description\n\n${description}\n`;
+  } else {
+    content = `# Server Description\n\n_No server description set_\n`;
+  }
+
+  fs.writeFileSync(serverDescPath, content, 'utf-8');
+}
+
 export function getChannelMapping(
   channelId: string,
   mappings: ChannelMapping[]
@@ -270,24 +286,24 @@ export function getChannelMapping(
 
 export async function syncNewChannel(
   channel: ITextChannel,
-  basePath: string,
+  workspaceRoot: string,
+  workingDirectory: string,
   botConfig?: BotConfig
 ): Promise<ChannelMapping> {
   const channelName = channel.name;
-  const folderPath = path.join(basePath, channelName);
+  const folderPath = workingDirectory; // Shared working directory for all channels
 
-  // Centralized channel data directory (use basePath instead of homedir for persistence)
-  const channelClaudeDir = path.join(basePath, '.claude', 'channels', channel.id);
-  const claudeMdPath = path.join(channelClaudeDir, 'CLAUDE.md');
-  const cronPath = path.join(channelClaudeDir, 'cron.yaml');
-
-  // Create channel folder (clean - just for work files)
-  if (!fs.existsSync(folderPath)) {
-    fs.mkdirSync(folderPath, { recursive: true });
-    console.log(`📁 Created folder for #${channelName}`);
+  // Ensure the shared working directory exists
+  if (!fs.existsSync(workingDirectory)) {
+    fs.mkdirSync(workingDirectory, { recursive: true });
+    console.log(`📁 Created shared working directory: ${workingDirectory}`);
   }
 
-  // Create centralized channel data directory
+  // Channel-specific config paths
+  const channelClaudeDir = path.join(workspaceRoot, '.claude', 'channels', channel.id);
+  const claudeMdPath = path.join(channelClaudeDir, 'CLAUDE.md');
+
+  // Ensure directory exists for writing config files
   if (!fs.existsSync(channelClaudeDir)) {
     fs.mkdirSync(channelClaudeDir, { recursive: true });
   }
@@ -298,36 +314,39 @@ export async function syncNewChannel(
     console.log(`📄 Created CLAUDE.md for #${channelName}`);
   }
 
-  // Create empty cron.yaml
-  if (!fs.existsSync(cronPath)) {
-    fs.writeFileSync(cronPath, 'jobs: []\n', 'utf-8');
-    console.log(`⏰ Created cron.yaml for #${channelName}`);
-  }
-
   return {
     channelId: channel.id,
     channelName,
     folderPath,
     claudeMdPath,
-    cronPath,
   };
 }
 
 /**
- * Populate the memory section in CLAUDE.md for a channel
+ * Populate the memory section in CLAUDE.md for a channel (server-wide)
  * This should be called before each query to ensure memory is up-to-date
  */
 export async function populateMemorySection(
   claudeMdPath: string,
   channelId: string,
+  channelName: string,
+  allChannels: Array<{ channelId: string; channelName: string }>,
   memoryContextSize: number,
   sessionId?: string
 ): Promise<import('../memory/loader.js').MemoryLoadResult> {
-  // Load memories for this channel
-  const memoryResult = await loadMemoriesForChannel(channelId, memoryContextSize);
+  // Load server-wide memories with current channel priority
+  const memoryResult = await loadMemoriesForServer(
+    channelId,
+    channelName,
+    allChannels.map(c => c.channelName),
+    memoryContextSize
+  );
 
-  // Format memories for CLAUDE.md
-  const memoryContent = formatMemoriesForClaudeMd(memoryResult);
+  // Format memories with channel grouping
+  const memoryContent = formatMemoriesForServerWideClaudeMd(
+    memoryResult,
+    channelName
+  );
 
   // Read current CLAUDE.md
   let content = fs.readFileSync(claudeMdPath, 'utf-8');

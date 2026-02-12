@@ -31,6 +31,11 @@ export class ClaudeSDKQueryExecutor implements IQueryExecutor {
       sdkOptions.tools = options.tools;
     }
 
+    // Allowed tools (explicit list)
+    if (options.allowedTools) {
+      sdkOptions.allowedTools = options.allowedTools;
+    }
+
     // MCP servers
     if (options.mcpServers) {
       sdkOptions.mcpServers = options.mcpServers;

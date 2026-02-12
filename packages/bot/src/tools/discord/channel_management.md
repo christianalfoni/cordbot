@@ -1,3 +1,8 @@
+---
+name: channel_management
+description: Manage Discord channels, threads, and messages. Use when creating channels, managing threads, sending messages, or organizing server structure.
+---
+
 # Channel Management Skill
 
 Manage Discord channels including creating, listing, and deleting channels.

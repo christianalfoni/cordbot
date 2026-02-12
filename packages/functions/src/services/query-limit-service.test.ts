@@ -39,7 +39,6 @@ describe('QueryLimitService', () => {
     guildId: 'guild-123',
     deploymentType: 'pro',
     queriesTotal: 1000,
-    queriesRemaining: 500,
     queriesUsed: 500,
     totalCost: 10.0,
     costThisPeriod: 10.0,
@@ -107,7 +106,6 @@ describe('QueryLimitService', () => {
       const deployment = createMockDeployment({
         deploymentType: 'free',
         queriesTotal: 100,
-        queriesRemaining: 0,
         queriesUsed: 100,
         totalCost: 2.0,
         costThisPeriod: 2.0,
@@ -219,7 +217,6 @@ describe('QueryLimitService', () => {
       expect(mockTransaction.updateGuildDeployment).toHaveBeenCalledWith(
         'guild-123',
         expect.objectContaining({
-          queriesRemaining: 499, // Reduced by 1
           queriesUsed: 501, // Increased by 1
           totalCost: 10.05,
           costThisPeriod: 10.05,
@@ -236,7 +233,6 @@ describe('QueryLimitService', () => {
       const deployment = createMockDeployment({
         deploymentType: 'starter',
         queriesTotal: 500,
-        queriesRemaining: 250,
         queriesUsed: 250,
         totalCost: 5.0,
         costThisPeriod: 5.0,
@@ -287,7 +283,6 @@ describe('QueryLimitService', () => {
       expect(mockTransaction.updateGuildDeployment).toHaveBeenCalledWith(
         'guild-123',
         expect.objectContaining({
-          queriesRemaining: 249, // Reduced by 1
           queriesUsed: 251, // Increased by 1
           queryTypes: { scheduled_query: 51 },
           costByType: { scheduled_query: 2.58 },
@@ -345,7 +340,6 @@ describe('QueryLimitService', () => {
       expect(mockTransaction.updateGuildDeployment).toHaveBeenCalledWith(
         'guild-123',
         expect.objectContaining({
-          queriesRemaining: 500, // NOT REDUCED - stays at 500
           queriesUsed: 500, // NOT INCREASED - stays at 500
           totalCost: 10.02, // Cost IS tracked
           costThisPeriod: 10.02, // Cost IS tracked
@@ -362,8 +356,7 @@ describe('QueryLimitService', () => {
       const deployment = createMockDeployment({
         deploymentType: 'free',
         queriesTotal: 100,
-        queriesRemaining: 1, // Last query
-        queriesUsed: 99,
+        queriesUsed: 99, // Last query will make it 100
         totalCost: 2.0,
         costThisPeriod: 2.0,
       });
@@ -422,8 +415,7 @@ describe('QueryLimitService', () => {
     it('should mark for deprovisioning only for free tier', async () => {
       // Arrange - Pro tier
       const deployment = createMockDeployment({
-        queriesRemaining: 1,
-        queriesUsed: 999,
+        queriesUsed: 999, // Last query will make it 1000
         totalCost: 50.0,
         costThisPeriod: 50.0,
       });
@@ -463,7 +455,6 @@ describe('QueryLimitService', () => {
       const deployment = createMockDeployment({
         deploymentType: 'free',
         queriesTotal: 100,
-        queriesRemaining: 100,
         queriesUsed: 0,
         totalCost: 0,
         costThisPeriod: 0,
@@ -535,7 +526,6 @@ describe('QueryLimitService', () => {
         ...createMockDeployment({
           deploymentType: 'free',
           queriesTotal: 100,
-          queriesRemaining: 100,
           queriesUsed: 0,
           totalCost: 0,
           costThisPeriod: 0,
@@ -589,7 +579,6 @@ describe('QueryLimitService', () => {
       const deployment = createMockDeployment({
         deploymentType: 'pro',
         queriesTotal: 1200,
-        queriesRemaining: 600,
         queriesUsed: 600,
         totalCost: 100.0,
         costThisPeriod: 100.0,

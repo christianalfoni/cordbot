@@ -30,6 +30,7 @@ export interface IScheduler {
     name?: string;
     channelId?: string;
     oneTime?: boolean;
+    timezone?: string;
   }): string;
 
   /**

@@ -88,6 +88,7 @@ class DiscordMessage implements IMessage {
   get author(): IUser { return new DiscordUser(this.msg.author); }
   get createdTimestamp() { return this.msg.createdTimestamp; }
   get createdAt() { return this.msg.createdAt; }
+  get type() { return this.msg.type; }
 
   get client() {
     return {
@@ -339,6 +340,11 @@ class DiscordThreadChannelWrapper implements IThreadChannel {
     await this.channel.setLocked(locked);
     return this;
   }
+
+  async setName(name: string): Promise<IThreadChannel> {
+    await this.channel.setName(name);
+    return this;
+  }
 }
 
 class DiscordForumChannelWrapper implements IForumChannel {
@@ -381,6 +387,7 @@ class DiscordGuildWrapper implements IGuild {
 
   get id() { return this.guild.id; }
   get name() { return this.guild.name; }
+  get description() { return this.guild.description; }
   get channels() { return this.guild.channels; }
   get members() { return this.guild.members; }
   get roles() { return this.guild.roles; }
@@ -757,6 +764,7 @@ export class DiscordJsAdapter implements IDiscordAdapter {
   on(event: 'channelCreate', handler: ChannelCreateHandler): void;
   on(event: 'channelDelete', handler: ChannelDeleteHandler): void;
   on(event: 'channelUpdate', handler: ChannelUpdateHandler): void;
+  on(event: 'guildUpdate', handler: import('../../interfaces/discord.js').GuildUpdateHandler): void;
   on(event: 'interactionCreate', handler: InteractionCreateHandler): void;
   on(event: 'error', handler: ErrorHandler): void;
   on(event: 'warn', handler: WarnHandler): void;
@@ -801,6 +809,10 @@ export class DiscordJsAdapter implements IDiscordAdapter {
           handler(oldWrapped, newWrapped);
         }
       });
+    } else if (event === 'guildUpdate') {
+      this.client.on('guildUpdate', (oldGuild: Guild, newGuild: Guild) => {
+        handler(new DiscordGuildWrapper(oldGuild), new DiscordGuildWrapper(newGuild));
+      });
     } else if (event === 'interactionCreate') {
       this.client.on('interactionCreate', (interaction) => {
         if (interaction.isButton()) {
@@ -822,6 +834,7 @@ export class DiscordJsAdapter implements IDiscordAdapter {
   off(event: 'channelCreate', handler: ChannelCreateHandler): void;
   off(event: 'channelDelete', handler: ChannelDeleteHandler): void;
   off(event: 'channelUpdate', handler: ChannelUpdateHandler): void;
+  off(event: 'guildUpdate', handler: import('../../interfaces/discord.js').GuildUpdateHandler): void;
   off(event: 'interactionCreate', handler: InteractionCreateHandler): void;
   off(event: 'error', handler: ErrorHandler): void;
   off(event: 'warn', handler: WarnHandler): void;

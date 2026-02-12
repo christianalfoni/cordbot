@@ -1,3 +1,8 @@
+---
+name: role_management
+description: Manage Discord roles and permissions. Use when creating roles, assigning roles to users, or managing server permissions.
+---
+
 # Role Management Skill
 
 Manage Discord roles and role assignments for organizing server members.

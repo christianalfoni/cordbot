@@ -52,6 +52,7 @@ export interface IMessage {
   client: {
     user: IUser | null;
   };
+  type: number; // Discord MessageType: 0 = Default, 19 = Reply, etc.
 
   edit(content: string | ISendMessageOptions): Promise<IMessage>;
   delete(): Promise<void>;
@@ -168,6 +169,7 @@ export interface IThreadChannel extends IChannel {
   send(content: string | ISendMessageOptions): Promise<IMessage>;
   setArchived(archived: boolean): Promise<IThreadChannel>;
   setLocked(locked: boolean): Promise<IThreadChannel>;
+  setName(name: string): Promise<IThreadChannel>;
 
 }
 
@@ -195,6 +197,7 @@ export interface IForumTag {
 export interface IGuild {
   id: string;
   name: string;
+  description: string | null;
 
   channels: {
     fetch(id: string): Promise<DiscordChannel | null>;
@@ -268,6 +271,7 @@ export type MessageHandler = (message: IMessage) => void | Promise<void>;
 export type ChannelCreateHandler = (channel: IChannel) => void | Promise<void>;
 export type ChannelDeleteHandler = (channel: IChannel) => void | Promise<void>;
 export type ChannelUpdateHandler = (oldChannel: IChannel, newChannel: IChannel) => void | Promise<void>;
+export type GuildUpdateHandler = (oldGuild: IGuild, newGuild: IGuild) => void | Promise<void>;
 export type InteractionCreateHandler = (interaction: IButtonInteraction) => void | Promise<void>;
 export type ErrorHandler = (error: Error) => void | Promise<void>;
 export type WarnHandler = (warning: string) => void | Promise<void>;
@@ -350,6 +354,7 @@ export interface IDiscordAdapter {
   on(event: 'channelCreate', handler: ChannelCreateHandler): void;
   on(event: 'channelDelete', handler: ChannelDeleteHandler): void;
   on(event: 'channelUpdate', handler: ChannelUpdateHandler): void;
+  on(event: 'guildUpdate', handler: GuildUpdateHandler): void;
   on(event: 'interactionCreate', handler: InteractionCreateHandler): void;
   on(event: 'error', handler: ErrorHandler): void;
   on(event: 'warn', handler: WarnHandler): void;
@@ -358,6 +363,7 @@ export interface IDiscordAdapter {
   off(event: 'channelCreate', handler: ChannelCreateHandler): void;
   off(event: 'channelDelete', handler: ChannelDeleteHandler): void;
   off(event: 'channelUpdate', handler: ChannelUpdateHandler): void;
+  off(event: 'guildUpdate', handler: GuildUpdateHandler): void;
   off(event: 'interactionCreate', handler: InteractionCreateHandler): void;
   off(event: 'error', handler: ErrorHandler): void;
   off(event: 'warn', handler: WarnHandler): void;

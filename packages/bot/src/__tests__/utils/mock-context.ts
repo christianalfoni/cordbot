@@ -38,6 +38,8 @@ import type {
   QueryOptions,
   QueryEvent,
 } from '../../interfaces/index.js';
+import type { IDocumentConverter } from '../../interfaces/document.js';
+import type { IFileShareManager } from '../../interfaces/file-sharing.js';
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
 
 /**
@@ -318,6 +320,7 @@ export class MockDiscordAdapter implements IDiscordAdapter {
       client: {
         user: this.user,
       },
+      type: partial.type || 0, // 0 = Default message type
       async edit(content: string | any) {
         msg.content = typeof content === 'string' ? content : content.content || msg.content;
         return msg;
@@ -402,6 +405,10 @@ export class MockDiscordAdapter implements IDiscordAdapter {
       },
       async setLocked(locked: boolean) {
         thread.locked = locked;
+        return thread;
+      },
+      async setName(name: string) {
+        thread.name = name;
         return thread;
       },
     };
@@ -587,6 +594,18 @@ export class MockMemoryStore implements IMemoryStore {
   }
 
   async loadMemoriesForChannel(channelId: string, tokenBudget: number): Promise<MemoryLoadResult> {
+    return {
+      content: '',
+      tokensUsed: 0,
+      sources: {},
+    };
+  }
+
+  async loadMemoriesForServer(
+    currentChannelId: string,
+    allChannelIds: string[],
+    tokenBudget: number
+  ): Promise<MemoryLoadResult> {
     return {
       content: '',
       tokensUsed: 0,
@@ -847,6 +866,63 @@ export class MockFileStore implements IFileStore {
 }
 
 /**
+ * Mock Document Converter for testing
+ */
+export class MockDocumentConverter implements IDocumentConverter {
+  isSupportedFileType(contentType?: string, filename?: string): boolean {
+    return contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || filename?.toLowerCase().endsWith('.docx') || false;
+  }
+
+  async convertDocxToMarkdown(buffer: Buffer, filename: string): Promise<string | null> {
+    return `# Mock Markdown\n\nConverted from ${filename}`;
+  }
+
+  async convertMarkdownToDocx(markdown: string, filename: string): Promise<Buffer | null> {
+    return Buffer.from(`Mock DOCX content for ${filename}`);
+  }
+}
+
+/**
+ * Mock File Share Manager for testing
+ */
+export class MockFileShareManager implements IFileShareManager {
+  private tokens = new Map<string, { filePath: string; expiresAt: Date }>();
+
+  createShareToken(filePath: string, channelId: string): string {
+    const token = 'mock-token-' + Date.now();
+    this.tokens.set(token, {
+      filePath,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    return token;
+  }
+
+  getFileFromToken(token: string): string | null {
+    const data = this.tokens.get(token);
+    if (!data) return null;
+    if (new Date() > data.expiresAt) {
+      this.tokens.delete(token);
+      return null;
+    }
+    return data.filePath;
+  }
+
+  revokeToken(token: string): void {
+    this.tokens.delete(token);
+  }
+
+  cleanupExpiredTokens(): void {
+    const now = new Date();
+    for (const [token, data] of this.tokens.entries()) {
+      if (now > data.expiresAt) {
+        this.tokens.delete(token);
+      }
+    }
+  }
+}
+
+/**
  * Create a complete mock bot context for testing
  */
 export function createMockContext(guildId: string = 'test-guild-id'): IBotContext & {
@@ -859,6 +935,8 @@ export function createMockContext(guildId: string = 'test-guild-id'): IBotContex
   tokenProvider: MockTokenProvider;
   logger: MockLogger;
   fileStore: MockFileStore;
+  documentConverter: MockDocumentConverter;
+  fileShareManager: MockFileShareManager;
 } {
   return {
     guildId,
@@ -871,5 +949,7 @@ export function createMockContext(guildId: string = 'test-guild-id'): IBotContex
     tokenProvider: new MockTokenProvider(),
     logger: new MockLogger(),
     fileStore: new MockFileStore(),
+    documentConverter: new MockDocumentConverter(),
+    fileShareManager: new MockFileShareManager(),
   };
 }

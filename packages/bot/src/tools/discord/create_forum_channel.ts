@@ -16,7 +16,7 @@ export function createCreateForumChannelTool(
 ) {
   return tool(
     'discord_create_forum_channel',
-    'Create a forum channel (requires permission)',
+    'Create a forum channel (requires permission). TIP: For forum management best practices and patterns, load the discord_forum_management skill.',
     schema.shape,
     async ({ name, topic, tags }) => {
       try {

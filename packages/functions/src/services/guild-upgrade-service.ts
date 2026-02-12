@@ -86,7 +86,6 @@ export class GuildUpgradeService {
     await this.ctx.firestore.updateGuildDeployment(guildId, {
       deploymentType: targetTier,
       queriesTotal: tierConfig.queriesTotal,
-      queriesRemaining: tierConfig.queriesTotal,
       queriesUsed: 0,
       costThisPeriod: 0,
       updatedAt: periodStart,

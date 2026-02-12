@@ -5,6 +5,8 @@ import type { IScheduler } from './scheduler';
 import type { ITokenProvider } from './token';
 import type { ILogger } from './logger';
 import type { IFileStore } from './file';
+import type { IDocumentConverter } from './document';
+import type { IFileShareManager } from './file-sharing';
 
 /**
  * Bot context - central dependency injection container
@@ -65,6 +67,16 @@ export interface IBotContext {
    * File system operations
    */
   fileStore: IFileStore;
+
+  /**
+   * Document conversion (docx ↔ markdown)
+   */
+  documentConverter: IDocumentConverter;
+
+  /**
+   * File sharing with token-based access
+   */
+  fileShareManager: IFileShareManager;
 }
 
 /**

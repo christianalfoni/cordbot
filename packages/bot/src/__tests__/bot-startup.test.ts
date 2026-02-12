@@ -219,8 +219,10 @@ describe('Bot Startup', () => {
         mockSessionManager,
         [],
         '/mock/cwd',
+        '/mock/working',
         'test-guild',
         mockCronRunner,
+        context.logger,
         { mode: 'personal', id: 'test-bot', username: 'TestBot' }
       );
 

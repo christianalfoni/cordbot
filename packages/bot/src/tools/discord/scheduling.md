@@ -1,52 +1,185 @@
+---
+name: scheduling
+description: Schedule automated tasks using natural language or cron syntax. Use for one-time tasks ("tomorrow at 9pm") or recurring tasks (daily, weekly). Maintain state between executions using files.
+---
+
 # Scheduling & State Management Skill
 
-Schedule automated tasks and use files as "scratch pads" to maintain state between recurring task executions.
+Schedule automated tasks using natural language time expressions or cron syntax. Tasks can run once or repeatedly, with full timezone support.
 
 ## Overview
 
-The bot can run scheduled tasks automatically using cron syntax. Each channel has a `cron.yaml` file that defines scheduled jobs. **Crucially, you can use regular files in the channel's folder to store state between task executions.**
+The bot supports two types of scheduled tasks:
 
-## Cron Configuration
+1. **One-Time Schedules**: Natural language like "tomorrow at 9pm", "in 10 minutes", "next Monday at 3pm"
+2. **Recurring Schedules**: Cron expressions like "0 9 * * *" (daily at 9am) with timezone support
 
-Scheduled tasks are defined in the channel's `cron.yaml` file:
+**State Management**: Use regular files in the channel's folder to maintain state between task executions.
 
-```yaml
-jobs:
-  - name: daily-report
-    schedule: "0 9 * * *"  # Every day at 9 AM
-    task: Generate and send the daily activity report
+## One-Time Schedules (Natural Language)
 
-  - name: weekly-cleanup
-    schedule: "0 0 * * 0"  # Every Sunday at midnight
-    task: Archive old threads and clean up completed tasks
+Use `schedule_one_time` for tasks that should run once at a specific time.
 
-  - name: reminder
-    schedule: "0 */4 * * *"  # Every 4 hours
-    task: Check reminders.json and send any due reminders
+### Examples
 
-  - name: one-time-announcement
-    schedule: "0 14 * * 1"  # Monday at 2 PM
-    task: Announce the new feature launch
-    oneTime: true  # Automatically removed after execution
+```
+"Send a reminder in 10 minutes"
+→ schedule_one_time({
+    naturalTime: "in 10 minutes",
+    timezone: "America/New_York",
+    task: "Send the reminder: Team meeting starts soon!"
+  })
 
-  - name: poll-results
-    schedule: "0 14 10 2 *"  # Feb 10 at 2 PM
-    responseThreadId: "123456789"  # Send final message to this thread
-    oneTime: true
-    task: Get poll results and analyze
+"Post the announcement tomorrow at 9pm"
+→ schedule_one_time({
+    naturalTime: "tomorrow at 9pm",
+    timezone: "America/Los_Angeles",
+    task: "Post the product launch announcement"
+  })
+
+"Check poll results next Monday at 3pm"
+→ schedule_one_time({
+    naturalTime: "next Monday at 3pm",
+    timezone: "Europe/London",
+    task: "Get poll results from message 123456 and announce winner"
+  })
+```
+
+### Natural Language Formats
+
+The bot understands many natural time expressions:
+- `"in 10 minutes"`, `"in 2 hours"`, `"in 30 seconds"`
+- `"tomorrow at 9pm"`, `"next Monday at 3pm"`
+- `"December 25th at noon"`, `"Friday at 5:30pm"`
+- `"in 2 days"`, `"next week"`
+
+### Timezones
+
+**Always specify the user's timezone** when scheduling tasks. Use IANA timezone identifiers:
+- US: `"America/New_York"`, `"America/Los_Angeles"`, `"America/Chicago"`
+- Europe: `"Europe/London"`, `"Europe/Paris"`, `"Europe/Berlin"`
+- Asia: `"Asia/Tokyo"`, `"Asia/Singapore"`, `"Asia/Dubai"`
+- Other: `"Australia/Sydney"`, `"UTC"`
+
+### Reply in Thread
+
+Use `replyInThread: true` to send the scheduled task's result back to the current thread:
+
+```
+User in Thread #planning: "Remind me about the meeting in 30 minutes"
+
+schedule_one_time({
+  naturalTime: "in 30 minutes",
+  timezone: "America/New_York",
+  task: "Send meeting reminder",
+  replyInThread: true  // ← Result will appear in this thread
+})
+```
+
+## Recurring Schedules (Cron Expressions)
+
+Use `schedule_recurring` for tasks that repeat on a schedule.
+
+### Examples
+
+```
+"Post daily standup reminder at 9am"
+→ schedule_recurring({
+    name: "daily-standup",
+    cronExpression: "0 9 * * *",
+    timezone: "America/New_York",
+    task: "Post the daily standup reminder"
+  })
+
+"Weekly report every Monday at 10am"
+→ schedule_recurring({
+    name: "weekly-report",
+    cronExpression: "0 10 * * 1",
+    timezone: "Europe/London",
+    task: "Generate and send the weekly activity report"
+  })
+
+"Check for updates every 30 minutes"
+→ schedule_recurring({
+    name: "update-checker",
+    cronExpression: "*/30 * * * *",
+    timezone: "UTC",
+    task: "Check for new updates and notify if found"
+  })
+```
+
+### Cron Expression Format
+
+Standard 5-field cron format: `minute hour day month weekday`
+
+```
+┌───────────── minute (0-59)
+│ ┌───────────── hour (0-23)
+│ │ ┌───────────── day of month (1-31)
+│ │ │ ┌───────────── month (1-12)
+│ │ │ │ ┌───────────── day of week (0-6, Sunday = 0)
+│ │ │ │ │
+* * * * *
+```
+
+### Common Cron Patterns
+
+```
+Every minute:              * * * * *
+Every hour at :00:         0 * * * *
+Every day at 9:30am:       30 9 * * *
+Every Monday at 10am:      0 10 * * 1
+Every 15 minutes:          */15 * * * *
+Twice daily (9am & 9pm):   0 9,21 * * *
+Weekdays at 8am:           0 8 * * 1-5
+First of month at midnight: 0 0 1 * *
+Every Sunday at 11pm:      0 23 * * 0
+```
+
+### Timezone Support
+
+**Critical**: Recurring schedules run in the specified timezone. A job scheduled for "9am EST" will execute at 9am Eastern Time, accounting for DST changes automatically.
+
+```
+schedule_recurring({
+  name: "morning-briefing",
+  cronExpression: "0 9 * * *",  // 9:00 AM
+  timezone: "America/New_York",  // Eastern Time (handles DST)
+  task: "Post morning briefing"
+})
+```
+
+## Managing Scheduled Tasks
+
+### List Schedules
+
+```
+schedule_list()  // All schedules in this channel
+schedule_list({ type: "onetime" })  // Only one-time schedules
+schedule_list({ type: "recurring" })  // Only recurring schedules
+```
+
+### Remove Schedules
+
+```
+// Remove one-time schedule by ID
+schedule_remove({ identifier: "job_1707234567890" })
+
+// Remove recurring schedule by name
+schedule_remove({ identifier: "daily-standup" })
 ```
 
 ## File-Based State Management
 
-**This is the key feature**: Use regular files to maintain state between scheduled task executions.
+**Key Feature**: Use regular files to maintain state between scheduled task executions.
 
 ### Why Use Files for State?
 
 - **Persistence**: State survives bot restarts
-- **Debuggable**: You can inspect state files directly
+- **Debuggable**: Inspect state files directly
 - **Simple**: No database needed
-- **Flexible**: Use JSON, YAML, plain text, or any format
-- **Accessible**: Both scheduled tasks and regular messages can read/write
+- **Flexible**: Use JSON, YAML, plain text
+- **Accessible**: Both scheduled tasks and user messages can read/write
 
 ### State File Patterns
 
@@ -54,17 +187,15 @@ jobs:
 
 Track counts, IDs, or sequences:
 
-```yaml
-# cron.yaml
-jobs:
-  - name: daily-stats
-    schedule: "0 23 * * *"
-    task: |
-      Read stats.json (or create if missing).
-      Increment the day counter.
-      Record today's message count.
-      Write updated stats back to stats.json.
-      Send a summary to the channel.
+```
+Recurring task: daily-stats
+Schedule: "0 23 * * *" (11pm daily)
+Task: |
+  Read stats.json (create with defaults if missing).
+  Increment the day counter.
+  Record today's message count.
+  Write updated stats back to stats.json.
+  Send summary to channel.
 ```
 
 ```json
@@ -80,17 +211,15 @@ jobs:
 
 Track items to process:
 
-```yaml
-# cron.yaml
-jobs:
-  - name: process-reminders
-    schedule: "*/15 * * * *"  # Every 15 minutes
-    task: |
-      Read reminders.json.
-      Check for reminders with dueTime <= now.
-      Send reminder messages for due items.
-      Remove processed reminders from the list.
-      Write updated reminders.json.
+```
+Recurring task: process-reminders
+Schedule: "*/15 * * * *" (every 15 minutes)
+Task: |
+  Read reminders.json.
+  Check for reminders with dueTime <= now.
+  Send reminder messages for due items.
+  Remove processed reminders from the list.
+  Write updated reminders.json.
 ```
 
 ```json
@@ -102,12 +231,6 @@ jobs:
       "message": "Team meeting in 10 minutes",
       "dueTime": "2026-02-06T14:50:00Z",
       "userId": "123456789"
-    },
-    {
-      "id": "rem_002",
-      "message": "Submit weekly report",
-      "dueTime": "2026-02-06T17:00:00Z",
-      "userId": "987654321"
     }
   ]
 }
@@ -115,25 +238,23 @@ jobs:
 
 #### 3. Checkpoint Pattern
 
-Track progress through a list or process:
+Track progress through a list:
 
-```yaml
-# cron.yaml
-jobs:
-  - name: daily-review
-    schedule: "0 10 * * *"
-    task: |
-      Read review-progress.json.
-      Get the next user from the reviewQueue starting at currentIndex.
-      Send them their daily review prompt.
-      Increment currentIndex (wrap around if at end).
-      Write updated progress back to review-progress.json.
+```
+Recurring task: daily-review
+Schedule: "0 10 * * *" (10am daily)
+Task: |
+  Read review-progress.json.
+  Get next user from reviewQueue at currentIndex.
+  Send their daily review prompt.
+  Increment currentIndex (wrap if at end).
+  Write updated progress.
 ```
 
 ```json
 // review-progress.json (state file)
 {
-  "reviewQueue": ["user1", "user2", "user3", "user4"],
+  "reviewQueue": ["user1", "user2", "user3"],
   "currentIndex": 2,
   "lastReviewDate": "2026-02-05"
 }
@@ -143,16 +264,14 @@ jobs:
 
 Store computed data temporarily:
 
-```yaml
-# cron.yaml
-jobs:
-  - name: update-leaderboard
-    schedule: "0 */6 * * *"  # Every 6 hours
-    task: |
-      Fetch latest activity data from Discord.
-      Calculate user rankings.
-      Write results to leaderboard-cache.json.
-      Send top 10 to announcements channel.
+```
+Recurring task: update-leaderboard
+Schedule: "0 */6 * * *" (every 6 hours)
+Task: |
+  Fetch latest activity data.
+  Calculate user rankings.
+  Write to leaderboard-cache.json.
+  Post top 10 to channel.
 ```
 
 ```json
@@ -160,154 +279,78 @@ jobs:
 {
   "updated": "2026-02-05T18:00:00Z",
   "rankings": [
-    {"userId": "123", "username": "Alice", "score": 1520},
-    {"userId": "456", "username": "Bob", "score": 1340}
+    {"userId": "123", "username": "Alice", "score": 1520}
   ]
 }
-```
-
-#### 5. History Pattern
-
-Maintain a rolling history:
-
-```yaml
-# cron.yaml
-jobs:
-  - name: sentiment-tracker
-    schedule: "0 0 * * *"  # Daily at midnight
-    task: |
-      Read sentiment-history.json.
-      Calculate today's sentiment score from messages.
-      Append today's score to history array.
-      Keep only last 30 days (trim older entries).
-      Write updated history to sentiment-history.json.
-      If trend is negative for 3+ days, alert moderators.
-```
-
-```json
-// sentiment-history.json (state file)
-{
-  "history": [
-    {"date": "2026-02-03", "score": 0.75},
-    {"date": "2026-02-04", "score": 0.68},
-    {"date": "2026-02-05", "score": 0.71}
-  ]
-}
-```
-
-## Cron Schedule Syntax
-
-Standard cron format: `minute hour day month weekday`
-
-```
-┌───────────── minute (0-59)
-│ ┌───────────── hour (0-23)
-│ │ ┌───────────── day of month (1-31)
-│ │ │ ┌───────────── month (1-12)
-│ │ │ │ ┌───────────── day of week (0-6, Sunday = 0)
-│ │ │ │ │
-* * * * *
-```
-
-### Common Patterns
-
-```yaml
-# Every minute
-schedule: "* * * * *"
-
-# Every hour at minute 0
-schedule: "0 * * * *"
-
-# Every day at 9:30 AM
-schedule: "30 9 * * *"
-
-# Every Monday at 10 AM
-schedule: "0 10 * * 1"
-
-# Every 15 minutes
-schedule: "*/15 * * * *"
-
-# Twice daily (9 AM and 9 PM)
-schedule: "0 9,21 * * *"
-
-# Weekdays at 8 AM
-schedule: "0 8 * * 1-5"
-
-# First day of every month at midnight
-schedule: "0 0 1 * *"
-
-# Every Sunday at 11 PM
-schedule: "0 23 * * 0"
 ```
 
 ## Best Practices
 
+### Scheduling Strategy
+
+1. **Choose the Right Type**
+   - Use **one-time** for: reminders, specific announcements, poll results
+   - Use **recurring** for: reports, monitoring, cleanup tasks
+
+2. **Frequency Guidelines**
+   - Avoid excessive scheduling (< 5 minutes unless necessary)
+   - Consider timezone when scheduling user-facing tasks
+   - Don't spam channels during peak activity
+
+3. **Task Naming** (recurring only)
+   - Use descriptive names: `weekly-report` not `job1`
+   - Include frequency: `hourly-check`, `daily-summary`
+   - Be consistent across tasks
+
+4. **Thread Awareness**
+   - Use `replyInThread: true` when creating from threads
+   - Results appear where user asked
+   - Better conversation continuity
+
 ### State File Management
 
 1. **Initialize State**
-   ```yaml
-   task: |
+   ```
+   Task: |
      Check if state.json exists.
-     If not, create it with default values.
+     If not, create with default values.
      Then proceed with task logic.
    ```
 
 2. **Atomic Updates**
-   ```yaml
-   task: |
+   ```
+   Task: |
      Read entire state file.
      Make all changes in memory.
      Write complete updated state back.
    ```
 
 3. **Error Handling**
-   ```yaml
-   task: |
+   ```
+   Task: |
      Try to read state.json.
-     If file is corrupted or missing, log error and use defaults.
-     Continue with task using default values.
+     If corrupted or missing, log error and use defaults.
+     Continue with defaults.
    ```
 
 4. **Validation**
-   ```yaml
-   task: |
+   ```
+   Task: |
      Read state file.
      Validate structure and required fields.
-     If invalid, report issue and recreate with defaults.
+     If invalid, recreate with defaults and report issue.
    ```
-
-### Scheduling Strategy
-
-1. **Frequency**
-   - Don't over-schedule: More than every 5 minutes is usually excessive
-   - Consider time zones: Users may be in different zones
-   - Avoid peak hours: Don't spam channels during active times
-
-2. **Task Naming**
-   - Use descriptive names: `weekly-report` not `job1`
-   - Include frequency: `hourly-check`, `daily-summary`
-   - Be consistent: Use same naming pattern across jobs
-
-3. **Task Descriptions**
-   - Be explicit about reading/writing state files
-   - Specify what the task should do step-by-step
-   - Include error handling instructions
-
-4. **One-Time Tasks**
-   - Use `oneTime: true` for tasks that should only run once
-   - Good for announcements, migrations, or scheduled events
-   - Automatically removed from cron.yaml after execution
 
 ### State File Organization
 
 1. **Naming Conventions**
-   - Purpose-based: `reminders.json`, `stats.json`, `cache.json`
+   - Purpose-based: `reminders.json`, `stats.json`
    - Avoid generic names: Use `leaderboard.json` not `data.json`
-   - Use extensions: `.json` for JSON, `.yaml` for YAML, `.txt` for text
+   - Use extensions: `.json`, `.yaml`, `.txt`
 
 2. **File Location**
    - All state files go in the channel's folder
-   - Same directory as `cron.yaml` and `CLAUDE.md`
+   - Same directory as `CLAUDE.md`
    - Easy to find and manage
 
 3. **Documentation**
@@ -319,247 +362,165 @@ schedule: "0 23 * * 0"
 
 ### Coordinated Tasks
 
-Multiple tasks sharing state:
+Multiple recurring tasks sharing state:
 
-```yaml
-jobs:
-  - name: collect-data
-    schedule: "*/10 * * * *"  # Every 10 minutes
-    task: |
-      Read pending-items.json.
-      Check for new items from source.
-      Add new items to the pending list.
-      Write updated pending-items.json.
+```
+Task 1: collect-data
+Schedule: "*/10 * * * *" (every 10 minutes)
+Task: |
+  Read pending-items.json.
+  Check for new items from source.
+  Add to pending list.
+  Write updated pending-items.json.
 
-  - name: process-data
-    schedule: "0 * * * *"  # Every hour
-    task: |
-      Read pending-items.json.
-      Process all pending items.
-      Clear the pending list.
-      Write updated statistics to stats.json.
-      Write empty pending list to pending-items.json.
+Task 2: process-data
+Schedule: "0 * * * *" (every hour)
+Task: |
+  Read pending-items.json.
+  Process all pending items.
+  Write statistics to stats.json.
+  Clear pending list in pending-items.json.
 ```
 
 ### Conditional Execution
 
 Tasks that check state before acting:
 
-```yaml
-jobs:
-  - name: smart-reminder
-    schedule: "0 9 * * *"  # Daily at 9 AM
-    task: |
-      Read reminder-config.json.
-      Check if reminderEnabled is true.
-      Check if daysSinceLastReminder >= reminderInterval.
-      If conditions met, send reminder and update lastReminderDate.
-      If not, skip silently.
-      Write updated config back.
+```
+Task: smart-reminder
+Schedule: "0 9 * * *" (daily 9am)
+Task: |
+  Read reminder-config.json.
+  Check if reminderEnabled is true.
+  Check if daysSinceLastReminder >= reminderInterval.
+  If conditions met, send reminder and update lastReminderDate.
+  If not, skip silently.
+  Write updated config.
 ```
 
-### State Migration
+## Complete Example: Reminder System
 
-Updating state structure over time:
+### User Interaction
 
-```yaml
-jobs:
-  - name: migrate-state-v2
-    schedule: "0 0 * * *"
-    task: |
-      Read state.json.
-      Check if version field exists and equals "2.0".
-      If version is "1.0" or missing, migrate to v2 format.
-      Add new required fields with defaults.
-      Set version to "2.0".
-      Write migrated state back.
-    oneTime: true
+```
+User: "Remind me about the team meeting in 2 hours"
+
+Bot creates one-time schedule:
+schedule_one_time({
+  naturalTime: "in 2 hours",
+  timezone: "America/New_York",
+  task: "Send reminder: Team meeting starts soon!",
+  replyInThread: true  // If in a thread
+})
+
+Bot: "✅ I'll remind you in 2 hours (4:30 PM EST)"
+```
+
+### Recurring Reminder Check
+
+```
+Setup recurring task:
+schedule_recurring({
+  name: "check-reminders",
+  cronExpression: "*/5 * * * *",  // Every 5 minutes
+  timezone: "UTC",
+  task: |
+    Read reminders.json (create empty if missing).
+    Get current time.
+    Find all reminders where dueTime <= now.
+    For each due reminder:
+      - Send reminder message mentioning user
+      - Mark as sent
+    Remove sent reminders from array.
+    Write updated reminders.json.
+})
+```
+
+### State File
+
+```json
+// reminders.json
+{
+  "reminders": [
+    {
+      "id": "rem_001",
+      "userId": "123456789",
+      "message": "Team meeting starts soon!",
+      "dueTime": "2026-02-07T16:30:00Z",
+      "threadId": "thread_789"
+    }
+  ]
+}
 ```
 
 ## Debugging Tips
 
-1. **Check State Files**
-   - Read state files directly to see current values
-   - Verify JSON/YAML is valid
-   - Look for unexpected data
-
-2. **Test Tasks Manually**
+1. **List Current Schedules**
    ```
-   Execute the task from cron.yaml manually to test it before scheduling
+   schedule_list()  // See all active schedules
    ```
 
-3. **Add Logging**
-   ```yaml
-   task: |
-     Read state.json.
-     Log current state values for debugging.
-     Perform task logic.
-     Log updated state before writing.
-     Write state.json.
+2. **Check State Files**
+   ```
+   Read state files directly to verify values
+   Check JSON/YAML is valid
+   Look for unexpected data
    ```
 
-4. **Validate Schedules**
-   - Use online cron validators
+3. **Test Tasks Manually**
+   ```
+   Execute the task description manually before scheduling
+   Verify it works as expected
+   ```
+
+4. **Add Logging to Tasks**
+   ```
+   Task: |
+     Log "Starting task X"
+     Read state.json
+     Log "Current state: " + JSON.stringify(state)
+     Perform logic
+     Log "Updated state: " + JSON.stringify(state)
+     Write state.json
+     Log "Task X completed"
+   ```
+
+5. **Validate Schedules**
    - Test with frequent schedules first (every 5 minutes)
+   - Verify timezone is correct
    - Scale back to target frequency after testing
 
-## Example: Complete Reminder System
+## Integration with User Messages
 
-```yaml
-# cron.yaml
-jobs:
-  - name: check-reminders
-    schedule: "*/5 * * * *"  # Every 5 minutes
-    task: |
-      Read reminders.json (create with empty array if missing).
-      Get current time.
-      Find all reminders where dueTime <= current time.
-      For each due reminder:
-        - Send reminder message mentioning the user
-        - Mark as sent
-      Remove sent reminders from array.
-      Write updated reminders.json.
-```
-
-```json
-// reminders.json (initial state)
-{
-  "reminders": []
-}
-```
-
-**Adding reminders** (via regular message):
-```
-Add a reminder for @user "Submit report" in 2 hours
-```
-
-Bot reads `reminders.json`, adds new reminder with calculated `dueTime`, writes file back.
-
-**Scheduled execution**:
-The cron job runs every 5 minutes, checks for due reminders, sends them, and cleans up.
-
-## Thread-Aware Scheduled Tasks
-
-**Feature:** Cron jobs can send their final message to the thread where they were created!
-
-### Problem
-```
-User in Thread #123: "Create a poll about meeting times"
-Bot: Creates poll, schedules result check
-[2 days later]
-Cron job: Results ready... but WHERE to send them?
-```
-
-### Solution: Use `replyInThread` Parameter
-
-When creating a cron job from a thread, use the `replyInThread: true` parameter to automatically capture the thread ID:
-
-```
-User in Thread #planning: "Check poll results in 2 days"
-
-Bot uses cron_add_job with replyInThread: true
-```
-
-This automatically creates:
-```yaml
-jobs:
-  - name: poll-results
-    schedule: "0 14 10 2 *"
-    responseThreadId: "planning-thread-id"  # ← Automatically captured!
-    oneTime: true
-    task: Get poll results and analyze
-```
-
-**How it works:**
-- ✅ Set `replyInThread: true` when calling `cron_add_job` from a thread
-- ✅ Bot automatically captures the thread ID and writes it to `responseThreadId`
-- ✅ Final message goes to that thread instead of the channel
-- ✅ Preserves conversation context when responding in threads
-- ✅ If called from a channel (not a thread), `replyInThread` is ignored
-
-### Example: Poll Created in Thread
-
-**User in Thread #planning:**
-```
-Create a poll about meeting times, check results in 48 hours
-```
-
-**Bot creates cron.yaml entry:**
-```yaml
-jobs:
-  - name: meeting-poll-results
-    schedule: "30 14 12 2 *"  # 48 hours from now
-    responseThreadId: "planning-thread-id"  # ← Original thread
-    oneTime: true
-    task: |
-      Get results from poll message 999888777.
-      Announce winner and create calendar event.
-```
-
-**Result:** When the cron job runs, the final message appears in Thread #planning where the request originated!
-
-### Benefits
-1. **Context Preservation** - Results appear where user asked
-2. **Conversation Continuity** - Feels like bot "remembers" and follows up
-3. **Better UX** - User doesn't have to hunt for results
-4. **No Extra State** - Thread ID stored directly in cron.yaml
-
-### Complete Workflow Example
-
-**Step 1: User requests in thread**
-```
-User in Thread #support: "Fetch the latest sales data and summarize it"
-```
-
-**Step 2: Bot creates one-time cron job**
-```yaml
-# Bot adds to cron.yaml
-jobs:
-  - name: fetch-sales-data
-    schedule: "45 15 5 2 *"  # 10 minutes from now
-    responseThreadId: "support-thread-id"  # ← Goes back to this thread
-    oneTime: true
-    task: |
-      Fetch sales data from https://api.example.com/sales.
-      Summarize key metrics and trends.
-```
-
-**Step 3: Bot confirms**
-```
-Bot in Thread #support: "✅ I'll fetch the data and get back to you here in ~10 minutes"
-```
-
-**Step 4: Cron job executes**
-```
-[10 minutes later]
-Bot in Thread #support: "📊 Sales Data Summary
-- Total: $45,320
-- Growth: +12% vs last week
-..."
-```
-
-**Context preserved!** The response appears in the same thread where it was requested.
-
-## Integration with Regular Messages
-
-State files can be used by both scheduled tasks AND regular user messages:
+State files can be accessed by both scheduled tasks AND regular user messages:
 
 ```
 User: "Show me the current stats"
-Bot: Reads stats.json and displays the current values
+Bot: Reads stats.json and displays values
 
 User: "Reset the counter"
 Bot: Reads stats.json, sets counter to 0, writes back
 
-[5 minutes later, scheduled task runs]
+[Scheduled task runs later]
 Bot: Reads stats.json, increments counter, writes back
 ```
 
 This makes state files a powerful bridge between scheduled automation and interactive commands.
 
-## Requirements
+## Migration from V1
 
-- Each channel has its own `cron.yaml` file
-- Changes to `cron.yaml` are detected automatically (no restart needed)
-- State files persist across bot restarts
-- Scheduled tasks have access to all bot tools (Discord, file operations, etc.)
+**Breaking Change**: The old cron.yaml format is no longer supported. V1 schedules will not execute.
+
+**To migrate:**
+1. List your old V1 jobs
+2. Recreate using `schedule_one_time` or `schedule_recurring`
+3. Old `cron.yaml` file is not deleted, but is ignored
+
+## Summary
+
+- **One-Time**: Use `schedule_one_time` with natural language ("tomorrow at 9pm")
+- **Recurring**: Use `schedule_recurring` with cron expressions ("0 9 * * *")
+- **Timezones**: Always specify IANA timezone identifiers
+- **Thread Reply**: Use `replyInThread: true` for context preservation
+- **State**: Use JSON/YAML files for persistence between executions
+- **Management**: Use `schedule_list` and `schedule_remove` to manage schedules

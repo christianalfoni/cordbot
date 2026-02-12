@@ -13,10 +13,9 @@ export interface SystemPromptConfig {
 /**
  * Tools configuration
  */
-export interface ToolsConfig {
-  type: 'preset';
-  preset: 'claude_code';
-}
+export type ToolsConfig =
+  | { type: 'preset'; preset: 'claude_code' }
+  | string[]; // Array of tool names
 
 /**
  * Custom spawn function for Claude Code process
@@ -34,6 +33,7 @@ export interface QueryOptions {
   systemPrompt?: SystemPromptConfig;
   systemPromptAppend?: string;
   tools?: ToolsConfig;
+  allowedTools?: string[]; // Explicit list of allowed tool names
   mcpServers?: Record<string, any>;
   permissionMode?: 'bypassPermissions' | 'requestPermissions';
   allowDangerouslySkipPermissions?: boolean;

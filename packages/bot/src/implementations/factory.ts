@@ -8,6 +8,8 @@ import { NodeCronScheduler } from './scheduler/node-cron.js';
 import { ServiceTokenProvider } from './token/service-token.js';
 import { ConsoleLogger } from './logger.js';
 import { NodeFileStore } from './file/node-fs.js';
+import { DocumentConverter } from './document/converter.js';
+import { MemoryFileShareManager } from './file-sharing/memory-manager.js';
 import { TokenManager } from '../service/token-manager.js';
 import path from 'path';
 import os from 'os';
@@ -75,6 +77,12 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
   // Create file store
   const fileStore = new NodeFileStore();
 
+  // Create document converter
+  const documentConverter = new DocumentConverter();
+
+  // Create file share manager
+  const fileShareManager = new MemoryFileShareManager();
+
   const context: IBotContext = {
     guildId: config.guildId,
     homeDirectory,
@@ -86,6 +94,8 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
     tokenProvider,
     logger,
     fileStore,
+    documentConverter,
+    fileShareManager,
   };
 
   return {

@@ -4,20 +4,20 @@ import path from 'path';
 import fs from 'fs/promises';
 
 const schema = z.object({
-  filePath: z.string().describe('Path to file to share with the user via Discord attachment. Can be an absolute path or relative to current working directory.')
+  filePath: z.string().describe('Path to file to share with the user via Discord attachment. Can be an absolute path or relative to cordbot working directory.')
 });
 
-export function createTool(getCwd: () => string, queueFileForSharing: (filePath: string) => void) {
+export function createTool(getCordbotWorkingDir: () => string, queueFileForSharing: (filePath: string) => void) {
   return tool(
     'shareFile',
-    'Share a file with the user by attaching it to Discord. The file will be attached after your response completes. Use this to send generated diagrams, reports, code files, or any other files you want to share. Accepts absolute paths or paths relative to the current working directory.',
+    'Share a file with the user by attaching it to Discord. The file will be attached after your response completes. Use this to send generated diagrams, reports, code files, or any other files you want to share. Accepts absolute paths or paths relative to the cordbot working directory.',
     schema.shape,
     async ({ filePath }) => {
       try {
-        const cwd = getCwd();
+        const cordbotWorkingDir = getCordbotWorkingDir();
 
-        // If path is absolute, use it directly; otherwise join with cwd
-        const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
+        // If path is absolute, use it directly; otherwise join with cordbot working directory
+        const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cordbotWorkingDir, filePath);
 
         // Validate file exists
         try {
@@ -30,7 +30,7 @@ export function createTool(getCwd: () => string, queueFileForSharing: (filePath:
                 text: JSON.stringify({
                   error: `File not found: ${filePath}`,
                   attemptedPath: fullPath,
-                  workingDirectory: cwd
+                  cordbotWorkingDir
                 }, null, 2)
               }
             ],

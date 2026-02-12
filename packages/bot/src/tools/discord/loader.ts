@@ -23,6 +23,7 @@ import { createCreateForumChannelTool } from './create_forum_channel.js';
 import { createListForumPostsTool } from './list_forum_posts.js';
 import { createCreateForumPostTool } from './create_forum_post.js';
 import { createDeleteForumPostTool } from './delete_forum_post.js';
+import { createUpdateThreadNameTool } from './update_thread_name.js';
 
 /**
  * Load all Discord management tools
@@ -83,5 +84,6 @@ export function loadDiscordTools(
     // Forum tools
     createCreateForumChannelTool(client, getCurrentChannel, guildId),
     createDeleteForumPostTool(client, getCurrentChannel),
+    createUpdateThreadNameTool(client, getCurrentChannel),
   ];
 }

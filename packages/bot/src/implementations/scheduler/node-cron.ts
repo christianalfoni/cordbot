@@ -30,6 +30,7 @@ export class NodeCronScheduler implements IScheduler {
     name?: string;
     channelId?: string;
     oneTime?: boolean;
+    timezone?: string;
   }): string {
     const id = `task_${this.nextId++}`;
 
@@ -52,9 +53,10 @@ export class NodeCronScheduler implements IScheduler {
       }
     };
 
-    // Create the cron task
+    // Create the cron task with optional timezone support
     const cronTask = cron.schedule(cronExpression, wrappedFn, {
       scheduled: true,
+      ...(metadata?.timezone && { timezone: metadata.timezone }),
     });
 
     // Store the task

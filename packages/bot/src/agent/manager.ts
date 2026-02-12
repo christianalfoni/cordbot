@@ -44,7 +44,9 @@ export class SessionManager {
     private sessionsDir: string,
     private workspaceRoot: string,
     memoryContextSize: number = 10000,
-    private discordClient?: Client
+    private discordClient?: Client,
+    private cordbotWorkingDir?: string,
+    private baseUrl?: string
   ) {
     this.memoryContextSize = memoryContextSize;
   }
@@ -52,11 +54,6 @@ export class SessionManager {
   async initialize(): Promise<void> {
     // Load built-in tools (always available, no auth needed)
     const builtinTools = loadBuiltinTools(
-      () => {
-        // Get the working directory for the currently executing session
-        const entries = Array.from(this.currentWorkingDirs.entries());
-        return entries.length > 0 ? entries[0][1] : process.cwd();
-      },
       () => {
         // Get the channel ID for the currently executing session
         const entries = Array.from(this.currentChannelIds.entries());
@@ -74,7 +71,18 @@ export class SessionManager {
         // Get the channel for the currently executing session
         const entries = Array.from(this.currentChannels.entries());
         return entries.length > 0 ? entries[0][1] : null;
-      }
+      },
+      () => {
+        // Get the workspace root (configuration files like cron_v2.yaml)
+        return this.workspaceRoot;
+      },
+      () => {
+        // Get cordbot working directory (where cordbot writes its files)
+        return this.cordbotWorkingDir || this.workspaceRoot;
+      },
+      this.context.documentConverter,
+      this.context.fileShareManager,
+      this.baseUrl || 'http://localhost:8080'
     );
 
     // Load Discord tools if Discord client is provided
@@ -188,7 +196,7 @@ export class SessionManager {
 
   /**
    * Set the working directory for the current session
-   * Must be called before createQuery to enable built-in tools (cron, etc.)
+   * Must be called before createQuery to enable built-in tools (scheduling, etc.)
    */
   setWorkingDirContext(sessionId: string, workingDir: string): void {
     this.currentWorkingDirs.set(sessionId, workingDir);
@@ -203,7 +211,7 @@ export class SessionManager {
 
   /**
    * Set the channel ID for the current session
-   * Must be called before createQuery to enable cron tools with centralized storage
+   * Must be called before createQuery to enable scheduling tools with centralized storage
    */
   setChannelIdContext(sessionId: string, channelId: string): void {
     this.currentChannelIds.set(sessionId, channelId);
@@ -252,7 +260,18 @@ export class SessionManager {
         settingSources: ["user"], // Load ~/.claude/skills (user) only - CLAUDE.md is manually injected as systemPrompt
         allowDangerouslySkipPermissions: true,
         permissionMode: "bypassPermissions",
-        tools: { type: "preset", preset: "claude_code" }, // Enable all Claude Code tools
+        allowedTools: [
+          "Skill",      // Enable Agent Skills from ~/.claude/skills/
+          "Read",       // Read files
+          "Write",      // Create new files
+          "Edit",       // Edit existing files
+          "Glob",       // Find files by pattern
+          "Grep",       // Search file contents
+          "WebFetch",   // Fetch web pages
+          "WebSearch",  // Search the web
+          "Task",       // Launch subagents
+          "TodoWrite",  // Task management
+        ],
         verbose: true, // Required for stream-json output format in Claude Code 2.1.x
         systemPrompt: systemPrompt ? {
           type: "preset",
@@ -273,10 +292,6 @@ export class SessionManager {
 
           // Use full path to node instead of relying on PATH/shell
           const command = spawnOptions.command === 'node' ? '/usr/local/bin/node' : spawnOptions.command;
-
-          this.context.logger.info(`🔧 Spawning Claude Code process: ${command}`);
-          this.context.logger.info(`   Args: ${args.join(' ')}`);
-          this.context.logger.info(`   CWD: ${spawnOptions.cwd}`);
 
           // Spawn without shell to avoid argument parsing issues
           const child = spawn(command, args, {
@@ -328,16 +343,20 @@ export class SessionManager {
   }
 
   /**
-   * Populate memory section in CLAUDE.md for a channel before query
+   * Populate memory section in CLAUDE.md for a channel before query (server-wide)
    */
   async populateMemory(
     claudeMdPath: string,
     channelId: string,
+    channelName: string,
+    allChannels: Array<{ channelId: string; channelName: string }>,
     sessionId: string
   ): Promise<import('../memory/loader.js').MemoryLoadResult> {
     return populateMemorySection(
       claudeMdPath,
       channelId,
+      channelName,
+      allChannels,
       this.memoryContextSize,
       sessionId
     );

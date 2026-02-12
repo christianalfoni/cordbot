@@ -305,7 +305,6 @@ export class StripeWebhookService {
     const deployment = await this.ctx.firestore.getGuildDeployment(subscription.guildId);
     if (deployment) {
       await this.ctx.firestore.updateGuildDeployment(subscription.guildId, {
-        queriesRemaining: tierConfig.queriesTotal,
         queriesUsed: 0,
         costThisPeriod: 0,
         updatedAt: now,

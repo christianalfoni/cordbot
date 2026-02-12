@@ -25,6 +25,8 @@ export interface RawMemoryEntry {
   message: string;
   sessionId: string;
   threadId?: string;
+  channelId: string;      // NEW: For server-wide storage
+  channelName: string;    // NEW: For server-wide storage
 }
 
 /**
@@ -302,6 +304,264 @@ export async function deleteMonthlyMemory(
     if (error.code === 'ENOENT') {
       // File doesn't exist, that's fine
       return;
+    }
+    throw error;
+  }
+}
+
+// ============================================================================
+// Server-Wide Memory Storage (NEW)
+// ============================================================================
+
+/**
+ * Get the server-wide memories directory path
+ */
+export function getServerMemoriesPath(homeDirectory?: string): string {
+  const home = homeDirectory || process.env.HOME || os.homedir();
+  return path.join(home, '.claude', 'memories');
+}
+
+/**
+ * Get the server-wide raw memories directory path
+ */
+export function getServerRawMemoriesPath(homeDirectory?: string): string {
+  return path.join(getServerMemoriesPath(homeDirectory), 'raw');
+}
+
+/**
+ * Get the server-wide daily memories directory path
+ */
+export function getServerDailyMemoriesPath(homeDirectory?: string): string {
+  return path.join(getServerMemoriesPath(homeDirectory), 'daily');
+}
+
+/**
+ * Get the server-wide weekly memories directory path
+ */
+export function getServerWeeklyMemoriesPath(homeDirectory?: string): string {
+  return path.join(getServerMemoriesPath(homeDirectory), 'weekly');
+}
+
+/**
+ * Get the server-wide monthly memories directory path
+ */
+export function getServerMonthlyMemoriesPath(homeDirectory?: string): string {
+  return path.join(getServerMemoriesPath(homeDirectory), 'monthly');
+}
+
+/**
+ * Append a message to raw memory file (simple MD format)
+ * Creates CHANNEL_ID.md or CHANNEL_ID-THREAD_ID.md
+ */
+export async function appendRawMessageToFile(
+  channelId: string,
+  username: string,
+  message: string,
+  threadId?: string
+): Promise<void> {
+  const rawPath = getServerRawMemoriesPath();
+
+  // Determine filename
+  const filename = threadId
+    ? `${channelId}-${threadId}.md`
+    : `${channelId}.md`;
+
+  const filePath = path.join(rawPath, filename);
+
+  // Ensure directory exists
+  await fs.mkdir(rawPath, { recursive: true });
+
+  // Append in simple format: [username]: message
+  const line = `[${username}]: ${message}\n`;
+  await fs.appendFile(filePath, line, 'utf-8');
+}
+
+/**
+ * Read all raw memory files (returns Map of filename -> content)
+ */
+export async function readAllRawFiles(): Promise<Map<string, string>> {
+  const rawPath = getServerRawMemoriesPath();
+  const files = new Map<string, string>();
+
+  try {
+    await fs.mkdir(rawPath, { recursive: true });
+    const fileNames = await fs.readdir(rawPath);
+
+    for (const fileName of fileNames) {
+      if (fileName.endsWith('.md')) {
+        const filePath = path.join(rawPath, fileName);
+        const content = await fs.readFile(filePath, 'utf-8');
+        files.set(fileName, content);
+      }
+    }
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return files; // Directory doesn't exist yet
+    }
+    throw error;
+  }
+
+  return files;
+}
+
+/**
+ * Read a specific raw memory file
+ */
+export async function readRawFile(
+  channelId: string,
+  threadId?: string
+): Promise<string> {
+  const rawPath = getServerRawMemoriesPath();
+  const filename = threadId
+    ? `${channelId}-${threadId}.md`
+    : `${channelId}.md`;
+  const filePath = path.join(rawPath, filename);
+
+  try {
+    return await fs.readFile(filePath, 'utf-8');
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return ''; // File doesn't exist yet
+    }
+    throw error;
+  }
+}
+
+/**
+ * Clear all raw memory files (called after compression)
+ */
+export async function clearRawFiles(): Promise<void> {
+  const memoriesPath = getServerMemoriesPath();
+  const filePath = path.join(memoriesPath, 'raw.json');
+
+  try {
+    await fs.unlink(filePath);
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return; // File doesn't exist yet
+    }
+    throw error;
+  }
+}
+
+/**
+ * Write daily summary (single file with all channels)
+ */
+export async function writeDailySummary(
+  date: string,
+  channelSummaries: Map<string, string> // channelName -> summary
+): Promise<void> {
+  const dailyPath = getServerDailyMemoriesPath();
+  await fs.mkdir(dailyPath, { recursive: true });
+
+  const filePath = path.join(dailyPath, `${date}.md`);
+
+  // Format with arrow bracket delimiters
+  let content = `# Daily Summary: ${date}\n\n`;
+
+  for (const [channelName, summary] of channelSummaries) {
+    content += `< #${channelName} >\n${summary}\n\n`;
+  }
+
+  await fs.writeFile(filePath, content, 'utf-8');
+}
+
+/**
+ * Read daily summary (entire file)
+ */
+export async function readDailySummary(
+  date: string
+): Promise<string | null> {
+  const dailyPath = getServerDailyMemoriesPath();
+  const filePath = path.join(dailyPath, `${date}.md`);
+
+  try {
+    return await fs.readFile(filePath, 'utf-8');
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Write weekly summary (single file with all channels)
+ */
+export async function writeWeeklySummary(
+  weekIdentifier: string,
+  channelSummaries: Map<string, string>
+): Promise<void> {
+  const weeklyPath = getServerWeeklyMemoriesPath();
+  await fs.mkdir(weeklyPath, { recursive: true });
+
+  const filePath = path.join(weeklyPath, `${weekIdentifier}.md`);
+
+  // Format with arrow bracket delimiters
+  let content = `# Weekly Summary: ${weekIdentifier}\n\n`;
+
+  for (const [channelName, summary] of channelSummaries) {
+    content += `< #${channelName} >\n${summary}\n\n`;
+  }
+
+  await fs.writeFile(filePath, content, 'utf-8');
+}
+
+/**
+ * Read weekly summary (entire file)
+ */
+export async function readWeeklySummary(
+  weekIdentifier: string
+): Promise<string | null> {
+  const weeklyPath = getServerWeeklyMemoriesPath();
+  const filePath = path.join(weeklyPath, `${weekIdentifier}.md`);
+
+  try {
+    return await fs.readFile(filePath, 'utf-8');
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Write monthly summary (single file with all channels)
+ */
+export async function writeMonthlySummary(
+  monthIdentifier: string,
+  channelSummaries: Map<string, string>
+): Promise<void> {
+  const monthlyPath = getServerMonthlyMemoriesPath();
+  await fs.mkdir(monthlyPath, { recursive: true });
+
+  const filePath = path.join(monthlyPath, `${monthIdentifier}.md`);
+
+  // Format with arrow bracket delimiters
+  let content = `# Monthly Summary: ${monthIdentifier}\n\n`;
+
+  for (const [channelName, summary] of channelSummaries) {
+    content += `< #${channelName} >\n${summary}\n\n`;
+  }
+
+  await fs.writeFile(filePath, content, 'utf-8');
+}
+
+/**
+ * Read monthly summary (entire file)
+ */
+export async function readMonthlySummary(
+  monthIdentifier: string
+): Promise<string | null> {
+  const monthlyPath = getServerMonthlyMemoriesPath();
+  const filePath = path.join(monthlyPath, `${monthIdentifier}.md`);
+
+  try {
+    return await fs.readFile(filePath, 'utf-8');
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return null;
     }
     throw error;
   }

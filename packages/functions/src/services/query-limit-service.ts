@@ -61,8 +61,11 @@ export class QueryLimitService {
       };
     }
 
+    // Calculate queries remaining
+    const queriesRemaining = Math.max(0, deployment.queriesTotal - deployment.queriesUsed);
+
     // Check if queries remaining
-    if (deployment.queriesRemaining <= 0) {
+    if (queriesRemaining <= 0) {
       return {
         canProceed: false,
         blocked: true,
@@ -77,7 +80,7 @@ export class QueryLimitService {
       canProceed: true,
       blocked: false,
       deploymentType: deployment.deploymentType,
-      queriesRemaining: deployment.queriesRemaining,
+      queriesRemaining,
       totalQueries: deployment.queriesTotal,
     };
   }
@@ -102,10 +105,14 @@ export class QueryLimitService {
 
     // Use transaction to atomically update deployment
     const result = await this.ctx.firestore.runTransaction(async (transaction) => {
+      // ALL READS MUST HAPPEN FIRST - before any writes
       const deployment = await transaction.getGuildDeployment(guildId);
       if (!deployment) {
         throw new HttpsError('not-found', 'Deployment data not found');
       }
+
+      // Read guild data upfront (needed if limit is reached)
+      const guild = await transaction.getGuild(guildId);
 
       const now = this.ctx.getCurrentTime().toISOString();
 
@@ -113,9 +120,6 @@ export class QueryLimitService {
       const isNonDeducting = type === 'summarize_query';
 
       // Calculate new values
-      const queriesRemaining = isNonDeducting
-        ? deployment.queriesRemaining // Don't reduce for summarization
-        : Math.max(0, deployment.queriesRemaining - 1);
       const queriesUsed = isNonDeducting
         ? deployment.queriesUsed // Don't increment for summarization
         : deployment.queriesUsed + 1;
@@ -132,7 +136,6 @@ export class QueryLimitService {
 
       // Prepare update data
       const updateData: any = {
-        queriesRemaining,
         queriesUsed,
         totalCost,
         costThisPeriod,
@@ -152,15 +155,16 @@ export class QueryLimitService {
         updateData.firstQueryAt = now;
       }
 
+      // NOW DO ALL WRITES
       // Update deployment
       await transaction.updateGuildDeployment(guildId, updateData);
 
-      // Check if limit reached
+      // Calculate queries remaining and check if limit reached
+      const queriesRemaining = Math.max(0, deployment.queriesTotal - queriesUsed);
       const limitReached = queriesRemaining === 0;
 
       // If limit reached, suspend the guild
       if (limitReached) {
-        const guild = await transaction.getGuild(guildId);
         if (guild && guild.status === 'active') {
           await transaction.updateGuild(guildId, {
             status: 'suspended',

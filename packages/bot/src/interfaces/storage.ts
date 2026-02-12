@@ -94,10 +94,12 @@ export interface ISessionStore {
  * Raw memory entry for a single message/event
  */
 export interface RawMemoryEntry {
-  timestamp: number;
-  author: string;
-  content: string;
-  channelId: string;
+  timestamp: string;
+  message: string;
+  sessionId: string;
+  threadId?: string;
+  channelId: string;      // NEW: For server-wide storage
+  channelName: string;    // NEW: For server-wide storage
 }
 
 /**
@@ -162,6 +164,15 @@ export interface IMemoryStore {
    * Load all relevant memories for a channel within a token budget
    */
   loadMemoriesForChannel(channelId: string, tokenBudget: number): Promise<MemoryLoadResult>;
+
+  /**
+   * Load server-wide memories with current channel prioritization
+   */
+  loadMemoriesForServer(
+    currentChannelId: string,
+    allChannelIds: string[],
+    tokenBudget: number
+  ): Promise<MemoryLoadResult>;
 
   /**
    * Get the channel's memory directory path

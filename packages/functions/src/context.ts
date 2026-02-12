@@ -174,7 +174,6 @@ export interface GuildDeployment {
   guildId: string;
   deploymentType: 'free' | 'starter' | 'pro';
   queriesTotal: number;
-  queriesRemaining: number;
   queriesUsed: number;
   totalCost: number;
   costThisPeriod: number;

@@ -29,7 +29,43 @@ interface FlyMachineConfig {
   init?: {
     cwd?: string;
   };
+  services?: Array<{
+    protocol: string;
+    internal_port: number;
+    ports: Array<{
+      port: number;
+      handlers: string[];
+    }>;
+    http_checks?: Array<{
+      interval: number;
+      timeout: number;
+      grace_period: number;
+      method: string;
+      path: string;
+      protocol: string;
+    }>;
+  }>;
 }
+
+// HTTP service configuration for exposing health server and file sharing endpoints
+const CORDBOT_HTTP_SERVICE_CONFIG = [
+  {
+    protocol: 'tcp',
+    internal_port: 8080,
+    ports: [
+      { port: 80, handlers: ['http'] },
+      { port: 443, handlers: ['http', 'tls'] }
+    ],
+    http_checks: [{
+      interval: 30000,
+      timeout: 10000,
+      grace_period: 30000,
+      method: 'GET',
+      path: '/health',
+      protocol: 'http'
+    }]
+  }
+];
 
 /**
  * Get memory context size (token budget) for a tier
@@ -318,6 +354,7 @@ export class GuildProvisioningService {
       init: {
         cwd: '/workspace',
       },
+      services: CORDBOT_HTTP_SERVICE_CONFIG,
     };
 
     const machineResponse = await this.flyRequest(`/apps/${appName}/machines`, {
@@ -361,7 +398,6 @@ export class GuildProvisioningService {
       guildId,
       deploymentType,
       queriesTotal,
-      queriesRemaining: queriesTotal,
       queriesUsed: 0,
       totalCost: 0,
       costThisPeriod: 0,
@@ -656,6 +692,7 @@ export class GuildProvisioningService {
               serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
             }),
             mounts,
+            services: CORDBOT_HTTP_SERVICE_CONFIG,
           },
         }),
       });
@@ -756,6 +793,7 @@ export class GuildProvisioningService {
             init: {
               cwd: '/workspace',
             },
+            services: CORDBOT_HTTP_SERVICE_CONFIG,
           },
         }),
       });
@@ -871,6 +909,7 @@ export class GuildProvisioningService {
         init: {
           cwd: '/workspace',
         },
+        services: CORDBOT_HTTP_SERVICE_CONFIG,
       };
 
       this.ctx.logger.info('Update config', {

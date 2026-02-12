@@ -11,6 +11,13 @@ import {
   writeWeeklyMemory,
   writeMonthlyMemory,
   deleteMonthlyMemory,
+  readAllRawFiles,
+  clearRawFiles,
+  writeDailySummary,
+  writeWeeklySummary,
+  writeMonthlySummary,
+  readDailySummary,
+  readWeeklySummary,
 } from './storage.js';
 import {
   logDailyCompression,
@@ -62,11 +69,12 @@ function getMonthIdentifier(date: Date): string {
 
 /**
  * Use Claude to summarize content
- * Returns both summary and cost
+ * Returns summary, cost, and token count
  */
 async function summarizeWithClaude(content: string, context: string): Promise<{
-  summary: string;
+  text: string;
   cost: number;
+  tokenCount: number;
 }> {
   const prompt = `${context}
 
@@ -115,15 +123,18 @@ Summary:`;
       }
     }
 
+    const finalSummary = summary.trim() || content;
     return {
-      summary: summary.trim() || content,
+      text: finalSummary,
       cost,
+      tokenCount: countTokens(finalSummary),
     };
   } catch (error) {
     console.error('Failed to summarize with Claude:', error);
     return {
-      summary: content,
+      text: content,
       cost: 0,
+      tokenCount: countTokens(content),
     };
   }
 }
@@ -151,24 +162,24 @@ async function compressDailyMemories(
     .join('\n\n---\n\n');
 
   // Summarize with Claude
-  const { summary, cost } = await summarizeWithClaude(
+  const result = await summarizeWithClaude(
     combinedContent,
     `You are summarizing the conversation outcomes from ${date} in a Discord channel.`
   );
 
   // Write daily summary
-  await writeDailyMemory(channelId, date, summary);
+  await writeDailyMemory(channelId, date, result.text);
 
   // Log compression
   await logDailyCompression(
     channelId,
     date,
     rawEntries.length,
-    summary.length,
-    countTokens(summary)
+    result.text.length,
+    result.tokenCount
   );
 
-  return cost;
+  return result.cost;
 }
 
 /**
@@ -207,24 +218,24 @@ async function compressWeeklyMemories(
   }
 
   // Summarize with Claude
-  const { summary, cost } = await summarizeWithClaude(
+  const result = await summarizeWithClaude(
     combinedContent,
     `You are summarizing a week (${weekIdentifier}) of activity in a Discord channel.`
   );
 
   // Write weekly summary
-  await writeWeeklyMemory(channelId, weekIdentifier, summary);
+  await writeWeeklyMemory(channelId, weekIdentifier, result.text);
 
   // Log compression
   await logWeeklyCompression(
     channelId,
     weekIdentifier,
     weeklyDailies.length,
-    summary.length,
-    countTokens(summary)
+    result.text.length,
+    result.tokenCount
   );
 
-  return cost;
+  return result.cost;
 }
 
 /**
@@ -261,27 +272,27 @@ async function compressMonthlyMemories(
   }
 
   // Summarize with Claude
-  const { summary, cost } = await summarizeWithClaude(
+  const result = await summarizeWithClaude(
     combinedContent,
     `You are summarizing a month (${monthIdentifier}) of activity in a Discord channel.`
   );
 
   // Write monthly summary
-  await writeMonthlyMemory(channelId, monthIdentifier, summary);
+  await writeMonthlyMemory(channelId, monthIdentifier, result.text);
 
   // Log compression
   await logMonthlyCompression(
     channelId,
     monthIdentifier,
     monthlyWeeklies.length,
-    summary.length,
-    countTokens(summary)
+    result.text.length,
+    result.tokenCount
   );
 
   // Clean up old monthly memories based on retention policy
   await cleanupOldMonthlyMemories(channelId);
 
-  return cost;
+  return result.cost;
 }
 
 /**
@@ -324,16 +335,224 @@ async function cleanupOldMonthlyMemories(channelId: string): Promise<void> {
 }
 
 
+// ============================================================================
+// Server-Wide Compression Functions (NEW)
+// ============================================================================
+
+/**
+ * Compress yesterday's raw messages into a server-wide daily summary
+ * Returns cost in dollars
+ */
+async function compressDailyMemoriesServerWide(
+  date: string,
+  channels: Array<{ channelId: string; channelName: string }>
+): Promise<number> {
+  console.log(`[Memory] Compressing server-wide daily memories for ${date}`);
+
+  // 1. Import memory manager
+  const { memoryManager } = await import('./manager.js');
+
+  // 2. Get all channel IDs with messages
+  const channelIds = memoryManager.getChannelIds();
+
+  if (channelIds.length === 0) {
+    console.log(`[Memory] No raw memories to compress`);
+    return 0;
+  }
+
+  // 3. Build lookup map for channel names
+  const channelMap = new Map<string, string>();
+  for (const channel of channels) {
+    channelMap.set(channel.channelId, channel.channelName);
+  }
+
+  // 4. Concatenate all content with section headers
+  let concatenatedText = `# ${getDayName(date)} ${date}\n\n`;
+
+  for (const channelId of channelIds) {
+    const channelName = channelMap.get(channelId) || channelId;
+    const markdown = memoryManager.convertToMarkdown(channelId);
+
+    if (markdown.trim()) {
+      concatenatedText += `## ${channelName}\n\n${markdown}\n`;
+    }
+  }
+
+  // 5. Send concatenated text to Claude for summarization
+  const result = await summarizeWithClaude(
+    concatenatedText,
+    `Summarize the day's conversations from ${date}. Preserve the channel/thread structure in your summary.`
+  );
+
+  // 6. Write daily summary
+  await writeDailySummary(date, new Map([[date, result.text]]));
+
+  // Log compression
+  await logDailyCompression(
+    'server-wide',
+    date,
+    channelIds.length,
+    result.text.length,
+    result.tokenCount
+  );
+
+  // 7. Clear in-memory data and JSON files after successful compression
+  await memoryManager.flushAll(); // Write any pending changes
+  memoryManager.clearAll(); // Clear memory
+  await clearRawFiles(); // Delete JSON files
+  console.log(`[Memory] Cleared ${channelIds.length} channel memories`);
+
+  return result.cost;
+}
+
+/**
+ * Helper to get day name from date string
+ */
+function getDayName(dateStr: string): string {
+  const date = new Date(dateStr);
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return days[date.getDay()];
+}
+
+/**
+ * Compress last week's daily summaries into a server-wide weekly summary
+ * Returns cost in dollars
+ */
+async function compressWeeklyMemoriesServerWide(
+  weekIdentifier: string,
+  channels: Array<{ channelId: string; channelName: string }>
+): Promise<number> {
+  console.log(`[Memory] Compressing server-wide weekly memories (${weekIdentifier})`);
+
+  // Get the week's dates
+  const dates: string[] = [];
+  // Simple approach: get last 7 days from the week's Monday
+  const weekMatch = weekIdentifier.match(/(\d{4})-W(\d{2})/);
+  if (!weekMatch) return 0;
+
+  // For simplicity, read the last 7 daily summaries
+  for (let i = 0; i < 7; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - i - 1); // Start from yesterday
+    dates.push(date.toISOString().split('T')[0]);
+  }
+
+  const channelSummaries = new Map<string, string>();
+  let totalCost = 0;
+
+  // For each channel, collect and summarize their daily summaries
+  for (const channel of channels) {
+    let combinedContent = '';
+
+    for (const date of dates) {
+      const daily = await readDailyMemory(channel.channelId, date);
+      if (daily) {
+        combinedContent += `## ${date}\n\n${daily}\n\n`;
+      }
+    }
+
+    if (combinedContent) {
+      // Summarize with Claude
+      const result = await summarizeWithClaude(
+        combinedContent,
+        `Summarize week (${weekIdentifier}) of activity in #${channel.channelName}`
+      );
+
+      channelSummaries.set(channel.channelName, result.text);
+      totalCost += result.cost;
+
+      // Log compression
+      await logWeeklyCompression(
+        channel.channelId,
+        weekIdentifier,
+        dates.length,
+        result.text.length,
+        result.tokenCount
+      );
+    }
+  }
+
+  // Write single weekly summary file
+  if (channelSummaries.size > 0) {
+    await writeWeeklySummary(weekIdentifier, channelSummaries);
+  }
+
+  return totalCost;
+}
+
+/**
+ * Compress last month's weekly summaries into a server-wide monthly summary
+ * Returns cost in dollars
+ */
+async function compressMonthlyMemoriesServerWide(
+  monthIdentifier: string,
+  channels: Array<{ channelId: string; channelName: string }>
+): Promise<number> {
+  console.log(`[Memory] Compressing server-wide monthly memories (${monthIdentifier})`);
+
+  // Get all weekly summaries from last month
+  const allWeeklies = await listWeeklyMemories(channels[0].channelId); // Use first channel to get list
+
+  // Filter to only last month's weeks
+  const [year, month] = monthIdentifier.split('-');
+  const monthlyWeeklies = allWeeklies.filter(weekId => {
+    return weekId.startsWith(`${year}-W`);
+  });
+
+  const channelSummaries = new Map<string, string>();
+  let totalCost = 0;
+
+  // For each channel, collect and summarize their weekly summaries
+  for (const channel of channels) {
+    let combinedContent = '';
+
+    for (const weekId of monthlyWeeklies) {
+      const weekly = await readWeeklyMemory(channel.channelId, weekId);
+      if (weekly) {
+        combinedContent += `## Week ${weekId}\n\n${weekly}\n\n`;
+      }
+    }
+
+    if (combinedContent) {
+      // Summarize with Claude
+      const result = await summarizeWithClaude(
+        combinedContent,
+        `Summarize month (${monthIdentifier}) of activity in #${channel.channelName}`
+      );
+
+      channelSummaries.set(channel.channelName, result.text);
+      totalCost += result.cost;
+
+      // Log compression
+      await logMonthlyCompression(
+        channel.channelId,
+        monthIdentifier,
+        monthlyWeeklies.length,
+        result.text.length,
+        result.tokenCount
+      );
+    }
+  }
+
+  // Write single monthly summary file
+  if (channelSummaries.size > 0) {
+    await writeMonthlySummary(monthIdentifier, channelSummaries);
+  }
+
+  return totalCost;
+}
+
 /**
  * Main compression job that runs daily and checks for boundary conditions
+ * NEW: Accepts channels with names for server-wide storage
  */
 export async function runDailyMemoryCompression(
-  channelIds: string[],
+  channels: Array<{ channelId: string; channelName: string }>,
   guildId?: string,
   queryLimitManager?: any
 ): Promise<void> {
-  console.log('\n[Memory] Starting daily compression job');
-  console.log(`[Memory] Processing ${channelIds.length} channels`);
+  console.log('\n[Memory] Starting server-wide daily compression job');
+  console.log(`[Memory] Processing ${channels.length} channels`);
 
   // Check query limit before proceeding
   if (queryLimitManager) {
@@ -354,34 +573,31 @@ export async function runDailyMemoryCompression(
   let totalCost = 0;
   let success = true;
 
-  for (const channelId of channelIds) {
-    try {
-      // Always: Compress yesterday's raw messages
-      const dailyCost = await compressDailyMemories(channelId, yesterdayStr);
-      totalCost += dailyCost;
+  try {
+    // Always: Compress yesterday's raw messages (server-wide)
+    const dailyCost = await compressDailyMemoriesServerWide(yesterdayStr, channels);
+    totalCost += dailyCost;
 
-      // If Monday: Compress last week
-      if (dateInfo.isMonday) {
-        const lastWeek = new Date(today);
-        lastWeek.setDate(lastWeek.getDate() - 7);
-        const weekIdentifier = getWeekIdentifier(lastWeek);
-        const weeklyCost = await compressWeeklyMemories(channelId, weekIdentifier);
-        totalCost += weeklyCost;
-      }
-
-      // If 1st of month: Compress last month
-      if (dateInfo.isFirstOfMonth) {
-        const lastMonth = new Date(today);
-        lastMonth.setMonth(lastMonth.getMonth() - 1);
-        const monthIdentifier = getMonthIdentifier(lastMonth);
-        const monthlyCost = await compressMonthlyMemories(channelId, monthIdentifier);
-        totalCost += monthlyCost;
-      }
-    } catch (error) {
-      console.error(`[Memory] Error compressing memories for channel ${channelId}:`, error);
-      success = false;
-      // Continue with other channels
+    // If Monday: Compress last week (server-wide)
+    if (dateInfo.isMonday) {
+      const lastWeek = new Date(today);
+      lastWeek.setDate(lastWeek.getDate() - 7);
+      const weekIdentifier = getWeekIdentifier(lastWeek);
+      const weeklyCost = await compressWeeklyMemoriesServerWide(weekIdentifier, channels);
+      totalCost += weeklyCost;
     }
+
+    // If 1st of month: Compress last month (server-wide)
+    if (dateInfo.isFirstOfMonth) {
+      const lastMonth = new Date(today);
+      lastMonth.setMonth(lastMonth.getMonth() - 1);
+      const monthIdentifier = getMonthIdentifier(lastMonth);
+      const monthlyCost = await compressMonthlyMemoriesServerWide(monthIdentifier, channels);
+      totalCost += monthlyCost;
+    }
+  } catch (error) {
+    console.error(`[Memory] Error compressing server-wide memories:`, error);
+    success = false;
   }
 
   // Track query usage (doesn't reduce query count, only tracks cost)
@@ -390,5 +606,5 @@ export async function runDailyMemoryCompression(
     console.log(`[Memory] Tracked compression cost: $${totalCost.toFixed(4)}`);
   }
 
-  console.log('[Memory] Daily compression job completed\n');
+  console.log('[Memory] Server-wide daily compression job completed\n');
 }

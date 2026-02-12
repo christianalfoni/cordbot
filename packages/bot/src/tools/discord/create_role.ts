@@ -15,7 +15,7 @@ export function createCreateRoleTool(
 ) {
   return tool(
     'discord_create_role',
-    'Create a new role in the Discord server',
+    'Create a new role in the Discord server. TIP: For role management best practices and patterns, load the discord_role_management skill.',
     schema.shape,
     async ({ name, color, mentionable = false }) => {
       try {

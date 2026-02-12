@@ -1,3 +1,8 @@
+---
+name: forum_management
+description: Manage Discord forum channels and threads. Use when working with forum posts, managing forum tags, or organizing forum discussions.
+---
+
 # Forum Management Skill
 
 Manage Discord forum channels and posts for organized discussions.

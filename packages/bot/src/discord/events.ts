@@ -1,10 +1,11 @@
 import path from 'path';
 import { SessionManager } from '../agent/manager.js';
 import { streamToDiscord } from '../agent/stream.js';
-import { ChannelMapping, getChannelMapping, syncNewChannel, updateChannelClaudeMdTopic, BotConfig } from './sync.js';
+import { ChannelMapping, getChannelMapping, syncNewChannel, updateChannelClaudeMdTopic, updateServerDescription, BotConfig } from './sync.js';
 import { CronRunner } from '../scheduler/runner.js';
 import { trackMessage } from '../message-tracking/tracker.js';
 import { QueryLimitManager } from '../service/query-limit-manager.js';
+import { processAttachments, formatAttachmentPrompt } from './attachment-handler.js';
 import type { IBotContext } from '../interfaces/core.js';
 import type { IMessage, ITextChannel, IThreadChannel, IChannel } from '../interfaces/discord.js';
 import type { ILogger } from '../interfaces/logger.js';
@@ -24,7 +25,8 @@ export function setupEventHandlers(
   context: IBotContext,
   sessionManager: SessionManager,
   channelMappings: ChannelMapping[],
-  basePath: string,
+  workspaceRoot: string,
+  workingDirectory: string,
   guildId: string,
   cronRunner: CronRunner,
   logger: ILogger,
@@ -53,7 +55,7 @@ export function setupEventHandlers(
       }
 
       // Existing bot interaction logic
-      await handleMessageWithLock(message, context, sessionManager, channelMappings, logger, botConfig, queryLimitManager);
+      await handleMessageWithLock(message, context, sessionManager, channelMappings, workspaceRoot, logger, botConfig, queryLimitManager);
     } catch (error) {
       logger.error('❌ Fatal error in messageCreate handler:', error);
       // Try to notify the user
@@ -80,7 +82,7 @@ export function setupEventHandlers(
       logger.info(`\n🆕 New channel detected: #${channel.name}`);
 
       // Sync the new channel
-      const mapping = await syncNewChannel(channel, basePath, botConfig);
+      const mapping = await syncNewChannel(channel, workspaceRoot, workingDirectory, botConfig);
 
       // Add to mappings array so it's immediately available
       channelMappings.push(mapping);
@@ -119,11 +121,7 @@ export function setupEventHandlers(
       // Remove from mappings array
       channelMappings.splice(mappingIndex, 1);
 
-      // Delete the folder if it exists
-      if (context.fileStore.exists(mapping.folderPath)) {
-        context.fileStore.deleteDirectory(mapping.folderPath);
-        logger.info(`📁 Deleted folder: ${mapping.folderPath}`);
-      }
+      // Note: We don't delete channel folders - they remain as leftovers
 
       logger.info(`✅ Channel #${channel.name} cleanup complete\n`);
     } catch (error) {
@@ -157,6 +155,27 @@ export function setupEventHandlers(
     }
   });
 
+  // Handle guild updates (e.g., server description changes)
+  context.discord.on('guildUpdate', async (oldGuild, newGuild) => {
+    // Only handle our configured guild
+    if (newGuild.id !== guildId) return;
+
+    // Check if description changed
+    const oldDesc = oldGuild.description || '';
+    const newDesc = newGuild.description || '';
+
+    if (oldDesc !== newDesc) {
+      try {
+        logger.info(`\n📝 Server description updated`);
+        const serverDescPath = path.join(workspaceRoot, '.claude', 'SERVER_DESCRIPTION.md');
+        await updateServerDescription(serverDescPath, newDesc);
+        logger.info(`✅ Synced server description\n`);
+      } catch (error) {
+        logger.error(`❌ Error syncing server description:`, error);
+      }
+    }
+  });
+
   // Handle errors
   context.discord.on('error', (error) => {
     logger.error('Discord client error:', error);
@@ -173,6 +192,7 @@ async function handleMessageWithLock(
   context: IBotContext,
   sessionManager: SessionManager,
   channelMappings: ChannelMapping[],
+  workspaceRoot: string,
   logger: ILogger,
   botConfig?: BotConfig,
   queryLimitManager?: QueryLimitManager
@@ -193,7 +213,7 @@ async function handleMessageWithLock(
     }
 
     // Create new lock for this message
-    const newLock = handleMessage(message, context, sessionManager, channelMappings, logger, botConfig, queryLimitManager)
+    const newLock = handleMessage(message, context, sessionManager, channelMappings, workspaceRoot, logger, botConfig, queryLimitManager)
       .finally(() => {
         // Remove lock when done
         try {
@@ -218,13 +238,11 @@ async function handleMessage(
   context: IBotContext,
   sessionManager: SessionManager,
   channelMappings: ChannelMapping[],
+  workspaceRoot: string,
   logger: ILogger,
   botConfig?: BotConfig,
   queryLimitManager?: QueryLimitManager
 ): Promise<void> {
-  // Ignore bot messages
-  if (message.author.bot) return;
-
   // Determine the parent channel ID
   let parentChannelId: string;
   if (message.channel.isThread()) {
@@ -238,6 +256,106 @@ async function handleMessage(
   if (!mapping) {
     // Not a synced channel - ignore
     return;
+  }
+
+  // Helper to clean message content (replace mentions with names)
+  const cleanMessageContent = (msg: IMessage): string => {
+    let content = msg.content;
+
+    // Replace user mentions <@123456> with @username
+    // Use the username from the mentions.users array (not message author)
+    for (const user of msg.mentions.users) {
+      const mentionPattern = new RegExp(`<@!?${user.id}>`, 'g');
+      content = content.replace(mentionPattern, `@${user.username}`);
+    }
+
+    return content;
+  };
+
+  // If this is a bot message, capture to memory but don't process
+  if (message.author.bot) {
+    // Only capture regular message types (0 = Default, 19 = Reply)
+    // Skip system messages like channel name changes, pins, etc.
+    if (message.type === 0 || message.type === 19) {
+      try {
+        const { memoryManager } = await import('../memory/manager.js');
+        const botName = message.author.username || 'claudebot';
+        const cleanContent = cleanMessageContent(message);
+
+        if (message.channel.isThread()) {
+          // Thread message
+          memoryManager.addThreadReply(
+            parentChannelId,
+            message.channel.id,
+            botName,
+            cleanContent
+          );
+        } else {
+          // Channel message
+          memoryManager.addChannelMessage(
+            parentChannelId,
+            message.id,
+            botName,
+            cleanContent
+          );
+        }
+
+        logger.info(`[Memory] Captured bot message (${cleanContent.length} chars)`);
+      } catch (error) {
+        logger.error('[Memory] Failed to capture bot message:', error);
+      }
+    }
+    return; // Don't process bot messages further
+  }
+
+  // CAPTURE USER MESSAGE TO MEMORY (before mention filtering)
+  // Do this for ALL user messages, regardless of mentions
+  if (message.type === 0 || message.type === 19) {
+    try {
+      const { memoryManager } = await import('../memory/manager.js');
+      const { logRawMemoryCaptured } = await import('../memory/logger.js');
+
+      const displayName = message.member?.displayName || message.author.username;
+      const cleanedContent = cleanMessageContent(message);
+
+      // Add attachment info if present
+      let finalContent = cleanedContent;
+      if (message.attachments.size > 0) {
+        const attachmentNames = Array.from(message.attachments.values())
+          .map(att => att.name)
+          .join(', ');
+        finalContent = `${cleanedContent}\n\n[Files attached: ${attachmentNames}]`;
+      }
+
+      if (message.channel.isThread()) {
+        // Thread message
+        memoryManager.addThreadReply(
+          parentChannelId,
+          message.channel.id,
+          displayName,
+          finalContent
+        );
+      } else {
+        // Channel message
+        memoryManager.addChannelMessage(
+          parentChannelId,
+          message.id,
+          displayName,
+          finalContent
+        );
+      }
+
+      await logRawMemoryCaptured(
+        parentChannelId,
+        finalContent.length,
+        'pre-filter'
+      );
+
+      logger.info(`[Memory] Captured user message (${finalContent.length} chars)`);
+    } catch (error) {
+      logger.error('[Memory] Failed to capture user message:', error);
+      // Don't block message processing on memory failure
+    }
   }
 
   // MENTION FILTERING IN CHANNELS
@@ -277,31 +395,11 @@ async function handleMessage(
   }
 
   try {
-    // Check if user is replying to a bot message (using Discord's reply feature)
-    let replyToSession: any = null;
-    if (!message.channel.isThread() && message.reference) {
-      const referencedMessageId = message.reference.messageId;
-      if (referencedMessageId) {
-        const session = sessionManager.getSessionByMessageId(referencedMessageId);
-        if (session) {
-          replyToSession = {
-            sessionId: session.sessionId,
-            workingDir: session.workingDirectory,
-          };
-          logger.info(`🔗 Detected reply to bot message (session: ${session.sessionId})`);
-        }
-      }
-    }
-
-    // Check if there's a pending cron session for this channel
-    let pendingCronSession: any = null;
-    if (!message.channel.isThread() && !replyToSession) {
-      pendingCronSession = sessionManager.getPendingCronSession(parentChannelId);
-    }
-
     // Determine thread context
     let threadId: string;
     let targetForStream: ITextChannel | IThreadChannel;
+    let thinkingMessage: IMessage | undefined;
+    let isNewThread = false;
 
     if (message.channel.isThreadChannel()) {
       // User is replying in an existing thread
@@ -312,15 +410,26 @@ async function handleMessage(
       // This ensures thread context is available when tools execute
       logger.info(`✨ Creating thread for new conversation`);
 
+      // Create initial thread name from first 20 characters of message (with mentions replaced)
+      // Claude will update it based on conversation, but this provides a better fallback
+      const cleanedContent = cleanMessageContent(message);
+      const threadName = cleanedContent.length > 20
+        ? cleanedContent.substring(0, 20) + '...'
+        : cleanedContent || 'New conversation';
+
       const thread = await (message.channel as ITextChannel).threads.create({
-        name: 'Claude conversation',
-        autoArchiveDuration: 1440,
+        name: threadName,
+        autoArchiveDuration: 60,
         reason: 'Claude conversation',
         startMessage: message,
       });
 
+      // Thread will stay empty until first message is sent
+      // (thinking message was removed as it wasn't working well)
+
       threadId = thread.id;
       targetForStream = thread;
+      isNewThread = true;
 
       logger.info(`✅ Thread created: ${thread.id}`);
     }
@@ -330,75 +439,59 @@ async function handleMessage(
     let isNew: boolean;
     let workingDir: string;
 
-    if (replyToSession) {
-      // Continue the session from the replied-to message
-      sessionId = replyToSession.sessionId;
-      workingDir = replyToSession.workingDir;
-      isNew = false;
-
-      // Map the thread to the existing session
-      sessionManager.createMappingWithSessionId(
-        threadId,
-        parentChannelId,
-        message.id,
-        sessionId,
-        workingDir
-      );
-
-      logger.info(`🔗 Continuing session ${sessionId} from reply in thread ${threadId}`);
-    } else if (pendingCronSession) {
-      // Continue the cron session in this new thread
-      sessionId = pendingCronSession.sessionId;
-      workingDir = pendingCronSession.workingDir;
-      isNew = false;
-
-      // Map the thread to the existing cron session
-      sessionManager.createMappingWithSessionId(
-        threadId,
-        parentChannelId,
-        message.id,
-        sessionId,
-        workingDir
-      );
-
-      logger.info(`🔗 Continuing cron session ${sessionId} in thread ${threadId}`);
-    } else {
-      // Normal flow: get or create agent session tied to this thread
-      const result = await sessionManager.getOrCreateSession(
-        threadId,
-        parentChannelId,
-        message.id,
-        mapping.folderPath
-      );
-
-      sessionId = result.sessionId;
-      isNew = result.isNew;
-      workingDir = mapping.folderPath;
-
-      if (!isNew) {
-        logger.info(`📖 Resuming session ${sessionId} for thread ${threadId}`);
-      } else {
-        logger.info(`✨ Created new session ${sessionId} for thread ${threadId}`);
-      }
-
-      // Verify working directory exists and is accessible
-      if (!context.fileStore.exists(workingDir)) {
-        logger.error(`❌ Working directory does not exist: ${workingDir}`);
-        logger.error(`   This likely means the persistent volume is not mounted.`);
-
-        // Send error to the thread
-        await targetForStream.send(
-          `❌ Error: Working directory not found. Please check server configuration.`
-        );
-        return;
-      } else {
-        logger.info(`✓ Working directory exists: ${workingDir}`);
-        // Check if CLAUDE.md exists in centralized location
-        if (context.fileStore.exists(mapping.claudeMdPath)) {
-          logger.info(`✓ CLAUDE.md found at ${mapping.claudeMdPath}`);
-        } else {
-          logger.info(`⚠️  CLAUDE.md not found at ${mapping.claudeMdPath}`);
+    // Get or create agent session tied to this thread
+    // IMPORTANT: If we're in a thread with no existing session, only proceed if bot is mentioned
+    if (message.channel.isThreadChannel()) {
+      const existingSession = sessionManager.getSessionByThreadId(threadId);
+      if (!existingSession) {
+        // No existing session for this thread - check if bot is mentioned
+        const botUser = message.client.user;
+        if (!botUser) {
+          return; // Bot user not available
         }
+        const botMentioned = message.mentions.has(botUser.id);
+        if (!botMentioned) {
+          // Thread not created by bot and bot not mentioned - ignore
+          logger.info(`⚠️  Ignoring message in thread ${threadId} - no active session and bot not mentioned`);
+          return;
+        }
+      }
+    }
+
+    const result = await sessionManager.getOrCreateSession(
+      threadId,
+      parentChannelId,
+      message.id,
+      mapping.folderPath
+    );
+
+    sessionId = result.sessionId;
+    isNew = result.isNew;
+    workingDir = mapping.folderPath;
+
+    if (!isNew) {
+      logger.info(`📖 Resuming session ${sessionId} for thread ${threadId}`);
+    } else {
+      logger.info(`✨ Created new session ${sessionId} for thread ${threadId}`);
+    }
+
+    // Verify working directory exists and is accessible
+    if (!context.fileStore.exists(workingDir)) {
+      logger.error(`❌ Working directory does not exist: ${workingDir}`);
+      logger.error(`   This likely means the persistent volume is not mounted.`);
+
+      // Send error to the thread
+      await targetForStream.send(
+        `❌ Error: Working directory not found. Please check server configuration.`
+      );
+      return;
+    } else {
+      logger.info(`✓ Working directory exists: ${workingDir}`);
+      // Check if CLAUDE.md exists in centralized location
+      if (context.fileStore.exists(mapping.claudeMdPath)) {
+        logger.info(`✓ CLAUDE.md found at ${mapping.claudeMdPath}`);
+      } else {
+        logger.info(`⚠️  CLAUDE.md not found at ${mapping.claudeMdPath}`);
       }
     }
 
@@ -414,10 +507,8 @@ async function handleMessage(
       // Handle attachments if present
       let userMessage = message.content;
       if (message.attachments.size > 0) {
-        const attachmentInfo = await downloadAttachments(message, workingDir, context, logger);
-        if (attachmentInfo.length > 0) {
-          userMessage = `${message.content}\n\n[Files attached and saved to working directory: ${attachmentInfo.join(', ')}]`;
-        }
+        const attachmentResult = await processAttachments(message, workingDir, context, logger);
+        userMessage = `${message.content}${formatAttachmentPrompt(attachmentResult)}`;
       }
 
       // Prefix with username for multi-user context
@@ -442,32 +533,7 @@ async function handleMessage(
         userMessage = `[${displayName}]: ${userMessage}`;
       }
 
-      // Capture user message to memory (Phase 1: Store ALL messages)
-      try {
-        const threadId = message.channel.isThread() ? message.channel.id : message.id;
-
-        // Import memory functions at the top of file
-        const { appendRawMemory } = await import('../memory/storage.js');
-        const { logRawMemoryCaptured } = await import('../memory/logger.js');
-
-        await appendRawMemory(parentChannelId, {
-          timestamp: new Date().toISOString(),
-          message: userMessage, // Already has username prefix if in shared mode
-          sessionId: sessionId,
-          threadId: threadId,
-        });
-
-        await logRawMemoryCaptured(
-          parentChannelId,
-          userMessage.length,
-          sessionId
-        );
-
-        logger.info(`[Memory] Captured user message (${userMessage.length} chars)`);
-      } catch (error) {
-        logger.error('[Memory] Failed to capture user message:', error);
-        // Don't block message processing on memory failure
-      }
+      // Memory capture already happened earlier (before mention filtering)
 
       // Get CLAUDE.md path from mapping
       const channelMapping = getChannelMapping(parentChannelId, channelMappings);
@@ -482,13 +548,39 @@ async function handleMessage(
       let memoryTokens = 0;
       if (context.fileStore.exists(claudeMdPath)) {
         try {
-          const memoryResult = await sessionManager.populateMemory(claudeMdPath, parentChannelId, sessionId);
+          // Get all channel info
+          const allChannels = channelMappings.map(m => ({
+            channelId: m.channelId,
+            channelName: m.channelName,
+          }));
+
+          const memoryResult = await sessionManager.populateMemory(
+            claudeMdPath,
+            parentChannelId,
+            mapping.channelName,
+            allChannels,
+            sessionId
+          );
           memoryTokens = memoryResult.totalTokens;
           logger.info(`💾 Memory loaded: ${memoryTokens} tokens`);
 
+          // Read server description if it exists
+          const serverDescPath = path.join(workspaceRoot, '.claude', 'SERVER_DESCRIPTION.md');
+          let serverDescContent = '';
+          if (context.fileStore.exists(serverDescPath)) {
+            serverDescContent = context.fileStore.readFile(serverDescPath, 'utf-8');
+            logger.info(`📖 Read SERVER_DESCRIPTION.md`);
+          }
+
           // Read CLAUDE.md to use as system prompt
           const claudeMdContent = context.fileStore.readFile(claudeMdPath, 'utf-8');
-          systemPrompt = claudeMdContent;
+
+          // Inject server description at the top of the system prompt
+          if (serverDescContent) {
+            systemPrompt = `${serverDescContent}\n\n---\n\n${claudeMdContent}`;
+          } else {
+            systemPrompt = claudeMdContent;
+          }
           logger.info(`📖 Read CLAUDE.md (${claudeMdContent.length} chars)`);
         } catch (memoryError) {
           logger.error('Failed to populate memory or read CLAUDE.md:', memoryError);
@@ -496,6 +588,14 @@ async function handleMessage(
         }
       } else {
         logger.warn(`⚠️  CLAUDE.md not found at ${claudeMdPath}`);
+      }
+
+      // For new threads, append critical instruction to update thread name
+      if (isNewThread && systemPrompt) {
+        systemPrompt += `\n\n## CRITICAL: Thread Naming Requirement\n\n**YOU MUST call the \`discord_update_thread_name\` tool as your FIRST action in this conversation.**\n\nThis is a new thread and REQUIRES a descriptive name. Generate a concise, descriptive thread name (max 100 characters) that captures the essence of what the user is asking about or discussing. Do this BEFORE responding to the user.\n\nThe thread name should be:\n- Concise and clear (aim for 3-8 words)\n- Descriptive of the topic/question\n- Professional and organized\n\nDo NOT acknowledge that you're updating the thread name - just do it silently as your first tool call, then respond normally to the user's message.`;
+      } else if (isNewThread) {
+        // Fallback if no system prompt exists
+        systemPrompt = `## CRITICAL: Thread Naming Requirement\n\n**YOU MUST call the \`discord_update_thread_name\` tool as your FIRST action in this conversation.**\n\nThis is a new thread and REQUIRES a descriptive name. Generate a concise, descriptive thread name (max 100 characters) that captures the essence of what the user is asking about or discussing. Do this BEFORE responding to the user.\n\nThe thread name should be:\n- Concise and clear (aim for 3-8 words)\n- Descriptive of the topic/question\n- Professional and organized\n\nDo NOT acknowledge that you're updating the thread name - just do it silently as your first tool call, then respond normally to the user's message.`;
       }
 
       // Check query limit BEFORE processing
@@ -510,7 +610,7 @@ async function handleMessage(
       }
 
       // Set channel context BEFORE creating query
-      // This ensures tools like cron_add_job have access to thread context
+      // This ensures tools like schedule_add have access to thread context
       sessionManager.setChannelContext(sessionId, targetForStream);
       sessionManager.setWorkingDirContext(sessionId, workingDir);
       sessionManager.setChannelIdContext(sessionId, parentChannelId);
@@ -548,7 +648,10 @@ async function handleMessage(
           logger,
           botConfig,
           undefined, // messagePrefix
-          parentChannelId // Pass parent channel ID for memory operations
+          parentChannelId, // Pass parent channel ID for memory operations
+          undefined, // isCronJob
+          thinkingMessage, // thinkingMessageToDelete
+          mapping.channelName // NEW: parentChannelName for server-wide memory
         );
         success = true;
         cost = estimateQueryCost(streamResult);
@@ -589,40 +692,6 @@ async function handleMessage(
       logger.error('Failed to send error message to user:', replyError);
     }
   }
-}
-
-async function downloadAttachments(
-  message: IMessage,
-  workingDir: string,
-  context: IBotContext,
-  logger: ILogger
-): Promise<string[]> {
-  const attachmentNames: string[] = [];
-
-  for (const attachment of message.attachments.values()) {
-    try {
-      // Fetch the attachment
-      const response = await fetch(attachment.url);
-      if (!response.ok) {
-        logger.error(`Failed to download attachment ${attachment.name}: ${response.statusText}`);
-        continue;
-      }
-
-      // Get the file content
-      const buffer = Buffer.from(await response.arrayBuffer());
-
-      // Save to channel folder (overwrite if exists)
-      const filePath = path.join(workingDir, attachment.name);
-      context.fileStore.writeFile(filePath, buffer);
-
-      attachmentNames.push(attachment.name);
-      logger.info(`📎 Downloaded attachment: ${attachment.name} (${buffer.length} bytes)`);
-    } catch (error) {
-      logger.error(`Failed to download attachment ${attachment.name}:`, error);
-    }
-  }
-
-  return attachmentNames;
 }
 
 /**

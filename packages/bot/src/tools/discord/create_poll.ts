@@ -16,7 +16,7 @@ export function createCreatePollTool(
 ) {
   return tool(
     'discord_create_poll',
-    'Create a poll in a Discord channel (requires permission)',
+    'Create a poll in a Discord channel (requires permission). TIP: For examples, best practices, and automation patterns, load the discord_poll_management skill.',
     schema.shape,
     async ({ channelId, question, answers, duration = 24, allowMultiselect = false }) => {
       try {

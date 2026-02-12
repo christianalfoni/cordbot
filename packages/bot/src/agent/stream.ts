@@ -5,8 +5,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { SessionManager } from './manager.js';
 import { BotConfig } from '../discord/sync.js';
-import { appendRawMemory } from '../memory/storage.js';
-import { logRawMemoryCaptured } from '../memory/logger.js';
+// Memory capture happens in events.ts when Discord echoes messages back
 import type { ILogger } from '../interfaces/logger.js';
 import type { IMessage, ITextChannel, IThreadChannel, IAttachment } from '../interfaces/discord.js';
 
@@ -19,6 +18,7 @@ interface StreamState {
   messageSuffix: string | null;
   workingDir: string;
   channelId: string;
+  channelName: string; // NEW: For server-wide memory
   sessionId: string;
   workspaceRoot: string;
   isCronJob: boolean;
@@ -27,6 +27,9 @@ interface StreamState {
   collectedAssistantMessages: string[];
   // Usage information from query result
   usageInfo?: { total_cost: number; num_turns?: number };
+  // Thinking message to delete before first real message
+  thinkingMessageToDelete?: IMessage;
+  thinkingMessageDeleted: boolean;
 }
 
 export interface StreamResult {
@@ -46,7 +49,9 @@ export async function streamToDiscord(
   botConfig?: BotConfig,
   messagePrefix?: string,
   parentChannelId?: string,
-  isCronJob?: boolean
+  isCronJob?: boolean,
+  thinkingMessageToDelete?: IMessage,
+  parentChannelName?: string // NEW: For server-wide memory
 ): Promise<StreamResult> {
   // Thread is already created before this function is called
   let channel: ITextChannel | IThreadChannel = target;
@@ -58,6 +63,7 @@ export async function streamToDiscord(
   // If parentChannelId is provided (new message flow), use it
   // Otherwise use the current channel ID (for existing threads/channels)
   const memoryChannelId = parentChannelId || channel.id;
+  const memoryChannelName = parentChannelName || 'unknown';
 
   const state: StreamState = {
     currentToolUse: null,
@@ -68,10 +74,13 @@ export async function streamToDiscord(
     messageSuffix: null,
     workingDir,
     channelId: memoryChannelId, // Use parent channel ID for memory
+    channelName: memoryChannelName, // NEW: For server-wide memory
     sessionId,
     workspaceRoot,
     isCronJob: isCronJob || false,
     collectedAssistantMessages: [],
+    thinkingMessageToDelete,
+    thinkingMessageDeleted: false,
   };
 
   try {
@@ -96,23 +105,8 @@ export async function streamToDiscord(
         channel = await sendCompleteMessage(channel, finalMessage, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare, logger, sessionManager);
       }
 
-      // Capture final message to memory (for both cron and non-cron)
-      try {
-        await appendRawMemory(state.channelId, {
-          timestamp: new Date().toISOString(),
-          message: finalMessage,
-          sessionId: state.sessionId,
-          threadId: channel.id,
-        });
-
-        await logRawMemoryCaptured(
-          state.channelId,
-          finalMessage.length,
-          state.sessionId
-        );
-      } catch (error) {
-        logger.error('Failed to capture memory:', error);
-      }
+      // Note: Memory capture happens automatically when Discord echoes this message back
+      // See events.ts handleMessage() for centralized memory capture
     }
 
     // Save session ID for resumption
@@ -162,6 +156,19 @@ async function handleSDKMessage(
 
         // For non-cron jobs, send each message immediately (streaming) with any queued files
         if (!state.isCronJob) {
+          // Delete thinking message before sending first real response
+          if (state.thinkingMessageToDelete && !state.thinkingMessageDeleted) {
+            try {
+              await state.thinkingMessageToDelete.delete();
+              state.thinkingMessageDeleted = true;
+              logger.info('🗑️  Deleted thinking message');
+            } catch (error) {
+              logger.error('Failed to delete thinking message:', error);
+              // Continue anyway - not critical
+              state.thinkingMessageDeleted = true; // Mark as deleted to not retry
+            }
+          }
+
           const filesToShare = sessionManager.getFilesToShare(sessionId);
           channel = await sendCompleteMessage(channel, content, state.planContent, state.messagePrefix, state.messageSuffix, state, filesToShare, logger, sessionManager);
           state.planContent = null; // Clear plan after sending
@@ -456,8 +463,8 @@ function shouldShowToolMessage(toolName: string, input: string): boolean {
       }
     }
 
-    // Filter out cron tool usage messages - keep them silent/internal
-    if (toolName.startsWith('cron_')) {
+    // Filter out schedule tool usage messages - keep them silent/internal
+    if (toolName.startsWith('schedule_')) {
       return false;
     }
 
@@ -499,10 +506,10 @@ function getToolEmoji(toolName: string): string {
     WebSearch: '🔎',
     Task: '🤖',
     shareFile: '📎',
-    cron_list_jobs: '⏰',
-    cron_add_job: '➕',
-    cron_remove_job: '🗑️',
-    cron_update_job: '✏️',
+    schedule_list: '⏰',
+    schedule_add: '➕',
+    schedule_remove: '🗑️',
+    schedule_update: '✏️',
     gmail_send_email: '📧',
     gmail_list_messages: '📬',
   };
@@ -560,17 +567,17 @@ function getToolDescription(toolName: string, input: string, workingDir: string)
       case 'shareFile':
         return `Sharing file: ${params.filePath}`;
 
-      case 'cron_list_jobs':
-        return 'Listing scheduled jobs';
+      case 'schedule_list':
+        return 'Listing scheduled tasks';
 
-      case 'cron_add_job':
-        return `Adding job: ${params.name}`;
+      case 'schedule_add':
+        return `Adding task: ${params.name}`;
 
-      case 'cron_remove_job':
-        return `Removing job: ${params.name}`;
+      case 'schedule_remove':
+        return `Removing task: ${params.name}`;
 
-      case 'cron_update_job':
-        return `Updating job: ${params.name}`;
+      case 'schedule_update':
+        return `Updating task: ${params.name}`;
 
       case 'gmail_send_email':
         return `Sending email to ${params.to}`;

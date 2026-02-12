@@ -1,3 +1,8 @@
+---
+name: poll_management
+description: Create and manage Discord polls. Use when creating polls, getting poll results, or managing server polls.
+---
+
 # Poll Management Skill
 
 Create and manage Discord polls in your server.
@@ -84,32 +89,34 @@ Note the poll message ID (e.g., 123456789).
 Calculate end time: current time + 48 hours = 2026-02-12T14:30:00Z
 ```
 
-**2. Create one-time cron job (if in a thread)**
+**2. Create one-time schedule (if in a thread)**
 
-Use `cron_add_job` with `replyInThread: true` to send results back to the thread:
+Use `schedule_one_time` with `replyInThread: true` to send results back to the thread:
 
 ```
-cron_add_job({
-  name: "poll-meeting-time-results",
-  schedule: "30 14 12 2 *",  # 48 hours from now
+schedule_one_time({
+  naturalTime: "in 48 hours",
+  timezone: "America/New_York",  # Use appropriate timezone
   task: "Get results from poll message 123456789 in channel #general. Find the option with most votes. Create recurring calendar event for that time. Reply with results and event details.",
-  oneTime: true,
   replyInThread: true  # ← Automatically captures thread ID!
 })
 ```
 
-This creates in cron.yaml:
+This creates in cron_v2.yaml:
 ```yaml
-jobs:
-  - name: poll-meeting-time-results
-    schedule: "30 14 12 2 *"
-    responseThreadId: "planning-thread-id"  # ← Automatically set!
-    oneTime: true
+oneTimeJobs:
+  - id: job_1707234567890
+    naturalTime: "in 48 hours"
+    targetTime: "2026-02-12T14:30:00.000Z"
+    timezone: "America/New_York"
+    threadId: "planning-thread-id"  # ← Automatically set!
     task: |
       Get results from poll message 123456789 in channel #general.
       Find the option with most votes.
       Create recurring calendar event for that time.
       Reply with results and event details.
+    channelId: "channel-123"
+    createdAt: "2026-02-10T14:30:00.000Z"
 ```
 
 **3. Reply to user**
@@ -120,11 +127,11 @@ Bot in Thread #planning: "✅ Poll created! I'll check back here with results in
 ### Benefits Over Separate Tracker
 
 **Why this is better:**
-1. ✅ **No extra state file** - cron.yaml is the tracker
+1. ✅ **No extra state file** - cron_v2.yaml is the tracker
 2. ✅ **Precise timing** - Runs exactly when poll ends, not "every 6 hours"
 3. ✅ **Task-specific logic** - Each poll can have custom follow-up actions
-4. ✅ **Self-documenting** - Reading cron.yaml shows all pending polls
-5. ✅ **Auto-cleanup** - `oneTime: true` removes job after running
+4. ✅ **Self-documenting** - Reading cron_v2.yaml shows all pending polls
+5. ✅ **Auto-cleanup** - One-time schedules remove themselves after running
 6. ✅ **Thread-aware** - Task knows where to send results
 
 ### Complete Example Workflow
@@ -136,29 +143,21 @@ with options: 9 AM, 2 PM, 5 PM, duration 48 hours. Then analyze and schedule the
 
 Bot in Thread:
 1. Creates poll in #team-chat (messageId: 999888777)
-2. Calculates end time: 48 hours from now = Feb 8, 2PM
-3. Adds to cron.yaml:
+2. Creates one-time schedule for 48 hours from now:
 
-   jobs:
-     - name: meeting-poll-results
-       schedule: "0 14 8 2 *"  # Feb 8 at 2PM
-       oneTime: true
-       task: |
-         Get results from poll 999888777.
+   schedule_one_time({
+     naturalTime: "in 48 hours",
+     timezone: "America/New_York",
+     task: "Get results from poll 999888777. Send results to current thread with winner. Create calendar event for winning time and reply with details.",
+     replyInThread: true
+   })
 
-         Send to thread #planning-discussion:
-         "📊 Poll Results: Preferred meeting time?
-          Winner: [winning option]"
-
-         Create a calendar event for the winning time.
-         Reply with event details.
-
-4. Replies: "✅ Poll created! I'll analyze results here on Feb 8 at 2PM."
+3. Replies: "✅ Poll created! I'll analyze results here in 48 hours."
 ```
 
-**Day 3: Automated follow-up (Feb 8, 2PM exactly)**
+**Day 3: Automated follow-up (48 hours later, exactly)**
 ```
-One-time cron job runs:
+One-time scheduled task runs:
 1. Gets results using discord_get_poll_results
 2. Sends to Thread #planning-discussion:
    "📊 Poll Results: Preferred meeting time?
@@ -172,7 +171,7 @@ One-time cron job runs:
    ✅ Creating recurring meeting for 2 PM..."
 
 3. Creates calendar event
-4. Cron job auto-removes itself from cron.yaml (oneTime: true)
+4. Schedule auto-removes itself from cron_v2.yaml
 ```
 
 **Context Preserved!** The results and actions appear in the same thread where the user originally asked.
@@ -182,57 +181,60 @@ One-time cron job runs:
 Each poll can have its own custom logic based on results:
 
 **Example 1: Decision-based workflow**
-```yaml
-- name: deployment-approval-poll
-  schedule: "0 17 10 2 *"
-  oneTime: true
-  task: |
-    Get results from poll "Should we deploy v2.0?"
+```
+schedule_one_time({
+  naturalTime: "February 10th at 5pm",
+  timezone: "America/New_York",
+  task: `Get results from poll "Should we deploy v2.0?"
 
-    If "Yes" wins:
-      - Create deployment checklist
-      - Notify DevOps team
-      - Schedule deployment for tomorrow
+  If "Yes" wins:
+    - Create deployment checklist
+    - Notify DevOps team
+    - Schedule deployment for tomorrow
 
-    If "No" wins:
-      - Ask what concerns need addressing
-      - Schedule follow-up discussion
+  If "No" wins:
+    - Ask what concerns need addressing
+    - Schedule follow-up discussion
 
-    Send summary to thread #releases
+  Send summary to thread #releases`,
+  replyInThread: true
+})
 ```
 
 **Example 2: Multi-step automation**
-```yaml
-- name: feature-priority-poll
-  schedule: "0 9 15 2 *"
-  oneTime: true
-  task: |
-    Get results from "Q1 Feature Priority" poll.
+```
+schedule_one_time({
+  naturalTime: "February 15th at 9am",
+  timezone: "UTC",
+  task: `Get results from "Q1 Feature Priority" poll.
 
-    Take top 3 features by votes.
+  Take top 3 features by votes.
 
-    For each feature:
-      - Create GitHub issue
-      - Add to project board
-      - Assign to appropriate team
+  For each feature:
+    - Create GitHub issue
+    - Add to project board
+    - Assign to appropriate team
 
-    Send project board link to thread #planning
+  Send project board link to thread #planning`,
+  replyInThread: true
+})
 ```
 
 **Example 3: Conditional scheduling**
-```yaml
-- name: meeting-poll-results
-  schedule: "0 14 8 2 *"
-  oneTime: true
-  task: |
-    Get poll results for meeting time.
+```
+schedule_one_time({
+  naturalTime: "February 8th at 2pm",
+  timezone: "Europe/London",
+  task: `Get poll results for meeting time.
 
-    Based on winning time slot:
-      - Create recurring calendar event
-      - Send invites to all poll voters
-      - Create reminder 24h before first meeting
+  Based on winning time slot:
+    - Create recurring calendar event
+    - Send invites to all poll voters
+    - Create reminder 24h before first meeting
 
-    Reply in thread #team with calendar link
+  Reply in thread #team with calendar link`,
+  replyInThread: true
+})
 ```
 
 ## Requirements

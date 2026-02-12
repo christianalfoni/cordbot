@@ -129,6 +129,7 @@ describe('Message Handling Integration', () => {
       sessionManager,
       channelMappings,
       '/mock/workspace',
+      '/mock/working',
       'guild-1',
       cronRunner,
       core.logger,
@@ -322,6 +323,7 @@ describe('Message Handling Integration', () => {
       expect(syncNewChannel).toHaveBeenCalledWith(
         newChannel,
         '/mock/workspace',
+        '/mock/working',
         expect.any(Object)
       );
     });
@@ -390,6 +392,7 @@ describe('Message Handling Integration', () => {
         sessionManager,
         channelMappings,
         '/mock/workspace',
+        '/mock/working',
         'guild-1',
         cronRunner,
         core.logger,

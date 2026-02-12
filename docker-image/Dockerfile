@@ -3,6 +3,7 @@ FROM node:20-slim
 # Install additional tools that might be needed
 RUN apt-get update && apt-get install -y \
     sqlite3 \
+    pandoc \
     && rm -rf /var/lib/apt/lists/*
 
 # Set HOME to workspace for persistent ~/.claude/ directory

@@ -32,6 +32,14 @@ export async function startBot(cwd: string): Promise<void> {
     console.log("\n✨ First run detected - initialized project structure\n");
   }
 
+  // Create dedicated 'cordbot' working directory for the bot
+  const cordbotWorkingDir = path.join(cwd, 'cordbot');
+  if (!existsSync(cordbotWorkingDir)) {
+    const fs = await import('fs/promises');
+    await fs.mkdir(cordbotWorkingDir, { recursive: true });
+    console.log(`📁 Created cordbot working directory: ${cordbotWorkingDir}\n`);
+  }
+
   // Validate environment variables
   const token = process.env.DISCORD_BOT_TOKEN;
   const guildId = process.env.DISCORD_GUILD_ID;
@@ -58,7 +66,7 @@ export async function startBot(cwd: string): Promise<void> {
     discordToken: token,
     anthropicApiKey: apiKey,
     guildId,
-    workingDirectory: cwd,
+    workingDirectory: cordbotWorkingDir,
     memoryContextSize,
     serviceUrl: process.env.SERVICE_URL,
   });
@@ -69,6 +77,7 @@ export async function startBot(cwd: string): Promise<void> {
   const discordToolsDir = path.join(toolsDir, 'discord');
 
   const skillFiles = [
+    { name: 'document_workflow', path: path.join(toolsDir, 'document_workflow.md') },
     { name: 'poll_management', path: path.join(discordToolsDir, 'poll_management.md') },
     { name: 'channel_management', path: path.join(discordToolsDir, 'channel_management.md') },
     { name: 'forum_management', path: path.join(discordToolsDir, 'forum_management.md') },
@@ -96,13 +105,34 @@ export async function startBot(cwd: string): Promise<void> {
   const activeSessions = context.sessionStore.getAllActive();
   console.log(`📊 Active sessions: ${activeSessions.length}\n`);
 
+  // Auto-detect Fly.io URL or use provided BASE_URL (needed for share links)
+  let baseUrl = process.env.BASE_URL;
+  if (!baseUrl && process.env.FLY_APP_NAME) {
+    // Running on Fly.io - construct URL from app name
+    baseUrl = `https://${process.env.FLY_APP_NAME}.fly.dev`;
+    console.log(`🌐 Detected Fly.io deployment: ${baseUrl}`);
+  }
+  if (!baseUrl) {
+    // Fallback to localhost for local development
+    baseUrl = `http://localhost:8080`;
+    console.log(`🌐 Using local URL: ${baseUrl}`);
+  }
+
   // Initialize session manager with context and Discord client
-  const sessionManager = new SessionManager(context, sessionsDir, cwd, memoryContextSize, discordClient);
+  // workspace root (cwd) = configuration files (e.g., cron_v2.yaml)
+  // cordbot working dir = where cordbot writes its files
+  const sessionManager = new SessionManager(context, sessionsDir, cwd, memoryContextSize, discordClient, cordbotWorkingDir, baseUrl);
   await sessionManager.initialize();
   console.log("");
 
   // Sync channels with folders
-  const channelMappings = await syncChannelsOnStartup(context.discord, guildId, cwd, botConfig);
+  const { mappings: channelMappings, cronPath } = await syncChannelsOnStartup(context.discord, guildId, cwd, cordbotWorkingDir, botConfig);
+  console.log("");
+
+  // Load memories from disk (for crash recovery)
+  console.log("💾 Loading memories from disk...");
+  const { memoryManager } = await import("./memory/manager.js");
+  await memoryManager.loadFromDisk();
   console.log("");
 
   // Initialize query limit manager (optional - only if SERVICE_URL is set)
@@ -130,15 +160,21 @@ export async function startBot(cwd: string): Promise<void> {
     context.fileStore,
     queryLimitManager
   );
-  cronRunner.start(channelMappings);
+  cronRunner.start(channelMappings, cronPath);
   console.log("");
 
   // Schedule daily memory compression (runs at midnight every day)
   cron.schedule('0 0 * * *', async () => {
-    console.log('\n⏰ Running scheduled memory compression');
-    const channelIds = channelMappings.map(m => m.channelId);
+    console.log('\n⏰ Running scheduled server-wide memory compression');
+
+    // Build channel list with names
+    const channels = channelMappings.map(m => ({
+      channelId: m.channelId,
+      channelName: m.channelName,
+    }));
+
     try {
-      await runDailyMemoryCompression(channelIds, guildId, queryLimitManager);
+      await runDailyMemoryCompression(channels, guildId, queryLimitManager);
     } catch (error) {
       console.error('Memory compression failed:', error);
     }
@@ -152,6 +188,7 @@ export async function startBot(cwd: string): Promise<void> {
     sessionManager,
     channelMappings,
     cwd,
+    cordbotWorkingDir,
     guildId,
     cronRunner,
     context.logger,
@@ -161,11 +198,13 @@ export async function startBot(cwd: string): Promise<void> {
   console.log("✅ Event handlers registered\n");
 
   // Start health check server (if port is configured)
+  // Note: baseUrl already declared above for SessionManager
   const healthPort = parseInt(process.env.HEALTH_PORT || "8080");
   const healthServer = new HealthServer({
     port: healthPort,
     context,
     startTime: new Date(),
+    baseUrl,
   });
   healthServer.start();
   console.log("");
@@ -175,6 +214,12 @@ export async function startBot(cwd: string): Promise<void> {
     const stack = new Error().stack;
     console.log("\n⏸️  Shutting down Cordbot...");
     console.log("📍 Shutdown triggered from:", stack);
+
+    // Flush memories to disk
+    console.log("💾 Flushing memories to disk...");
+    const { memoryManager } = await import("./memory/manager.js");
+    await memoryManager.flushAll();
+    console.log("✅ Memories flushed");
 
     // Stop health server
     healthServer.stop();

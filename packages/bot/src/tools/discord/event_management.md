@@ -1,3 +1,8 @@
+---
+name: event_management
+description: Create and manage Discord scheduled events. Use when creating events, managing event schedules, or organizing server activities.
+---
+
 # Event Management Skill
 
 Schedule and manage Discord server events for coordinating activities and gatherings.
@@ -95,8 +100,11 @@ Delete event 123456789
 ## Best Practices
 
 1. **Event Timing**
-   - Use ISO 8601 format for dates: YYYY-MM-DDTHH:MM:SS
-   - Consider member timezones (Discord auto-converts times)
+   - Always convert natural language dates to ISO 8601 format: YYYY-MM-DDTHH:MM:SS
+   - Use the current date to calculate relative dates (e.g., "Thursday" means the next Thursday from today)
+   - If no timezone is specified, assume UTC
+   - Verify the calculated date is in the future before creating the event
+   - Consider member timezones (Discord auto-converts times for display)
    - Schedule events at least 24 hours in advance for better attendance
    - Add end times for multi-hour events
 
@@ -147,6 +155,72 @@ Delete event 123456789
    - Thank attendees
    - Share recordings or notes if applicable
    - Gather feedback for future events
+
+## Date Conversion Guidelines
+
+When users provide natural language dates, **ALWAYS use Node.js** to calculate the correct date (consistent across all platforms):
+
+### Required Node.js Commands
+
+```bash
+# Get current date and time
+node -e "console.log(new Date().toISOString())"
+# Output: 2026-02-06T14:30:00.000Z
+
+# Get current day of week (0=Sunday, 6=Saturday)
+node -e "console.log(['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getUTCDay()])"
+# Output: Friday
+
+# Check day of week for a specific date
+node -e "const d = new Date('2026-02-13'); console.log(['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getUTCDay()])"
+# Output: Friday
+
+# Calculate date offsets
+node -e "const d = new Date(); d.setUTCDate(d.getUTCDate() + 7); console.log(d.toISOString().split('T')[0])"  # +7 days
+node -e "const d = new Date('2026-02-06'); d.setUTCDate(d.getUTCDate() + 7); console.log(d.toISOString().split('T')[0])"  # Specific date +7 days
+```
+
+### Conversion Process
+
+1. **Get current date and day**:
+   ```bash
+   node -e "const d = new Date(); console.log(d.toISOString().split('T')[0], ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()])"
+   ```
+
+2. **Calculate target date**: Figure out which date matches the user's request
+
+3. **Verify the day**:
+   ```bash
+   node -e "const d = new Date('2026-02-13'); console.log(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()])"
+   ```
+
+4. **Format as ISO 8601**: Combine date and time (e.g., `2026-02-13T20:00:00Z`)
+
+**Conversion Examples** (assuming current date is 2026-02-06, which is Friday):
+
+```bash
+# "Thursday 20:00" → Next Thursday (Feb 12)
+# Step 1: Calculate days until next Thursday (6 days from Friday)
+node -e "const d = new Date('2026-02-06'); d.setUTCDate(d.getUTCDate() + 6); console.log(d.toISOString().split('T')[0])"
+# Output: 2026-02-12
+# Result: 2026-02-12T20:00:00Z
+
+# "Friday at 3pm" → Today is Friday, so next Friday (Feb 13)
+node -e "const d = new Date('2026-02-06'); d.setUTCDate(d.getUTCDate() + 7); console.log(d.toISOString().split('T')[0])"
+# Output: 2026-02-13
+# Result: 2026-02-13T15:00:00Z
+
+# "Monday 10am" → Next Monday (Feb 9)
+node -e "const d = new Date('2026-02-06'); d.setUTCDate(d.getUTCDate() + 3); console.log(d.toISOString().split('T')[0])"
+# Output: 2026-02-09
+# Result: 2026-02-09T10:00:00Z
+```
+
+**Important Rules**:
+1. **ALWAYS use Node.js** - never guess dates mentally (Node.js works consistently across macOS, Linux, Windows)
+2. If the day mentioned is today, assume user means **next week**
+3. Always verify the calculated date is in the **future**
+4. If no time is given, ask the user to specify a time
 
 ## Time Format Examples
 
