@@ -1,6 +1,8 @@
 import './firebase';
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
+import { useAppContext } from './context/AppContextProvider';
 import { Login } from './components/Login';
 import { Home } from './pages/Home';
 import { GuildsList } from './pages/GuildsList';
@@ -17,9 +19,21 @@ import { NotificationProvider } from './context/NotificationContext';
 import { NotificationContainer } from './components/NotificationContainer';
 import { ConfirmationProvider } from './context/ConfirmationContext';
 
+const ADMIN_UID = 'T2MzyDqU6BRZknhZHywr9CcOEp42';
+
 function AppContent() {
   const { user, userData, loading, signInWithDiscord, signOut } = useAuth();
+  const ctx = useAppContext();
   const location = useLocation();
+
+  useEffect(() => {
+    if (user?.id === ADMIN_UID) {
+      (window as any).admin = {
+        deployBot: (guildId: string, version?: string) => ctx.adminDeployBot(guildId, version),
+      };
+      console.log('[Admin] Tools available. Usage: admin.deployBot("guild_id")');
+    }
+  }, [user, ctx]);
 
   // Public routes that don't require auth - render immediately
   const isPublicRoute = location.pathname === '/privacy' ||

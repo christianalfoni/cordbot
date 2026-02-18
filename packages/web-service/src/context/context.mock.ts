@@ -41,6 +41,7 @@ export class MockContext implements AppContext {
   deprovisionGuild: MockFn<(guildId: string) => Promise<void>> = vi.fn();
   deleteAccount: MockFn<() => Promise<void>> = vi.fn();
   triggerPaidTierProvisioning: MockFn<(guildId: string) => Promise<void>> = vi.fn();
+  adminDeployBot: MockFn<(guildId: string, version?: string) => Promise<{ success: boolean; version: string }>> = vi.fn();
 
   // Subscriptions
   getSubscription: MockFn<(subscriptionId: string) => Promise<Subscription | null>> = vi.fn();

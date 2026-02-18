@@ -184,6 +184,11 @@ export function setupEventHandlers(
       return;
     }
 
+    // Filter to only our guild (same as messageCreate)
+    if (interaction.guildId !== guildId) {
+      return;
+    }
+
     if (interaction.commandName === 'workspace') {
       await handleWorkspaceCommand(interaction, context, workspaceRoot, logger, baseUrl);
     }
@@ -738,25 +743,21 @@ async function handleWorkspaceCommand(
   baseUrl: string
 ): Promise<void> {
   try {
-    // Get the cordbot directory path for this workspace
-    const cordbotPath = path.join(workspaceRoot, 'cordbot');
+    await interaction.deferReply({ ephemeral: true });
 
-    // Create workspace token
+    const cordbotPath = path.join(workspaceRoot, 'cordbot');
     const token = context.workspaceShareManager.createWorkspaceToken(
       cordbotPath,
       interaction.channelId
     );
 
-    // Generate URL: cordbot.io/workspace/{guildId}/{token}
     const guildId = process.env.DISCORD_GUILD_ID || '';
     const workspaceUrl = `${baseUrl}/workspace/${guildId}/${token}`;
 
-    // Reply to user
-    await interaction.reply({
+    await interaction.editReply({
       content:
         `📁 [**Open Cordbot Workspace**](${workspaceUrl})\n\n` +
         `*Link expires in 1 hour (extends on activity)*`,
-      ephemeral: true,
     });
 
     logger.info(`✅ Created workspace link for channel ${interaction.channelId}`);
@@ -764,9 +765,8 @@ async function handleWorkspaceCommand(
     logger.error('Error handling /workspace command:', error);
 
     try {
-      await interaction.reply({
+      await interaction.editReply({
         content: '❌ Failed to create workspace link. Please try again.',
-        ephemeral: true,
       });
     } catch (replyError) {
       logger.error('Failed to send error reply:', replyError);

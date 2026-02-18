@@ -105,6 +105,13 @@ export interface AppContext {
   deployGuildUpdate(guildId: string, version: string): Promise<void>;
 
   /**
+   * Admin: Deploy a bot for any guild without ownership check (admin only)
+   * @param guildId The guild ID
+   * @param version The version to deploy (defaults to 'latest')
+   */
+  adminDeployBot(guildId: string, version?: string): Promise<{ success: boolean; version: string }>;
+
+  /**
    * Deprovision a guild's bot instance
    * @param guildId The guild ID
    */

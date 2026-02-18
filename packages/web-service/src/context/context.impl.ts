@@ -320,6 +320,12 @@ export class FirebaseContext implements AppContext {
     });
   }
 
+  async adminDeployBot(guildId: string, version?: string): Promise<{ success: boolean; version: string }> {
+    const adminDeployBotFunc = httpsCallable(this.functions, 'adminDeployBot');
+    const result = await adminDeployBotFunc({ guildId, version });
+    return result.data as { success: boolean; version: string };
+  }
+
   // ============ Utilities ============
 
   logger: Logger = {

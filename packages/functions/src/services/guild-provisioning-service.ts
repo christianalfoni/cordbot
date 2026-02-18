@@ -956,6 +956,86 @@ export class GuildProvisioningService {
   }
 
   /**
+   * Admin-only: Deploy a bot for any guild without ownership verification
+   */
+  async adminDeployGuildBot(params: {
+    guildId: string;
+    version?: string;
+  }): Promise<{ success: true; version: string }> {
+    const { guildId, version = DEFAULT_VERSION } = params;
+
+    const deployment = await this.ctx.firestore.getGuildDeployment(guildId);
+    if (!deployment) {
+      throw new HttpsError('not-found', 'Guild deployment not found');
+    }
+
+    const { appName, machineId } = deployment;
+
+    this.ctx.logger.info(`Admin deploying bot for guild ${guildId}`, { appName, machineId, version });
+
+    try {
+      await this.ctx.firestore.updateGuild(guildId, {
+        status: 'provisioning',
+        updatedAt: this.ctx.getCurrentTime().toISOString(),
+      });
+
+      const guildData = await this.ctx.firestore.getGuild(guildId);
+      if (!guildData) {
+        throw new HttpsError('not-found', 'Guild not found');
+      }
+
+      const currentMachine = await this.flyRequest(`/apps/${appName}/machines/${machineId}`, {
+        method: 'GET',
+      });
+
+      const mounts = currentMachine.config?.mounts || [];
+      if (mounts.length === 0 && deployment.volumeId) {
+        mounts.push({ volume: deployment.volumeId, path: '/workspace' });
+      }
+
+      await this.flyRequest(`/apps/${appName}/machines/${machineId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          config: {
+            ...currentMachine.config,
+            image: `${DEFAULT_IMAGE}:${version}`,
+            guest: { cpu_kind: 'shared', cpus: 1, memory_mb: 2048 },
+            env: buildGuildEnvironment({
+              guildId,
+              memoryContextSize: guildData.memoryContextSize,
+              memoryRetentionMonths: guildData.memoryRetentionMonths,
+              discordBotToken: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
+              anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
+              serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
+              baseUrl: 'https://cordbot.io',
+            }),
+            mounts,
+            init: { cwd: '/workspace' },
+            services: CORDBOT_HTTP_SERVICE_CONFIG,
+          },
+        }),
+      });
+
+      await this.ctx.firestore.updateGuild(guildId, {
+        status: 'active',
+        lastDeployedAt: this.ctx.getCurrentTime().toISOString(),
+        updatedAt: this.ctx.getCurrentTime().toISOString(),
+      });
+
+      this.ctx.logger.info(`Admin successfully deployed bot for guild ${guildId}`, { version });
+
+      return { success: true, version };
+    } catch (error) {
+      await this.ctx.firestore.updateGuild(guildId, {
+        status: 'error',
+        errorMessage: `Admin deploy failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        updatedAt: this.ctx.getCurrentTime().toISOString(),
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get guild machine status
    */
   async getGuildStatus(params: { userId: string; guildId: string }): Promise<{

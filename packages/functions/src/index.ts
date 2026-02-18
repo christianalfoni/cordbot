@@ -523,6 +523,47 @@ export const repairGuild = onCall({ secrets: [flyApiToken, sharedDiscordBotToken
   }
 });
 
+const ADMIN_UID = 'T2MzyDqU6BRZknhZHywr9CcOEp42';
+
+/**
+ * Admin: Deploy a bot for any guild by guild ID (admin only)
+ */
+export const adminDeployBot = onCall(
+  { secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated');
+    }
+
+    if (request.auth.uid !== ADMIN_UID) {
+      throw new HttpsError('permission-denied', 'Admin access required');
+    }
+
+    const { guildId, version } = request.data;
+
+    if (!guildId) {
+      throw new HttpsError('invalid-argument', 'guildId is required');
+    }
+
+    const ctx = new ProductionFunctionContext({
+      FLY_API_TOKEN: flyApiToken,
+      SHARED_DISCORD_BOT_TOKEN: sharedDiscordBotToken,
+      SHARED_ANTHROPIC_API_KEY: sharedAnthropicApiKey,
+    });
+
+    try {
+      const service = new GuildProvisioningService(ctx);
+      return await service.adminDeployGuildBot({ guildId, version });
+    } catch (error) {
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+      ctx.logger.error('Error deploying bot (admin):', error);
+      throw new HttpsError('internal', 'An error occurred while deploying bot');
+    }
+  }
+);
+
 /**
  * Deploy an update to a guild's machine (called by web UI)
  */

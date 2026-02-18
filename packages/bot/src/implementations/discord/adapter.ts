@@ -446,11 +446,20 @@ class DiscordChatInputCommandInteractionWrapper implements IChatInputCommandInte
   get guildId() { return this.interaction.guildId ?? undefined; }
 
   async reply(content: string | { content?: string; ephemeral?: boolean }): Promise<void> {
-    await this.interaction.reply(content);
+    if (typeof content === 'object' && content.ephemeral) {
+      const { ephemeral, ...rest } = content;
+      await this.interaction.reply({ ...rest, flags: 64 });
+    } else {
+      await this.interaction.reply(content as any);
+    }
   }
 
   async deferReply(options?: { ephemeral?: boolean }): Promise<void> {
-    await this.interaction.deferReply(options);
+    if (options?.ephemeral) {
+      await this.interaction.deferReply({ flags: 64 });
+    } else {
+      await this.interaction.deferReply(options);
+    }
   }
 
   async editReply(content: string | { content?: string }): Promise<void> {
