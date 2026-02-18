@@ -73,7 +73,7 @@ export class HealthServer {
         res.setHeader('Access-Control-Allow-Origin', origin);
       }
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       if (req.method === 'OPTIONS') {
         res.status(204).end();
         return;
@@ -82,8 +82,11 @@ export class HealthServer {
     });
 
     // Workspace sharing router
+    const cordbotPath = path.join(this.config.context.homeDirectory, 'cordbot');
+    const jwtSecret = process.env.WORKSPACE_JWT_SECRET || '';
     const workspaceRouter = createWorkspaceRouter(
-      this.config.context.workspaceShareManager,
+      cordbotPath,
+      jwtSecret,
       new WorkspaceFileSystem(),
       this.config.context.documentConverter,
       this.config.context.logger

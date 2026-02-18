@@ -745,19 +745,11 @@ async function handleWorkspaceCommand(
   try {
     await interaction.deferReply({ ephemeral: true });
 
-    const cordbotPath = path.join(workspaceRoot, 'cordbot');
-    const token = context.workspaceShareManager.createWorkspaceToken(
-      cordbotPath,
-      interaction.channelId
-    );
-
     const guildId = process.env.DISCORD_GUILD_ID || '';
-    const workspaceUrl = `${baseUrl}/workspace/${guildId}/${token}`;
+    const workspaceUrl = `${baseUrl}/workspace/${guildId}`;
 
     await interaction.editReply({
-      content:
-        `📁 [**Open Cordbot Workspace**](${workspaceUrl})\n\n` +
-        `*Link expires in 1 hour (extends on activity)*`,
+      content: `📁 [**Open Cordbot Workspace**](${workspaceUrl})`,
     });
 
     logger.info(`✅ Created workspace link for channel ${interaction.channelId}`);

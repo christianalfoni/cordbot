@@ -48,6 +48,9 @@ importers:
       js-yaml:
         specifier: ^4.1.0
         version: 4.1.1
+      jsonwebtoken:
+        specifier: ^9.0.3
+        version: 9.0.3
       mammoth:
         specifier: ^1.11.0
         version: 1.11.0
@@ -70,6 +73,9 @@ importers:
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
+      '@types/jsonwebtoken':
+        specifier: ^9.0.10
+        version: 9.0.10
       '@types/node':
         specifier: ^20.10.6
         version: 20.19.30
@@ -97,10 +103,16 @@ importers:
       firebase-functions:
         specifier: ^6.3.1
         version: 6.6.0(firebase-admin@13.6.0)
+      jsonwebtoken:
+        specifier: ^9.0.3
+        version: 9.0.3
       stripe:
         specifier: ^20.3.0
         version: 20.3.0(@types/node@22.19.7)
     devDependencies:
+      '@types/jsonwebtoken':
+        specifier: ^9.0.10
+        version: 9.0.10
       '@types/node':
         specifier: ^22.10.5
         version: 22.19.7
@@ -5958,7 +5970,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 20.19.30
+      '@types/node': 22.19.7
 
   '@typescript-eslint/eslint-plugin@8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.39.2(jiti@1.21.7))(typescript@5.9.3))(eslint@9.39.2(jiti@1.21.7))(typescript@5.9.3)':
     dependencies:

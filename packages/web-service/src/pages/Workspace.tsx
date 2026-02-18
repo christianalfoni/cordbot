@@ -1,25 +1,45 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, Navigate } from 'react-router-dom';
 import cordSmall from '../cord_small.png';
 import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useWorkspace } from '../workspace/hooks/useWorkspace';
 import { FileTree } from '../workspace/components/FileTree';
 import { FileViewer } from '../workspace/components/FileViewer';
+import { useAppContext } from '../context/AppContextProvider';
 
 export function Workspace() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { guildId, token } = useParams<{ guildId: string; token: string }>();
+  const { guildId } = useParams<{ guildId: string }>();
+  const ctx = useAppContext();
 
-  // In dev, Vite proxies /api/workspace/{guildId}/{token} → bot on localhost:8080/api/workspace/{token}
-  // In prod, call the bot's Fly.io machine directly (same appName formula as provisioning)
+  const [workspaceAuth, setWorkspaceAuth] = useState<{ token: string; botUrl: string } | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const fetchWorkspaceToken = useCallback(async (): Promise<string | null> => {
+    if (!guildId) return null;
+    try {
+      const auth = await ctx.getWorkspaceToken(guildId);
+      setWorkspaceAuth(auth);
+      return auth.token;
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Failed to get workspace access');
+      return null;
+    }
+  }, [ctx, guildId]);
+
+  useEffect(() => {
+    setAuthLoading(true);
+    fetchWorkspaceToken().finally(() => setAuthLoading(false));
+  }, [fetchWorkspaceToken]);
+
   const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const apiBase = isDev
-    ? `/api/workspace/${guildId}/${token}`
-    : (() => {
-        const guildPrefix = (guildId ?? '').substring(0, 12).toLowerCase().replace(/[^a-z0-9]/g, '');
-        return `https://cordbot-guild-${guildPrefix}.fly.dev/api/workspace/${token}`;
-      })();
+  const apiBase = workspaceAuth
+    ? isDev
+      ? `/api/workspace/${guildId}`
+      : `${workspaceAuth.botUrl}/api/workspace/${guildId}`
+    : null;
 
   const {
     files,
@@ -32,14 +52,35 @@ export function Workspace() {
     uploadFile,
     dismissUploadError,
     deleteFile,
-  } = useWorkspace(apiBase);
+  } = useWorkspace(apiBase, workspaceAuth?.token ?? null, fetchWorkspaceToken);
 
-  if (!token || !guildId) {
+  if (!guildId) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white dark:bg-gray-900">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">❌ Invalid Link</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">No workspace token provided in URL</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto mb-4"></div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Loading workspace...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white dark:bg-gray-900">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">❌ Access Denied</h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-400">{authError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -129,7 +170,7 @@ export function Workspace() {
 
       {/* Main content */}
       <main className="h-screen overflow-hidden bg-white dark:bg-gray-900 lg:pl-96">
-        <FileViewer content={content} path={selectedPath} apiBase={apiBase} />
+        <FileViewer content={content} path={selectedPath} apiBase={apiBase ?? ''} />
       </main>
     </div>
   );

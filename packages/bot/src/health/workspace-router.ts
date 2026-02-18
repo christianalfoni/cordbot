@@ -3,7 +3,8 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { nanoid } from 'nanoid';
-import type { IWorkspaceShareManager, IWorkspaceFileSystem } from '../interfaces/workspace-sharing.js';
+import jwt from 'jsonwebtoken';
+import type { IWorkspaceFileSystem } from '../interfaces/workspace-sharing.js';
 import type { IDocumentConverter } from '../interfaces/document.js';
 import type { ILogger } from '../interfaces/logger.js';
 import { categorizeFile } from '../discord/attachment-handler.js';
@@ -17,61 +18,67 @@ const WORKSPACE_BUILD_PATH = path.join(__dirname, '../web-workspace');
  * Provides:
  * - API endpoints for file listing, reading, and real-time updates
  * - Static file serving for React workspace viewer app
- * - Token-based access control
+ * - JWT-based access control
  *
- * @param workspaceManager - Token management
+ * @param cordbotPath - Absolute path to the bot's cordbot working directory
+ * @param jwtSecret - WORKSPACE_JWT_SECRET for verifying JWTs
  * @param fileSystem - File operations with security controls
+ * @param documentConverter - Document conversion
  * @param logger - Logger for diagnostics
  */
 export function createWorkspaceRouter(
-  workspaceManager: IWorkspaceShareManager,
+  cordbotPath: string,
+  jwtSecret: string,
   fileSystem: IWorkspaceFileSystem,
   documentConverter: IDocumentConverter,
   logger: ILogger
 ): Router {
   const router = Router();
 
-  // Track active watchers per token
+  // Track active watchers per guildId
   const watchers = new Map<string, () => void>();
 
-  // Track SSE clients per token
+  // Track SSE clients per guildId
   const sseClients = new Map<string, Map<string, Response>>();
 
   /**
-   * Normalize token parameter (Express can return string or string[])
+   * Validate JWT from Authorization header or ?token query param
+   * Returns true if the token is valid and scoped to the given guildId
    */
-  function normalizeToken(token: string | string[]): string {
-    return Array.isArray(token) ? token[0] : token;
-  }
+  function validateAuth(req: Request, guildId: string): boolean {
+    if (!jwtSecret) return false;
 
-  /**
-   * Validate token and get workspace path
-   * Returns null if token is invalid/expired
-   */
-  function validateToken(token: string): string | null {
-    const workspaceRoot = workspaceManager.getWorkspaceFromToken(token);
-    if (!workspaceRoot) {
-      return null;
+    const authHeader = req.headers.authorization;
+    const queryToken = req.query.token as string | undefined;
+
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : queryToken;
+
+    if (!token) return false;
+
+    try {
+      const payload = jwt.verify(token, jwtSecret) as { guildId: string };
+      return payload.guildId === guildId;
+    } catch {
+      return false; // expired or invalid signature
     }
-    return workspaceRoot;
   }
 
   /**
    * API: List files in directory
-   * GET /api/workspace/:token/files?path={relativePath}
+   * GET /api/workspace/:guildId/files?path={relativePath}
    */
-  router.get('/:token/files', async (req: Request, res: Response) => {
-    const token = normalizeToken(req.params.token);
+  router.get('/:guildId/files', async (req: Request, res: Response) => {
+    const guildId = String(req.params.guildId);
     const relativePath = (req.query.path as string) || '';
 
+    if (!validateAuth(req, guildId)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     try {
-      const cordbotPath = validateToken(token);
-      if (!cordbotPath) {
-        return res.status(404).json({ error: 'Workspace not found or token expired' });
-      }
-
       const files = await fileSystem.listFiles(cordbotPath, relativePath);
-
       res.json({ files });
     } catch (error) {
       logger.error('Error listing files:', error);
@@ -83,13 +90,16 @@ export function createWorkspaceRouter(
 
   /**
    * API: Read file contents
-   * GET /api/workspace/:token/file/*filepath
+   * GET /api/workspace/:guildId/file/*filepath
    */
-  router.get('/:token/file/*filepath', async (req: Request, res: Response) => {
-    const token = normalizeToken(req.params.token);
+  router.get('/:guildId/file/*filepath', async (req: Request, res: Response) => {
+    const guildId = String(req.params.guildId);
+
+    if (!validateAuth(req, guildId)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     // Extract filepath from URL path - everything after /file/
-    // decodeURIComponent handles spaces and special chars (e.g. %20 → space)
     const urlPath = req.path;
     const filePrefix = `/file/`;
     const fileIndex = urlPath.indexOf(filePrefix);
@@ -98,14 +108,8 @@ export function createWorkspaceRouter(
       : '';
 
     try {
-      const cordbotPath = validateToken(token);
-      if (!cordbotPath) {
-        return res.status(404).json({ error: 'Workspace not found or token expired' });
-      }
-
       logger.info(`Reading file: ${filepath}`);
       const content = await fileSystem.readFile(cordbotPath, filepath);
-
       res.json({ content, path: filepath });
     } catch (error) {
       logger.error('Error reading file:', error);
@@ -116,14 +120,16 @@ export function createWorkspaceRouter(
   });
 
   /**
-   * API: Write file contents (optional for v1)
-   * POST /api/workspace/:token/file/*filepath
+   * API: Write file contents
+   * POST /api/workspace/:guildId/file/*filepath
    */
-  router.post('/:token/file/*filepath', async (req: Request, res: Response) => {
-    const token = normalizeToken(req.params.token);
+  router.post('/:guildId/file/*filepath', async (req: Request, res: Response) => {
+    const guildId = String(req.params.guildId);
 
-    // Extract filepath from URL path - everything after /file/
-    // decodeURIComponent handles spaces and special chars (e.g. %20 → space)
+    if (!validateAuth(req, guildId)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const urlPath = req.path;
     const filePrefix = `/file/`;
     const fileIndex = urlPath.indexOf(filePrefix);
@@ -132,11 +138,6 @@ export function createWorkspaceRouter(
       : '';
 
     try {
-      const cordbotPath = validateToken(token);
-      if (!cordbotPath) {
-        return res.status(404).json({ error: 'Workspace not found or token expired' });
-      }
-
       if (!fileSystem.writeFile) {
         return res.status(501).json({ error: 'Write operation not implemented' });
       }
@@ -147,7 +148,6 @@ export function createWorkspaceRouter(
       }
 
       await fileSystem.writeFile(cordbotPath, filepath, content);
-
       res.json({ success: true });
     } catch (error) {
       logger.error('Error writing file:', error);
@@ -159,10 +159,14 @@ export function createWorkspaceRouter(
 
   /**
    * API: Delete a file from the workspace
-   * DELETE /api/workspace/:token/file/*filepath
+   * DELETE /api/workspace/:guildId/file/*filepath
    */
-  router.delete('/:token/file/*filepath', async (req: Request, res: Response) => {
-    const token = normalizeToken(req.params.token);
+  router.delete('/:guildId/file/*filepath', async (req: Request, res: Response) => {
+    const guildId = String(req.params.guildId);
+
+    if (!validateAuth(req, guildId)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     const urlPath = req.path;
     const filePrefix = `/file/`;
@@ -176,17 +180,11 @@ export function createWorkspaceRouter(
     }
 
     try {
-      const cordbotPath = validateToken(token);
-      if (!cordbotPath) {
-        return res.status(404).json({ error: 'Workspace not found or token expired' });
-      }
-
       if (!fileSystem.deleteFile) {
         return res.status(501).json({ error: 'Delete operation not implemented' });
       }
 
       await fileSystem.deleteFile(cordbotPath, filepath);
-
       res.json({ success: true });
     } catch (error) {
       logger.error('Error deleting file:', error);
@@ -198,11 +196,15 @@ export function createWorkspaceRouter(
 
   /**
    * API: Upload a file to the workspace, converting docx/pdf to markdown
-   * POST /api/workspace/:token/upload
-   * Body: { filename: string, contentType: string, data: string (base64), folder?: string }
+   * POST /api/workspace/:guildId/upload
    */
-  router.post('/:token/upload', async (req: Request, res: Response) => {
-    const token = normalizeToken(req.params.token);
+  router.post('/:guildId/upload', async (req: Request, res: Response) => {
+    const guildId = String(req.params.guildId);
+
+    if (!validateAuth(req, guildId)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const { filename, contentType, data: base64Data, folder = '' } = req.body;
 
     if (!filename || typeof base64Data !== 'string') {
@@ -210,11 +212,6 @@ export function createWorkspaceRouter(
     }
 
     try {
-      const cordbotPath = validateToken(token);
-      if (!cordbotPath) {
-        return res.status(404).json({ error: 'Workspace not found or token expired' });
-      }
-
       if (!fileSystem.writeFile) {
         return res.status(501).json({ error: 'Write operation not implemented' });
       }
@@ -271,56 +268,50 @@ export function createWorkspaceRouter(
 
   /**
    * API: Server-Sent Events for real-time file changes
-   * GET /api/workspace/:token/events
+   * GET /api/workspace/:guildId/events?token={jwt}
+   * (EventSource doesn't support Authorization headers, so token is passed as query param)
    */
-  router.get('/:token/events', (req: Request, res: Response) => {
-    const token = normalizeToken(req.params.token);
+  router.get('/:guildId/events', (req: Request, res: Response) => {
+    const guildId = String(req.params.guildId);
 
-    // Validate token
-    const cordbotPath = validateToken(token);
-    if (!cordbotPath) {
-      return res.status(404).send('Workspace not found or token expired');
+    if (!validateAuth(req, guildId)) {
+      return res.status(401).send('Unauthorized');
     }
 
     // Setup SSE
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+    res.setHeader('X-Accel-Buffering', 'no');
 
-    // Generate client ID
     const clientId = nanoid();
 
-    // Register client
-    if (!sseClients.has(token)) {
-      sseClients.set(token, new Map());
+    if (!sseClients.has(guildId)) {
+      sseClients.set(guildId, new Map());
     }
-    sseClients.get(token)!.set(clientId, res);
-    workspaceManager.registerClient(token, clientId);
+    sseClients.get(guildId)!.set(clientId, res);
 
     // Send connected event
     res.write(`data: ${JSON.stringify({ type: 'connected', clientId })}\n\n`);
 
-    // Setup file watcher if this is the first client for this token
-    if (!watchers.has(token)) {
+    // Setup file watcher if this is the first client for this guildId
+    if (!watchers.has(guildId)) {
       const stopWatcher = fileSystem.watchWorkspace(cordbotPath, (change) => {
-        // Broadcast to all clients for this token
-        const clients = sseClients.get(token);
+        const clients = sseClients.get(guildId);
         if (clients) {
           const data = JSON.stringify(change);
           clients.forEach((clientRes, cId) => {
             try {
               clientRes.write(`data: ${data}\n\n`);
             } catch (error) {
-              // Client disconnected, will be cleaned up in 'close' handler
               logger.warn(`Failed to send to client ${cId}:`, error);
             }
           });
         }
       });
 
-      watchers.set(token, stopWatcher);
-      logger.info(`📁 Started watching workspace for token ${token.slice(0, 8)}...`);
+      watchers.set(guildId, stopWatcher);
+      logger.info(`📁 Started watching workspace for guild ${guildId}`);
     }
 
     // Keep-alive ping every 30 seconds
@@ -336,19 +327,17 @@ export function createWorkspaceRouter(
     req.on('close', () => {
       clearInterval(keepAlive);
 
-      // Unregister client
-      workspaceManager.unregisterClient(token, clientId);
-      sseClients.get(token)?.delete(clientId);
+      sseClients.get(guildId)?.delete(clientId);
 
-      // Stop watcher if no clients left for this token
-      const remainingClients = workspaceManager.getConnectedClients(token);
-      if (remainingClients.length === 0) {
-        const stopWatcher = watchers.get(token);
+      // Stop watcher if no clients left for this guildId
+      const remainingClients = sseClients.get(guildId)?.size ?? 0;
+      if (remainingClients === 0) {
+        const stopWatcher = watchers.get(guildId);
         if (stopWatcher) {
           stopWatcher();
-          watchers.delete(token);
-          sseClients.delete(token);
-          logger.info(`📁 Stopped watching workspace for token ${token.slice(0, 8)}...`);
+          watchers.delete(guildId);
+          sseClients.delete(guildId);
+          logger.info(`📁 Stopped watching workspace for guild ${guildId}`);
         }
       }
     });
@@ -356,12 +345,16 @@ export function createWorkspaceRouter(
 
   /**
    * API: Convert markdown file to DOCX or PDF and stream as download
-   * GET /api/workspace/:token/convert/:format?file={relativePath}
-   * Supported formats: docx, pdf
+   * GET /api/workspace/:guildId/convert/:format?file={relativePath}
    */
-  router.get('/:token/convert/:format', async (req: Request, res: Response) => {
-    const token = normalizeToken(req.params.token);
-    const format = req.params.format as string;
+  router.get('/:guildId/convert/:format', async (req: Request, res: Response) => {
+    const guildId = String(req.params.guildId);
+
+    if (!validateAuth(req, guildId)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const format = String(req.params.format);
     const filepath = req.query.file as string;
 
     if (!filepath) {
@@ -373,11 +366,6 @@ export function createWorkspaceRouter(
     }
 
     try {
-      const cordbotPath = validateToken(token);
-      if (!cordbotPath) {
-        return res.status(404).json({ error: 'Workspace not found or token expired' });
-      }
-
       const markdown = await fileSystem.readFile(cordbotPath, filepath);
 
       const baseName = filepath.split('/').pop()?.replace(/\.(md|markdown)$/i, '') ?? 'document';
@@ -413,33 +401,17 @@ export function createWorkspaceRouter(
 
   /**
    * Static: Serve React workspace viewer app
-   * GET /workspace/:token
-   *
-   * In production, serves the built React app.
-   * In development, returns message to use Vite dev server.
+   * GET /workspace/:guildId
    */
-  router.get('/:token', async (req: Request, res: Response) => {
-    const token = normalizeToken(req.params.token);
-
-    // Validate token
-    const cordbotPath = validateToken(token);
-    if (!cordbotPath) {
-      return res.status(404).send('Workspace not found or token expired');
-    }
-
-    // Check if built files exist
+  router.get('/:guildId', async (req: Request, res: Response) => {
     const indexPath = path.join(WORKSPACE_BUILD_PATH, 'index.html');
 
     try {
       await fs.access(indexPath);
-
-      // Serve the built React app
       const html = await fs.readFile(indexPath, 'utf-8');
-
       res.setHeader('Content-Type', 'text/html');
       res.send(html);
     } catch (error) {
-      // Built files don't exist - probably in development
       res.status(500).send(
         '<html><body>' +
           '<h1>Workspace Viewer Not Built</h1>' +
@@ -456,10 +428,8 @@ export function createWorkspaceRouter(
 
   /**
    * Static: Serve other assets (JS, CSS, etc.)
-   * This is a catch-all for static assets from the built React app
    */
   router.use((req: Request, res: Response, next) => {
-    // Only serve static assets if they exist in the build directory
     const filePath = path.join(WORKSPACE_BUILD_PATH, req.path);
 
     fs.access(filePath)
@@ -467,7 +437,6 @@ export function createWorkspaceRouter(
         res.sendFile(filePath);
       })
       .catch(() => {
-        // File doesn't exist, pass to next handler
         next();
       });
   });

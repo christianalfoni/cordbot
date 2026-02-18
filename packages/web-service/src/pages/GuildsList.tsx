@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { UserData } from '../hooks/useAuth';
 import { useGuilds } from '../hooks/useGuilds';
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
-import { EllipsisHorizontalIcon, ArrowPathIcon, ArrowUpCircleIcon, TrashIcon, CreditCardIcon } from '@heroicons/react/20/solid';
+import { EllipsisHorizontalIcon, ArrowPathIcon, ArrowUpCircleIcon, TrashIcon, CreditCardIcon, FolderOpenIcon } from '@heroicons/react/20/solid';
 import { Header } from '../components/Header';
 import { db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -237,6 +238,15 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
                           </p>
                         </div>
                         <div className="flex items-center gap-x-4">
+                          {guild.status === 'active' && (
+                            <Link
+                              to={`/workspace/${guild.id}`}
+                              className="flex items-center gap-x-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                            >
+                              <FolderOpenIcon aria-hidden="true" className="size-4" />
+                              Workspace
+                            </Link>
+                          )}
                           <Menu as="div" className="relative">
                             <MenuButton className="relative block text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-white">
                               <span className="absolute -inset-2.5" />

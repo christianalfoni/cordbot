@@ -40,8 +40,7 @@ function AppContent() {
                        location.pathname === '/terms' ||
                        location.pathname === '/auth/discord/callback' ||
                        location.pathname === '/stripe/success' ||
-                       location.pathname === '/stripe/cancel' ||
-                       location.pathname.startsWith('/workspace/');
+                       location.pathname === '/stripe/cancel';
 
   if (isPublicRoute) {
     return (
@@ -51,7 +50,6 @@ function AppContent() {
         <Route path="/auth/discord/callback" element={<DiscordCallback />} />
         <Route path="/stripe/success" element={<StripeSuccess />} />
         <Route path="/stripe/cancel" element={<StripeCancel />} />
-        <Route path="/workspace/:guildId/:token" element={<Workspace />} />
       </Routes>
     );
   }
@@ -67,6 +65,7 @@ function AppContent() {
       <Route path="/docs" element={<Docs userData={userData} onSignOut={signOut} onSignIn={handleSignIn} loading={loading} />} />
       <Route path="/guilds/:guildId/setup" element={<OAuthSuccess />} />
       <Route path="/auth/callback/gmail" element={<GmailCallback />} />
+      <Route path="/workspace/:guildId" element={user ? <Workspace /> : <Login onSignIn={handleSignIn} />} />
       <Route path="*" element={user && userData ? <Navigate to="/" replace /> : <Login onSignIn={handleSignIn} />} />
     </Routes>
   );

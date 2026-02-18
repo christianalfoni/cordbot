@@ -47,13 +47,14 @@ interface FlyMachineConfig {
   }>;
 }
 
-// HTTP service configuration - expose port 80 only (no DNS/TLS, accessed via raw IP)
+// HTTP + HTTPS service configuration
 const CORDBOT_HTTP_SERVICE_CONFIG = [
   {
     protocol: 'tcp',
     internal_port: 8080,
     ports: [
-      { port: 80, handlers: ['http'] }
+      { port: 80, handlers: ['http'] },
+      { port: 443, handlers: ['tls', 'http'] }
     ],
     http_checks: [{
       interval: 30000,
@@ -102,6 +103,7 @@ function buildGuildEnvironment(params: {
   anthropicApiKey: string;
   serviceUrl: string;
   baseUrl?: string;
+  workspaceJwtSecret?: string;
 }): Record<string, string> {
   const env: Record<string, string> = {
     HOME: '/workspace',
@@ -116,11 +118,25 @@ function buildGuildEnvironment(params: {
   if (params.baseUrl) {
     env.BASE_URL = params.baseUrl;
   }
+  if (params.workspaceJwtSecret) {
+    env.WORKSPACE_JWT_SECRET = params.workspaceJwtSecret;
+  }
   return env;
 }
 
 export class GuildProvisioningService {
   constructor(private ctx: FunctionContext) {}
+
+  /**
+   * Safely get the workspace JWT secret if available in context
+   */
+  private tryGetWorkspaceJwtSecret(): string | undefined {
+    try {
+      return this.ctx.secrets.getSecret('WORKSPACE_JWT_SECRET');
+    } catch {
+      return undefined;
+    }
+  }
 
   /**
    * Verify that a user owns a guild and return the guild data
@@ -349,6 +365,7 @@ export class GuildProvisioningService {
         anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
         serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
         baseUrl: 'https://cordbot.io',
+        workspaceJwtSecret: this.tryGetWorkspaceJwtSecret(),
       }),
       mounts: [
         {
@@ -696,6 +713,7 @@ export class GuildProvisioningService {
               anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
               serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
               baseUrl: 'https://cordbot.io',
+        workspaceJwtSecret: this.tryGetWorkspaceJwtSecret(),
             }),
             mounts,
             services: CORDBOT_HTTP_SERVICE_CONFIG,
@@ -795,6 +813,7 @@ export class GuildProvisioningService {
               anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
               serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
               baseUrl: 'https://cordbot.io',
+        workspaceJwtSecret: this.tryGetWorkspaceJwtSecret(),
             }),
             mounts,
             init: {
@@ -912,6 +931,7 @@ export class GuildProvisioningService {
           anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
           serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
           baseUrl: 'https://cordbot.io',
+        workspaceJwtSecret: this.tryGetWorkspaceJwtSecret(),
         }),
         mounts,
         init: {
@@ -1009,6 +1029,7 @@ export class GuildProvisioningService {
               anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
               serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
               baseUrl: 'https://cordbot.io',
+        workspaceJwtSecret: this.tryGetWorkspaceJwtSecret(),
             }),
             mounts,
             init: { cwd: '/workspace' },

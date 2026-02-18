@@ -2,6 +2,7 @@ import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { defineSecret } from 'firebase-functions/params';
+import jwt from 'jsonwebtoken';
 
 // Initialize Firebase Admin
 initializeApp();
@@ -29,6 +30,7 @@ const stripeApiKey = defineSecret('STRIPE_API_KEY');
 const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
 const stripePriceIdStarter = defineSecret('STRIPE_PRICE_ID_STARTER');
 const stripePriceIdPro = defineSecret('STRIPE_PRICE_ID_PRO');
+const workspaceJwtSecret = defineSecret('WORKSPACE_JWT_SECRET');
 
 /**
  * Exchange Google OAuth code for tokens and store in bot's profile
@@ -65,6 +67,58 @@ export const exchangeGmailToken = onCall(
     } catch (error) {
       ctx.logger.error('Error exchanging Gmail token:', error);
       throw new HttpsError('internal', 'An error occurred while connecting Gmail');
+    }
+  }
+);
+
+/**
+ * Get a signed JWT for accessing the workspace API on the bot
+ * Verifies Firebase auth and guild ownership, then returns a short-lived JWT
+ */
+export const getWorkspaceToken = onCall(
+  { secrets: [workspaceJwtSecret] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated');
+    }
+
+    const { guildId } = request.data;
+
+    if (!guildId) {
+      throw new HttpsError('invalid-argument', 'guildId is required');
+    }
+
+    const ctx = new ProductionFunctionContext({
+      WORKSPACE_JWT_SECRET: workspaceJwtSecret,
+    });
+
+    try {
+      // Verify guild ownership
+      const guild = await ctx.firestore.getGuild(guildId);
+      if (!guild) {
+        throw new HttpsError('not-found', 'Guild not found');
+      }
+      if (guild.userId !== request.auth.uid) {
+        throw new HttpsError('permission-denied', 'You do not own this guild');
+      }
+
+      // Sign JWT scoped to this guildId
+      const secret = ctx.secrets.getSecret('WORKSPACE_JWT_SECRET');
+      const token = jwt.sign(
+        { guildId, userId: request.auth.uid },
+        secret,
+        { expiresIn: '1h' }
+      );
+
+      // Derive bot URL (same formula as provisioning)
+      const guildPrefix = guildId.substring(0, 12).toLowerCase().replace(/[^a-z0-9]/g, '');
+      const botUrl = `https://cordbot-guild-${guildPrefix}.fly.dev`;
+
+      return { token, botUrl };
+    } catch (error) {
+      if (error instanceof HttpsError) throw error;
+      ctx.logger.error('Error getting workspace token:', error);
+      throw new HttpsError('internal', 'An error occurred while generating workspace token');
     }
   }
 );
@@ -289,7 +343,7 @@ export const upgradeGuild = onCall(async (request) => {
 /**
  * Provision a free tier guild (called by web UI)
  */
-export const provisionFreeTierGuild = onCall({ secrets: [flyApiToken] }, async (request) => {
+export const provisionFreeTierGuild = onCall({ secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey, workspaceJwtSecret] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
@@ -302,6 +356,9 @@ export const provisionFreeTierGuild = onCall({ secrets: [flyApiToken] }, async (
 
   const ctx = new ProductionFunctionContext({
     FLY_API_TOKEN: flyApiToken,
+    SHARED_DISCORD_BOT_TOKEN: sharedDiscordBotToken,
+    SHARED_ANTHROPIC_API_KEY: sharedAnthropicApiKey,
+    WORKSPACE_JWT_SECRET: workspaceJwtSecret,
   });
 
   try {
@@ -320,7 +377,7 @@ export const provisionFreeTierGuild = onCall({ secrets: [flyApiToken] }, async (
  * Provision a paid tier guild (called by web UI after subscription is created)
  */
 export const provisionPaidTierGuild = onCall(
-  { secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey] },
+  { secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey, workspaceJwtSecret] },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'User must be authenticated');
@@ -336,6 +393,7 @@ export const provisionPaidTierGuild = onCall(
       FLY_API_TOKEN: flyApiToken,
       SHARED_DISCORD_BOT_TOKEN: sharedDiscordBotToken,
       SHARED_ANTHROPIC_API_KEY: sharedAnthropicApiKey,
+      WORKSPACE_JWT_SECRET: workspaceJwtSecret,
     });
 
     try {
@@ -494,7 +552,7 @@ export const restartGuild = onCall({ secrets: [flyApiToken] }, async (request) =
 /**
  * Repair a guild's machine by restoring environment variables (called by web UI)
  */
-export const repairGuild = onCall({ secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey] }, async (request) => {
+export const repairGuild = onCall({ secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey, workspaceJwtSecret] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
@@ -509,6 +567,7 @@ export const repairGuild = onCall({ secrets: [flyApiToken, sharedDiscordBotToken
     FLY_API_TOKEN: flyApiToken,
     SHARED_DISCORD_BOT_TOKEN: sharedDiscordBotToken,
     SHARED_ANTHROPIC_API_KEY: sharedAnthropicApiKey,
+    WORKSPACE_JWT_SECRET: workspaceJwtSecret,
   });
 
   try {
@@ -529,7 +588,7 @@ const ADMIN_UID = 'T2MzyDqU6BRZknhZHywr9CcOEp42';
  * Admin: Deploy a bot for any guild by guild ID (admin only)
  */
 export const adminDeployBot = onCall(
-  { secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey] },
+  { secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey, workspaceJwtSecret] },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'User must be authenticated');
@@ -549,6 +608,7 @@ export const adminDeployBot = onCall(
       FLY_API_TOKEN: flyApiToken,
       SHARED_DISCORD_BOT_TOKEN: sharedDiscordBotToken,
       SHARED_ANTHROPIC_API_KEY: sharedAnthropicApiKey,
+      WORKSPACE_JWT_SECRET: workspaceJwtSecret,
     });
 
     try {
@@ -567,7 +627,7 @@ export const adminDeployBot = onCall(
 /**
  * Deploy an update to a guild's machine (called by web UI)
  */
-export const deployGuildUpdate = onCall({ secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey] }, async (request) => {
+export const deployGuildUpdate = onCall({ secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey, workspaceJwtSecret] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
@@ -582,6 +642,7 @@ export const deployGuildUpdate = onCall({ secrets: [flyApiToken, sharedDiscordBo
     FLY_API_TOKEN: flyApiToken,
     SHARED_DISCORD_BOT_TOKEN: sharedDiscordBotToken,
     SHARED_ANTHROPIC_API_KEY: sharedAnthropicApiKey,
+    WORKSPACE_JWT_SECRET: workspaceJwtSecret,
   });
 
   try {

@@ -241,10 +241,6 @@ export async function startBot(cwd: string): Promise<void> {
     context.scheduler.stopAll();
     console.log("🗄️  Scheduler stopped");
 
-    // Clean up workspace share manager
-    context.workspaceShareManager.destroy();
-    console.log("🌐 Workspace share manager stopped");
-
     // Destroy Discord client
     context.discord.destroy();
     console.log("🔌 Discord client disconnected");

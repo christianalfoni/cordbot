@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { FileTreeNode, WorkspaceFileChange } from '../types';
 
 export interface UploadingFile {
@@ -9,7 +9,11 @@ export interface UploadingFile {
   error?: string;
 }
 
-export function useWorkspace(apiBase: string) {
+export function useWorkspace(
+  apiBase: string | null,
+  authToken: string | null,
+  onTokenExpired: () => Promise<string | null>
+) {
   const [files, setFiles] = useState<FileTreeNode[]>([]);
   const [content, setContent] = useState<string>('');
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -17,12 +21,39 @@ export function useWorkspace(apiBase: string) {
   const [error, setError] = useState<string | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
 
+  // Keep authToken in a ref so callbacks don't need to re-create on token changes
+  const authTokenRef = useRef<string | null>(authToken);
+  useEffect(() => {
+    authTokenRef.current = authToken;
+  }, [authToken]);
+
+  // Authenticated fetch with automatic 401 retry
+  const authedFetch = useCallback(async (url: string, options: RequestInit = {}): Promise<Response> => {
+    const token = authTokenRef.current;
+    const headers: Record<string, string> = { ...(options.headers as Record<string, string> || {}) };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(url, { ...options, headers });
+
+    if (res.status === 401) {
+      const newToken = await onTokenExpired();
+      if (newToken) {
+        authTokenRef.current = newToken;
+        const retryHeaders = { ...headers, 'Authorization': `Bearer ${newToken}` };
+        return fetch(url, { ...options, headers: retryHeaders });
+      }
+    }
+
+    return res;
+  }, [onTokenExpired]);
+
   // Fetch files in directory
   const fetchFiles = useCallback(async (path: string = '') => {
+    if (!apiBase) return;
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`${apiBase}/files?path=${encodeURIComponent(path)}`);
+      const res = await authedFetch(`${apiBase}/files?path=${encodeURIComponent(path)}`);
 
       if (!res.ok) {
         const errorData = await res.json();
@@ -37,12 +68,13 @@ export function useWorkspace(apiBase: string) {
     } finally {
       setLoading(false);
     }
-  }, [apiBase]);
+  }, [apiBase, authedFetch]);
 
   // Fetch folder contents (for expansion)
   const fetchFolderContents = useCallback(async (path: string): Promise<FileTreeNode[]> => {
+    if (!apiBase) return [];
     try {
-      const res = await fetch(`${apiBase}/files?path=${encodeURIComponent(path)}`);
+      const res = await authedFetch(`${apiBase}/files?path=${encodeURIComponent(path)}`);
 
       if (!res.ok) {
         const errorData = await res.json();
@@ -55,16 +87,16 @@ export function useWorkspace(apiBase: string) {
       console.error('Error fetching folder contents:', err);
       throw err;
     }
-  }, [apiBase]);
+  }, [apiBase, authedFetch]);
 
   // Fetch file content
   const fetchFile = useCallback(async (path: string) => {
+    if (!apiBase) return;
     try {
       setLoading(true);
       setError(null);
-      // Encode each path segment to handle spaces, parens, and other special chars
       const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-      const res = await fetch(`${apiBase}/file/${encodedPath}`);
+      const res = await authedFetch(`${apiBase}/file/${encodedPath}`);
 
       if (!res.ok) {
         const errorData = await res.json();
@@ -80,10 +112,11 @@ export function useWorkspace(apiBase: string) {
     } finally {
       setLoading(false);
     }
-  }, [apiBase]);
+  }, [apiBase, authedFetch]);
 
   // Upload a file to the workspace
   const uploadFile = useCallback(async (file: File, folder: string = '') => {
+    if (!apiBase) return;
     const id = `${Date.now()}-${file.name}`;
     const placeholder: UploadingFile = {
       id,
@@ -95,12 +128,10 @@ export function useWorkspace(apiBase: string) {
     setUploadingFiles((prev) => [...prev, placeholder]);
 
     try {
-      // Read file as base64
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;
-          // Remove data URL prefix (e.g., "data:application/pdf;base64,")
           const base64Data = result.includes(',') ? result.split(',')[1] : result;
           resolve(base64Data);
         };
@@ -108,7 +139,7 @@ export function useWorkspace(apiBase: string) {
         reader.readAsDataURL(file);
       });
 
-      const res = await fetch(`${apiBase}/upload`, {
+      const res = await authedFetch(`${apiBase}/upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -127,7 +158,6 @@ export function useWorkspace(apiBase: string) {
           )
         );
       } else {
-        // Remove placeholder and explicitly refresh the file tree
         setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
         await fetchFiles();
       }
@@ -140,7 +170,7 @@ export function useWorkspace(apiBase: string) {
         )
       );
     }
-  }, [apiBase, fetchFiles]);
+  }, [apiBase, authedFetch, fetchFiles]);
 
   // Dismiss an upload error
   const dismissUploadError = useCallback((id: string) => {
@@ -149,9 +179,10 @@ export function useWorkspace(apiBase: string) {
 
   // Delete a file from the workspace
   const deleteFile = useCallback(async (filePath: string) => {
+    if (!apiBase) return;
     try {
       const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
-      const res = await fetch(`${apiBase}/file/${encodedPath}`, {
+      const res = await authedFetch(`${apiBase}/file/${encodedPath}`, {
         method: 'DELETE',
       });
 
@@ -160,7 +191,6 @@ export function useWorkspace(apiBase: string) {
         throw new Error(errData.error || 'Delete failed');
       }
 
-      // Clear selected file if it was the one deleted
       if (filePath === selectedPath) {
         setSelectedPath(null);
         setContent('');
@@ -170,56 +200,60 @@ export function useWorkspace(apiBase: string) {
     } catch (err) {
       console.error('Error deleting file:', err);
     }
-  }, [apiBase, selectedPath, fetchFiles]);
+  }, [apiBase, authedFetch, selectedPath, fetchFiles]);
 
   // Setup SSE connection for real-time updates
+  // EventSource doesn't support custom headers, so token is passed as query param
   useEffect(() => {
-    let eventSource: EventSource | null = null;
+    if (!apiBase || !authToken) return;
 
-    try {
-      eventSource = new EventSource(`${apiBase}/events`);
+    let eventSource: EventSource | null = null;
+    let closed = false;
+
+    const connect = (token: string) => {
+      if (closed) return;
+      eventSource = new EventSource(`${apiBase}/events?token=${encodeURIComponent(token)}`);
 
       eventSource.onmessage = (event) => {
         const change: WorkspaceFileChange = JSON.parse(event.data);
 
         if (change.type === 'change' && change.path === selectedPath) {
-          // Reload current file if it changed
-          console.log('🔄 File changed, reloading:', change.path);
           fetchFile(selectedPath);
         } else if (['add', 'unlink', 'addDir', 'unlinkDir'].includes(change.type)) {
-          // Refresh file tree on structural changes
-          console.log('🌳 File tree changed:', change.type, change.path);
           fetchFiles();
         }
       };
 
-      eventSource.onerror = () => {
-        console.error('❌ SSE connection error');
+      eventSource.onerror = async () => {
+        if (closed) return;
+        console.error('❌ SSE connection error - refreshing token');
+        eventSource?.close();
+        try {
+          const newToken = await onTokenExpired();
+          if (newToken) {
+            authTokenRef.current = newToken;
+            connect(newToken);
+          }
+        } catch {
+          console.error('Failed to refresh token for SSE reconnect');
+        }
       };
-    } catch (err) {
-      console.error('Failed to setup SSE:', err);
-    }
+    };
+
+    connect(authToken);
 
     return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
+      closed = true;
+      eventSource?.close();
     };
-  }, [apiBase, selectedPath, fetchFile, fetchFiles]);
-
-  // Keep-alive: Fetch files periodically to extend token
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchFiles();
-    }, 30000); // Every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [fetchFiles]);
+  }, [apiBase, authToken, onTokenExpired, selectedPath, fetchFile, fetchFiles]);
 
   // Initial load
   useEffect(() => {
-    fetchFiles();
-  }, [fetchFiles]);
+    if (apiBase && authToken) {
+      fetchFiles();
+    }
+  }, [apiBase, authToken, fetchFiles]);
 
   return {
     files,

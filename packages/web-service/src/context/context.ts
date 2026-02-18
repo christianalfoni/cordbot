@@ -129,6 +129,13 @@ export interface AppContext {
    */
   triggerPaidTierProvisioning(guildId: string): Promise<void>;
 
+  /**
+   * Get a signed JWT for accessing the workspace API on the bot
+   * @param guildId The guild ID
+   * @returns JWT token and bot URL
+   */
+  getWorkspaceToken(guildId: string): Promise<{ token: string; botUrl: string }>;
+
   // ============ Subscriptions ============
 
   /**

@@ -226,6 +226,12 @@ export class FirebaseContext implements AppContext {
     await provisionPaidTierGuildFunc({ guildId });
   }
 
+  async getWorkspaceToken(guildId: string): Promise<{ token: string; botUrl: string }> {
+    const getWorkspaceTokenFunc = httpsCallable(this.functions, 'getWorkspaceToken');
+    const result = await getWorkspaceTokenFunc({ guildId });
+    return result.data as { token: string; botUrl: string };
+  }
+
   // ============ Subscriptions ============
 
   async getSubscription(subscriptionId: string): Promise<Subscription | null> {
