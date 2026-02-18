@@ -12,6 +12,7 @@ import { OAuthSuccess } from './pages/OAuthSuccess';
 import { DiscordCallback } from './pages/DiscordCallback';
 import { StripeSuccess } from './pages/StripeSuccess';
 import { StripeCancel } from './pages/StripeCancel';
+import { Workspace } from './pages/Workspace';
 import { NotificationProvider } from './context/NotificationContext';
 import { NotificationContainer } from './components/NotificationContainer';
 import { ConfirmationProvider } from './context/ConfirmationContext';
@@ -25,7 +26,8 @@ function AppContent() {
                        location.pathname === '/terms' ||
                        location.pathname === '/auth/discord/callback' ||
                        location.pathname === '/stripe/success' ||
-                       location.pathname === '/stripe/cancel';
+                       location.pathname === '/stripe/cancel' ||
+                       location.pathname.startsWith('/workspace/');
 
   if (isPublicRoute) {
     return (
@@ -35,6 +37,7 @@ function AppContent() {
         <Route path="/auth/discord/callback" element={<DiscordCallback />} />
         <Route path="/stripe/success" element={<StripeSuccess />} />
         <Route path="/stripe/cancel" element={<StripeCancel />} />
+        <Route path="/workspace/:guildId/:token" element={<Workspace />} />
       </Routes>
     );
   }

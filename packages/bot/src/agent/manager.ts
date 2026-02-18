@@ -80,9 +80,7 @@ export class SessionManager {
         // Get cordbot working directory (where cordbot writes its files)
         return this.cordbotWorkingDir || this.workspaceRoot;
       },
-      this.context.documentConverter,
-      this.context.fileShareManager,
-      this.baseUrl || 'http://localhost:8080'
+      this.context.documentConverter
     );
 
     // Load Discord tools if Discord client is provided

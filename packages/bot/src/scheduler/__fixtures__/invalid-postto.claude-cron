@@ -1,5 +1,0 @@
-jobs:
-  - name: "Invalid postTo"
-    schedule: "0 9 * * *"
-    task: "Do something"
-    postTo: "invalid"

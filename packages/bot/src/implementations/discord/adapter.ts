@@ -10,6 +10,7 @@ import {
   Channel,
   Guild,
   ButtonInteraction,
+  ChatInputCommandInteraction,
   GuildScheduledEvent,
   ChannelType as DiscordChannelType,
   GuildScheduledEventEntityType,
@@ -29,6 +30,7 @@ import type {
   IGuild,
   IGuildScheduledEvent,
   IButtonInteraction,
+  IChatInputCommandInteraction,
   IForumTag,
   IAttachment,
   ISendMessageOptions,
@@ -435,6 +437,29 @@ class DiscordButtonInteractionWrapper implements IButtonInteraction {
   }
 }
 
+class DiscordChatInputCommandInteractionWrapper implements IChatInputCommandInteraction {
+  constructor(private interaction: ChatInputCommandInteraction) {}
+
+  get commandName() { return this.interaction.commandName; }
+  get user(): IUser { return new DiscordUser(this.interaction.user); }
+  get channelId() { return this.interaction.channelId; }
+  get guildId() { return this.interaction.guildId ?? undefined; }
+
+  async reply(content: string | { content?: string; ephemeral?: boolean }): Promise<void> {
+    await this.interaction.reply(content);
+  }
+
+  async deferReply(options?: { ephemeral?: boolean }): Promise<void> {
+    await this.interaction.deferReply(options);
+  }
+
+  async editReply(content: string | { content?: string }): Promise<void> {
+    await this.interaction.editReply(content);
+  }
+
+  get _raw() { return this.interaction; }
+}
+
 /**
  * Discord.js adapter implementation
  */
@@ -817,6 +842,8 @@ export class DiscordJsAdapter implements IDiscordAdapter {
       this.client.on('interactionCreate', (interaction) => {
         if (interaction.isButton()) {
           handler(new DiscordButtonInteractionWrapper(interaction));
+        } else if (interaction.isChatInputCommand()) {
+          handler(new DiscordChatInputCommandInteractionWrapper(interaction));
         }
       });
     } else if (event === 'error') {

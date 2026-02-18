@@ -47,14 +47,13 @@ interface FlyMachineConfig {
   }>;
 }
 
-// HTTP service configuration for exposing health server and file sharing endpoints
+// HTTP service configuration - expose port 80 only (no DNS/TLS, accessed via raw IP)
 const CORDBOT_HTTP_SERVICE_CONFIG = [
   {
     protocol: 'tcp',
     internal_port: 8080,
     ports: [
-      { port: 80, handlers: ['http'] },
-      { port: 443, handlers: ['http', 'tls'] }
+      { port: 80, handlers: ['http'] }
     ],
     http_checks: [{
       interval: 30000,
@@ -102,8 +101,9 @@ function buildGuildEnvironment(params: {
   discordBotToken: string;
   anthropicApiKey: string;
   serviceUrl: string;
+  baseUrl?: string;
 }): Record<string, string> {
-  return {
+  const env: Record<string, string> = {
     HOME: '/workspace',
     DISCORD_BOT_TOKEN: params.discordBotToken,
     DISCORD_GUILD_ID: params.guildId,
@@ -113,6 +113,10 @@ function buildGuildEnvironment(params: {
     MEMORY_RETENTION_MONTHS: String(params.memoryRetentionMonths ?? 0),
     SERVICE_URL: params.serviceUrl,
   };
+  if (params.baseUrl) {
+    env.BASE_URL = params.baseUrl;
+  }
+  return env;
 }
 
 export class GuildProvisioningService {
@@ -344,6 +348,7 @@ export class GuildProvisioningService {
         discordBotToken: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
         anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
         serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
+        baseUrl: 'https://cordbot.io',
       }),
       mounts: [
         {

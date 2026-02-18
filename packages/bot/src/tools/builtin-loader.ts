@@ -5,9 +5,7 @@ import { createTool as createListSchedules } from './scheduling/list_schedules.j
 import { createTool as createRemoveSchedule } from './scheduling/remove_schedule.js';
 import { createTool as createShareFile } from './share_file.js';
 import { createTool as createGenerateDocx } from './document/generate_docx.js';
-import { createTool as createShareLink } from './document/create_share_link.js';
 import type { IDocumentConverter } from '../interfaces/document.js';
-import type { IFileShareManager } from '../interfaces/file-sharing.js';
 
 /**
  * Load built-in tools that don't require authentication
@@ -19,9 +17,7 @@ export function loadBuiltinTools(
   getCurrentChannel: (() => any) | undefined,
   getWorkspaceRoot: () => string,
   getCordbotWorkingDir: () => string,
-  documentConverter: IDocumentConverter,
-  fileShareManager: IFileShareManager,
-  baseUrl: string
+  documentConverter: IDocumentConverter
 ): SdkMcpToolDefinition<any>[] {
   const tools: SdkMcpToolDefinition<any>[] = [];
 
@@ -34,21 +30,12 @@ export function loadBuiltinTools(
   // Load file sharing tool (uses cordbot working directory for file operations)
   tools.push(createShareFile(getCordbotWorkingDir, queueFileForSharing));
 
-  // Load document tools (docx generation and file sharing links)
+  // Load document tools (docx generation)
   tools.push(
     createGenerateDocx(
       getCordbotWorkingDir,
       queueFileForSharing,
       (markdown: string, filename: string) => documentConverter.convertMarkdownToDocx(markdown, filename)
-    )
-  );
-
-  tools.push(
-    createShareLink(
-      getCordbotWorkingDir,
-      getCurrentChannelId,
-      (filePath: string, channelId: string) => fileShareManager.createShareToken(filePath, channelId),
-      () => baseUrl
     )
   );
 

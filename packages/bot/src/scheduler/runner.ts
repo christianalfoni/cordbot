@@ -1,9 +1,8 @@
 import chokidar from 'chokidar';
 import path from 'path';
-import yaml from 'js-yaml';
 import { SessionManager } from '../agent/manager.js';
 import { ChannelMapping } from '../discord/sync.js';
-import { parseCronFile, CronJob, validateCronSchedule, parseCronFileV2, writeCronV2File } from './parser.js';
+import { parseCronFileV2, writeCronV2File } from './parser.js';
 import type { OneTimeJob, RecurringJob, CronV2Config } from './v2-types.js';
 import { streamToDiscord } from '../agent/stream.js';
 import { QueryLimitManager } from '../service/query-limit-manager.js';
@@ -12,20 +11,8 @@ import type { ILogger } from '../interfaces/logger.js';
 import type { IScheduler } from '../interfaces/scheduler.js';
 import type { IFileStore } from '../interfaces/file.js';
 
-interface ScheduledTask {
-  job: CronJob;
-  taskId: string; // Scheduler task ID instead of direct cron.ScheduledTask
-  channelId: string;
-  folderPath: string;
-}
-
 export class CronRunner {
-  private scheduledTasks: Map<string, ScheduledTask[]> = new Map();
-  private watcher: chokidar.FSWatcher | null = null;
   private channelMappings: Map<string, ChannelMapping> = new Map();
-  private cronPath: string = '';
-
-  // V2 scheduling properties
   private cronV2Path: string = '';
   private watcherV2: chokidar.FSWatcher | null = null;
   private oneTimeCheckerTaskId: string | null = null;
@@ -41,11 +28,10 @@ export class CronRunner {
   ) {}
 
   /**
-   * Start watching and scheduling cron jobs from single file
+   * Start watching and scheduling V2 cron jobs
    */
   start(channelMappings: ChannelMapping[], cronPath: string): void {
-    this.logger.info('⏰ Starting cron scheduler...');
-    this.cronPath = cronPath;
+    this.logger.info('⏰ Starting cron scheduler (V2)...');
 
     // Calculate V2 path (parallel to cron.yaml)
     const dir = path.dirname(cronPath);
@@ -55,13 +41,9 @@ export class CronRunner {
       this.channelMappings.set(mapping.channelId, mapping);
     }
 
-    // Watch the single shared cron file
-    this.watchCronFile();
-
     // Watch the V2 cron file
     this.watchCronV2File();
 
-    this.logger.info(`✅ Watching shared cron file at ${cronPath}`);
     this.logger.info(`✅ Watching V2 cron file at ${this.cronV2Path}`);
   }
 
@@ -72,278 +54,21 @@ export class CronRunner {
     this.channelMappings.set(mapping.channelId, mapping);
     this.logger.info(`✅ Added channel mapping for #${mapping.channelName}`);
 
-    // Reload jobs to pick up any jobs for this new channel
-    this.loadAndScheduleJobs();
+    // Reload V2 jobs to pick up any jobs for this new channel
+    this.loadAndScheduleV2Jobs();
   }
 
   /**
    * Remove a channel mapping
    */
   removeChannel(channelId: string): void {
-    // Stop all scheduled tasks for this channel
-    this.stopChannelTasks(channelId);
-
     // Remove from channel mappings
     this.channelMappings.delete(channelId);
 
+    // Reload V2 jobs (will remove jobs for this channel)
+    this.loadAndScheduleV2Jobs();
+
     this.logger.info(`⏸️  Removed channel mapping ${channelId}`);
-  }
-
-  /**
-   * Watch the single shared cron file for changes
-   */
-  private watchCronFile(): void {
-    // Initial load
-    this.loadAndScheduleJobs();
-
-    // Watch for changes
-    this.watcher = chokidar.watch(this.cronPath, {
-      persistent: true,
-      ignoreInitial: true,
-    });
-
-    this.watcher.on('change', () => {
-      this.logger.info(`🔄 Cron file changed: ${this.cronPath}`);
-      this.loadAndScheduleJobs();
-    });
-
-    this.watcher.on('add', () => {
-      this.logger.info(`📄 Cron file added: ${this.cronPath}`);
-      this.loadAndScheduleJobs();
-    });
-
-    this.watcher.on('error', (error) => {
-      this.logger.error(`Failed to watch cron file ${this.cronPath}:`, error);
-    });
-  }
-
-  /**
-   * Load cron file and schedule jobs for all channels
-   */
-  private loadAndScheduleJobs(): void {
-    // Stop all existing tasks
-    for (const channelId of this.scheduledTasks.keys()) {
-      this.stopChannelTasks(channelId);
-    }
-
-    try {
-      // Parse the single cron file
-      const config = parseCronFile(this.cronPath);
-
-      if (config.jobs.length === 0) {
-        this.logger.info(`No jobs configured in ${this.cronPath}`);
-        return;
-      }
-
-      // Group jobs by channel
-      const jobsByChannel = new Map<string, CronJob[]>();
-      for (const job of config.jobs) {
-        if (!jobsByChannel.has(job.channelId)) {
-          jobsByChannel.set(job.channelId, []);
-        }
-        jobsByChannel.get(job.channelId)!.push(job);
-      }
-
-      // Schedule jobs for each channel
-      for (const [channelId, jobs] of jobsByChannel) {
-        const mapping = this.channelMappings.get(channelId);
-        if (!mapping) {
-          this.logger.warn(`⚠️  No mapping found for channel ${channelId}, skipping jobs`);
-          continue;
-        }
-
-        const tasks: ScheduledTask[] = [];
-
-        for (const job of jobs) {
-          // Validate cron schedule
-          if (!validateCronSchedule(job.schedule)) {
-            this.logger.error(
-              `Invalid cron schedule for job "${job.name}": ${job.schedule}`
-            );
-            continue;
-          }
-
-          // Schedule the job
-          const taskId = this.scheduler.schedule(job.schedule, async () => {
-            await this.executeJob(job, mapping.folderPath);
-          }, {
-            name: job.name,
-            channelId,
-          });
-
-          tasks.push({ job, taskId, channelId: job.channelId, folderPath: mapping.folderPath });
-
-          this.logger.info(
-            `📅 Scheduled job "${job.name}" for channel ${channelId}: ${job.schedule}`
-          );
-        }
-
-        this.scheduledTasks.set(channelId, tasks);
-      }
-    } catch (error) {
-      this.logger.error(`Failed to load cron file ${this.cronPath}:`, error);
-    }
-  }
-
-  /**
-   * Execute a scheduled job
-   */
-  private async executeJob(
-    job: CronJob,
-    folderPath: string
-  ): Promise<void> {
-    this.logger.info(`⏰ Executing scheduled job: ${job.name}`);
-
-    // Check query limit BEFORE execution
-    if (this.queryLimitManager) {
-      const canProceed = await this.queryLimitManager.canProceedWithQuery();
-      if (!canProceed) {
-        this.logger.info(`[Cron] Skipping "${job.name}" - query limit reached`);
-        return;
-      }
-    }
-
-    let success = false;
-    let cost = 0;
-
-    try {
-      // Determine where to send the final response
-      // If job has responseThreadId, use that; otherwise use the channel
-      const responseChannelId = job.responseThreadId || job.channelId;
-      const channel = await this.discord.getChannel(responseChannelId);
-
-      if (!channel) {
-        this.logger.error(`Channel/Thread ${responseChannelId} not found`);
-        return;
-      }
-
-      // Create a session for this job
-      const sessionId = `cron_${Date.now()}_${job.name}`;
-
-      // Set channel and working directory context for tools
-      // Only set channel context if it's a text or thread channel
-      if (channel.isTextChannel() || channel.isThreadChannel()) {
-        this.sessionManager.setChannelContext(sessionId, channel);
-      }
-      this.sessionManager.setWorkingDirContext(sessionId, folderPath);
-      this.sessionManager.setChannelIdContext(sessionId, job.channelId);
-
-      try {
-        // Get CLAUDE.md path from mapping
-        const mapping = this.channelMappings.get(job.channelId);
-        if (!mapping) {
-          this.logger.error(`❌ No channel mapping found for ${job.channelId}`);
-          return;
-        }
-
-        const claudeMdPath = mapping.claudeMdPath;
-        let systemPrompt: string | undefined;
-
-        if (this.fileStore.exists(claudeMdPath)) {
-          try {
-            // Get all channel info
-            const allChannels = Array.from(this.channelMappings.values()).map(m => ({
-              channelId: m.channelId,
-              channelName: m.channelName,
-            }));
-
-            // Populate memory before reading
-            await this.sessionManager.populateMemory(
-              claudeMdPath,
-              job.channelId,
-              mapping.channelName,
-              allChannels,
-              sessionId
-            );
-
-            // Read server description if it exists
-            const workspaceRoot = path.dirname(path.dirname(claudeMdPath)); // Go up from .claude/channels/{id} to workspace root
-            const serverDescPath = path.join(workspaceRoot, '.claude', 'SERVER_DESCRIPTION.md');
-            let serverDescContent = '';
-            if (this.fileStore.exists(serverDescPath)) {
-              serverDescContent = this.fileStore.readFile(serverDescPath, 'utf-8');
-              this.logger.info(`📖 Read SERVER_DESCRIPTION.md for cron job`);
-            }
-
-            // Read CLAUDE.md
-            const claudeMdContent = this.fileStore.readFile(claudeMdPath, 'utf-8');
-
-            // Inject server description at the top of the system prompt
-            if (serverDescContent) {
-              systemPrompt = `${serverDescContent}\n\n---\n\n${claudeMdContent}`;
-            } else {
-              systemPrompt = claudeMdContent;
-            }
-
-            this.logger.info(`📖 Read CLAUDE.md for cron job (${claudeMdContent.length} chars)`);
-          } catch (error) {
-            this.logger.error('Failed to read CLAUDE.md for cron job:', error);
-          }
-        } else {
-          this.logger.warn(`⚠️  CLAUDE.md not found at ${claudeMdPath}`);
-        }
-
-        // Create query for Claude with special instructions for scheduled tasks
-        const cronTaskPrompt = `Execute this scheduled task. Perform the actions using available tools, then report what was done.
-
-Task: ${job.task}`;
-
-        const queryResult = this.sessionManager.createQuery(
-          cronTaskPrompt,
-          null, // New session for each cron job
-          folderPath,
-          systemPrompt
-        );
-
-        // Stream response - only send final message for cron jobs
-        // Cron jobs should only run on text or thread channels, not forum channels
-        if (!(channel.isTextChannel() || channel.isThreadChannel())) {
-          this.logger.error('Cron jobs can only run on text or thread channels');
-          return;
-        }
-
-        // Pass channel to streamToDiscord (already interface type)
-        const streamResult = await streamToDiscord(
-          queryResult,
-          channel,
-          this.sessionManager,
-          sessionId,
-          folderPath,
-          this.logger,
-          undefined, // botConfig
-          undefined, // messagePrefix (not used for cron jobs)
-          undefined, // parentChannelId
-          true, // isCronJob - only sends final message with clock emoji suffix
-          undefined, // thinkingMessageToDelete
-          mapping.channelName // NEW: parentChannelName for server-wide memory
-        );
-
-        success = true;
-        cost = this.estimateCost(streamResult);
-
-        this.logger.info(`✅ Completed scheduled job: ${job.name}`);
-
-        // Note: Cron sessions are standalone and not continuable
-        // Each cron job creates a fresh session
-
-        // If this is a one-time job, remove it from the cron file
-        if (job.oneTime) {
-          await this.removeOneTimeJob(job.name);
-        }
-      } finally {
-        // Clear contexts after execution
-        this.sessionManager.clearChannelContext(sessionId);
-        this.sessionManager.clearWorkingDirContext(sessionId);
-        this.sessionManager.clearChannelIdContext(sessionId);
-      }
-    } catch (error) {
-      this.logger.error(`Failed to execute job "${job.name}":`, error);
-    } finally {
-      // Track query usage
-      if (this.queryLimitManager) {
-        await this.queryLimitManager.trackQuery('scheduled_task', cost, success);
-      }
-    }
   }
 
   /**
@@ -364,59 +89,10 @@ Task: ${job.task}`;
   }
 
   /**
-   * Stop all tasks for a channel
-   */
-  private stopChannelTasks(channelId: string): void {
-    const tasks = this.scheduledTasks.get(channelId);
-
-    if (tasks) {
-      for (const { taskId, job } of tasks) {
-        this.scheduler.remove(taskId);
-        this.logger.info(`⏸️  Stopped job: ${job.name}`);
-      }
-
-      this.scheduledTasks.delete(channelId);
-    }
-  }
-
-  /**
-   * Remove a one-time job after it executes
-   */
-  private async removeOneTimeJob(jobName: string): Promise<void> {
-    try {
-      // Read and parse the single cron file
-      const config = parseCronFile(this.cronPath);
-
-      // Filter out the completed one-time job
-      const updatedJobs = config.jobs.filter(job => job.name !== jobName);
-
-      // Write back to file
-      const yamlContent = yaml.dump({ jobs: updatedJobs });
-      this.fileStore.writeFile(this.cronPath, yamlContent, 'utf-8');
-
-      this.logger.info(`🗑️  Removed one-time job: ${jobName}`);
-    } catch (error) {
-      this.logger.error(`Failed to remove one-time job "${jobName}":`, error);
-    }
-  }
-
-  /**
    * Stop all scheduled tasks and watcher
    */
   stop(): void {
     this.logger.info('⏸️  Stopping cron scheduler...');
-
-    // Stop all scheduled tasks
-    for (const [channelId, tasks] of this.scheduledTasks) {
-      this.stopChannelTasks(channelId);
-    }
-
-    // Stop the watcher
-    if (this.watcher) {
-      this.watcher.close();
-      this.logger.info(`⏸️  Stopped watching ${this.cronPath}`);
-      this.watcher = null;
-    }
 
     // Stop V2 one-time checker
     if (this.oneTimeCheckerTaskId) {

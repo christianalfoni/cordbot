@@ -24,17 +24,11 @@ vi.mock('node-cron', () => ({
 }));
 
 vi.mock('../scheduler/parser.js', () => ({
-  parseCronFile: vi.fn(() => ({
-    jobs: [
-      {
-        name: 'Test Job',
-        schedule: '0 9 * * *',
-        task: 'Run daily report',
-        oneTime: false,
-      },
-    ],
+  parseCronFileV2: vi.fn(() => ({
+    oneTimeJobs: [],
+    recurringJobs: [],
   })),
-  validateCronSchedule: vi.fn(() => true),
+  writeCronV2File: vi.fn(),
 }));
 
 describe('Scheduler', () => {
@@ -335,24 +329,14 @@ describe('Scheduler', () => {
   });
 
   describe('cron parser integration', () => {
-    it('should parse cron file and extract jobs', async () => {
-      const { parseCronFile } = await import('../scheduler/parser.js');
+    it('should parse V2 cron file and extract jobs', async () => {
+      const { parseCronFileV2 } = await import('../scheduler/parser.js');
 
-      const config = parseCronFile('/mock/cron.yaml');
+      const config = parseCronFileV2('/mock/cron_v2.yaml');
 
-      expect(parseCronFile).toHaveBeenCalledWith('/mock/cron.yaml');
-      expect(config.jobs).toHaveLength(1);
-      expect(config.jobs[0].name).toBe('Test Job');
-      expect(config.jobs[0].schedule).toBe('0 9 * * *');
-    });
-
-    it('should validate individual job schedules', async () => {
-      const { validateCronSchedule } = await import('../scheduler/parser.js');
-
-      const isValid = validateCronSchedule('0 9 * * *');
-
-      expect(validateCronSchedule).toHaveBeenCalledWith('0 9 * * *');
-      expect(isValid).toBe(true);
+      expect(parseCronFileV2).toHaveBeenCalledWith('/mock/cron_v2.yaml');
+      expect(config.oneTimeJobs).toEqual([]);
+      expect(config.recurringJobs).toEqual([]);
     });
   });
 });

@@ -4,6 +4,8 @@ FROM node:20-slim
 RUN apt-get update && apt-get install -y \
     sqlite3 \
     pandoc \
+    texlive-xetex \
+    texlive-fonts-recommended \
     && rm -rf /var/lib/apt/lists/*
 
 # Set HOME to workspace for persistent ~/.claude/ directory

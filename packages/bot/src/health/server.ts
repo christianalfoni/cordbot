@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import { Server } from 'http';
 import path from 'path';
+import { createWorkspaceRouter } from './workspace-router.js';
+import { WorkspaceFileSystem } from '../implementations/workspace-sharing/file-system.js';
 import type { IBotContext } from '../interfaces/core.js';
 
 interface HealthServerConfig {
@@ -18,6 +20,10 @@ export class HealthServer {
   constructor(config: HealthServerConfig) {
     this.config = config;
     this.app = express();
+
+    // Middleware: JSON body parser for API endpoints
+    // 25mb limit to accommodate base64-encoded file uploads (DOCX/PDF up to ~18MB)
+    this.app.use(express.json({ limit: '25mb' }));
 
     // Health check endpoint
     this.app.get('/health', (req: Request, res: Response) => {
@@ -53,50 +59,25 @@ export class HealthServer {
         version: '1.2.0',
         endpoints: {
           health: '/health',
-          share: '/share/:token',
+          workspace: '/workspace/:token',
+          workspaceApi: '/api/workspace/:token/*',
         },
       });
     });
 
-    // File sharing endpoint
-    this.app.get('/share/:token', async (req: Request, res: Response) => {
-      const token = Array.isArray(req.params.token) ? req.params.token[0] : req.params.token;
+    // Workspace sharing router
+    const workspaceRouter = createWorkspaceRouter(
+      this.config.context.workspaceShareManager,
+      new WorkspaceFileSystem(),
+      this.config.context.documentConverter,
+      this.config.context.logger
+    );
 
-      // Get file path from token
-      const filePath = this.config.context.fileShareManager.getFileFromToken(token);
+    // Mount API endpoints at /api/workspace
+    this.app.use('/api/workspace', workspaceRouter);
 
-      if (!filePath) {
-        return res.status(404).json({
-          error: 'File not found or token expired',
-        });
-      }
-
-      // Check if file exists
-      if (!this.config.context.fileStore.exists(filePath)) {
-        return res.status(404).json({
-          error: 'File not found',
-        });
-      }
-
-      try {
-        // Read file content
-        const content = this.config.context.fileStore.readFile(filePath);
-        const filename = path.basename(filePath);
-
-        // Set appropriate headers
-        res.setHeader('Content-Type', this.getContentType(filename));
-        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-        res.setHeader('Cache-Control', 'private, no-cache');
-
-        // Send the file
-        res.send(content);
-      } catch (error) {
-        this.config.context.logger.error('Error serving shared file:', error);
-        res.status(500).json({
-          error: 'Failed to read file',
-        });
-      }
-    });
+    // Mount static files (React app) at /workspace
+    this.app.use('/workspace', workspaceRouter);
   }
 
   private formatUptime(seconds: number): string {

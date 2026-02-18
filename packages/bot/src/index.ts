@@ -2,6 +2,7 @@ import { initializeClaudeFolder } from "./init.js";
 import { createProductionBotContext } from "./implementations/factory.js";
 import { syncChannelsOnStartup } from "./discord/sync.js";
 import { setupEventHandlers } from "./discord/events.js";
+import { registerCommands } from "./discord/commands.js";
 import { SessionManager } from "./agent/manager.js";
 import { CronRunner } from "./scheduler/runner.js";
 import { HealthServer } from "./health/server.js";
@@ -105,18 +106,9 @@ export async function startBot(cwd: string): Promise<void> {
   const activeSessions = context.sessionStore.getAllActive();
   console.log(`📊 Active sessions: ${activeSessions.length}\n`);
 
-  // Auto-detect Fly.io URL or use provided BASE_URL (needed for share links)
-  let baseUrl = process.env.BASE_URL;
-  if (!baseUrl && process.env.FLY_APP_NAME) {
-    // Running on Fly.io - construct URL from app name
-    baseUrl = `https://${process.env.FLY_APP_NAME}.fly.dev`;
-    console.log(`🌐 Detected Fly.io deployment: ${baseUrl}`);
-  }
-  if (!baseUrl) {
-    // Fallback to localhost for local development
-    baseUrl = `http://localhost:8080`;
-    console.log(`🌐 Using local URL: ${baseUrl}`);
-  }
+  // Use provided BASE_URL or fallback to web-workspace dev server for local development
+  const baseUrl = process.env.BASE_URL || `http://localhost:5174`;
+  console.log(`🌐 Base URL: ${baseUrl}`);
 
   // Initialize session manager with context and Discord client
   // workspace root (cwd) = configuration files (e.g., cron_v2.yaml)
@@ -192,10 +184,25 @@ export async function startBot(cwd: string): Promise<void> {
     guildId,
     cronRunner,
     context.logger,
+    baseUrl,
     botConfig,
     queryLimitManager
   );
   console.log("✅ Event handlers registered\n");
+
+  // Register slash commands
+  const clientUser = context.discord.getUser();
+  if (clientUser) {
+    try {
+      await registerCommands(token, clientUser.id, guildId);
+      console.log("✅ Slash commands registered\n");
+    } catch (error) {
+      console.error("⚠️  Failed to register slash commands:", error);
+      console.log("   Bot will continue without slash commands\n");
+    }
+  } else {
+    console.error("⚠️  Unable to get bot user ID - skipping slash command registration\n");
+  }
 
   // Start health check server (if port is configured)
   // Note: baseUrl already declared above for SessionManager
@@ -233,6 +240,10 @@ export async function startBot(cwd: string): Promise<void> {
     // Stop scheduler
     context.scheduler.stopAll();
     console.log("🗄️  Scheduler stopped");
+
+    // Clean up workspace share manager
+    context.workspaceShareManager.destroy();
+    console.log("🌐 Workspace share manager stopped");
 
     // Destroy Discord client
     context.discord.destroy();

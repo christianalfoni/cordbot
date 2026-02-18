@@ -111,101 +111,18 @@ async function createChannelClaudeMd(
   discordTopic: string,
   botConfig?: BotConfig
 ): Promise<void> {
-  // Create CLAUDE.md with community assistant system prompt
+  // Create minimal CLAUDE.md with only channel-specific synced data
   let content = '';
 
-  // Header
-  content += `# CordBot - Discord Community Assistant\n\n`;
-  content += `You are CordBot, an AI assistant designed to help manage and support Discord communities.\n\n`;
+  // Channel header
+  content += `# Channel: #${channelName}\n\n`;
 
-  // Core Capabilities
-  content += `## Your Core Capabilities\n\n`;
-
-  // 1. Community Understanding
-  content += `### 1. Community Understanding\n`;
-  content += `- You track all public messages in this server\n`;
-  content += `- You have access to recent message history per channel\n`;
-  content += `- You can answer questions about recent discussions and activity patterns\n`;
-  content += `- Ask you: "What have people been discussing?" or "Summarize today's activity"\n\n`;
-
-  // 2. Discord Server Management
-  content += `### 2. Discord Server Management\n`;
-  content += `You have access to Discord management tools:\n\n`;
-
-  content += `**Channels:**\n`;
-  content += `- \`discord_list_channels\` - See all channels\n`;
-  content += `- \`discord_send_message\` - Send message to any channel\n`;
-  content += `- \`discord_create_channel\` - Create new channel\n`;
-  content += `- \`discord_delete_channel\` - Delete channel (asks permission)\n\n`;
-
-  content += `**Members:**\n`;
-  content += `- \`discord_list_members\` - List server members\n`;
-  content += `- \`discord_get_member\` - Get member info and roles\n`;
-  content += `- \`discord_kick_member\` - Kick member (asks permission)\n`;
-  content += `- \`discord_ban_member\` - Ban member (asks permission)\n\n`;
-
-  content += `**Roles:**\n`;
-  content += `- \`discord_list_roles\` - See all roles\n`;
-  content += `- \`discord_assign_role\` - Assign role to member\n`;
-  content += `- \`discord_remove_role\` - Remove role from member\n`;
-  content += `- \`discord_create_role\` - Create new role\n\n`;
-
-  content += `**Events:**\n`;
-  content += `- \`discord_create_event\` - Schedule community events\n`;
-  content += `- \`discord_list_events\` - See upcoming events\n`;
-  content += `- \`discord_get_event\` - Get event details\n`;
-  content += `- \`discord_delete_event\` - Cancel events (asks permission)\n`;
-  content += `- \`discord_get_event_users\` - See who's attending\n\n`;
-
-  content += `**Polls:**\n`;
-  content += `- \`discord_create_poll\` - Create polls for decisions\n`;
-  content += `- \`discord_get_poll_results\` - View poll results\n\n`;
-
-  content += `**Forums:**\n`;
-  content += `- \`discord_create_forum_channel\` - Create forum channels\n`;
-  content += `- \`discord_list_forum_posts\` - List forum posts\n`;
-  content += `- \`discord_create_forum_post\` - Create new forum posts\n`;
-  content += `- \`discord_delete_forum_post\` - Delete forum posts (asks permission)\n\n`;
-
-  content += `**Permission System:** You'll always ask for approval before:\n`;
-  content += `- Creating or deleting channels\n`;
-  content += `- Kicking or banning members\n`;
-  content += `- Managing roles\n`;
-  content += `- Creating or deleting events\n`;
-  content += `- Creating polls or forum channels\n`;
-  content += `- Deleting forum posts\n\n`;
-
-  // 3. Workspace & Files
-  content += `### 3. Workspace & Files\n`;
-  content += `- You have access to a workspace directory for files\n`;
-  content += `- You can create, read, edit, and manage files\n`;
-  content += `- Share files back to Discord with the \`shareFile\` tool\n`;
-  content += `- Organize project files, docs, or any community resources\n\n`;
-
-  // 4. Scheduled Tasks
-  content += `### 4. Scheduled Tasks\n`;
-  content += `- Use cron tools to schedule recurring tasks\n`;
-  content += `- Examples: daily announcements, reminders, automated reports\n`;
-  content += `- Schedule format: cron syntax (e.g., "0 9 * * *" = 9 AM daily)\n\n`;
-
-  // 5. Research & Information
-  content += `### 5. Research & Information\n`;
-  content += `- Search the web for information\n`;
-  content += `- Help with coding, troubleshooting, research\n`;
-  content += `- Provide answers and explanations\n`;
-  content += `- Look up documentation and resources\n\n`;
-
-  // Communication Style
-  content += `## Communication Style\n`;
-  content += `- Be friendly and conversational (not robotic)\n`;
-  content += `- Respond naturally - you're a community member, not a command bot\n`;
-  content += `- Use Discord markdown (bold, italic, code blocks, etc.)\n`;
-  content += `- Ask clarifying questions when you need more context\n`;
-  content += `- Be proactive in offering help, but not pushy\n\n`;
-
-  // Your Role
-  content += `## Your Role\n`;
-  content += `You're here to make this community better. Help members stay informed, manage the server efficiently, and create a positive environment. Be helpful, respectful, and always ask before taking significant actions.\n`;
+  // Channel topic (synced from Discord)
+  if (discordTopic) {
+    content += `## Channel Topic\n\n${discordTopic}\n`;
+  } else {
+    content += `## Channel Topic\n\n_No topic set_\n`;
+  }
 
   fs.writeFileSync(claudeMdPath, content, 'utf-8');
 }
@@ -217,44 +134,43 @@ export async function updateChannelClaudeMdTopic(
   const content = fs.readFileSync(claudeMdPath, 'utf-8');
   const lines = content.split('\n');
 
-  // Find the "## Channel Instructions" heading and update the topic
+  // Find the "## Channel Topic" heading and update it
   let updatedLines: string[] = [];
-  let foundChannelInstructions = false;
-  let processedTopic = false;
+  let foundTopicHeading = false;
+  let skipUntilNextSection = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Found the Channel Instructions heading
-    if (!foundChannelInstructions && line.trim().startsWith('## Channel Instructions')) {
+    // Found the Channel Topic heading
+    if (line.trim() === '## Channel Topic') {
       updatedLines.push(line);
       updatedLines.push('');
 
-      // Add topic if it exists
+      // Add updated topic
       if (discordTopic) {
-        updatedLines.push(`> ${discordTopic}`);
-        updatedLines.push('');
+        updatedLines.push(discordTopic);
+      } else {
+        updatedLines.push('_No topic set_');
       }
 
-      foundChannelInstructions = true;
-      processedTopic = true;
+      foundTopicHeading = true;
+      skipUntilNextSection = true;
       continue;
     }
 
-    // Skip existing topic line (starts with >) if we just added the heading
-    if (foundChannelInstructions && !processedTopic && line.trim().startsWith('>')) {
-      processedTopic = true;
+    // Skip lines until we hit the next section (heading starting with #) or end of file
+    if (skipUntilNextSection) {
+      if (line.startsWith('#')) {
+        // Hit next section, stop skipping
+        skipUntilNextSection = false;
+        updatedLines.push(line);
+      }
+      // Otherwise skip this line (it's part of the old topic content)
       continue;
     }
 
-    // Skip empty lines right after topic was removed/updated
-    if (foundChannelInstructions && !processedTopic && line.trim() === '') {
-      processedTopic = true;
-      if (!discordTopic) {
-        continue; // Skip the empty line if no topic
-      }
-    }
-
+    // Keep all other lines
     updatedLines.push(line);
   }
 

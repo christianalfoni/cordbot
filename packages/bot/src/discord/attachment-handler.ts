@@ -8,20 +8,25 @@ import type { AttachmentProcessingResult } from '../interfaces/document.js';
  * File type categories for processing
  */
 interface FileCategory {
-  type: 'image' | 'text' | 'docx' | 'unsupported';
+  type: 'image' | 'text' | 'docx' | 'pdf' | 'unsupported';
   contentType?: string;
 }
 
 /**
  * Categorize a file based on content type and filename
  */
-function categorizeFile(contentType: string | undefined, filename: string): FileCategory {
+export function categorizeFile(contentType: string | undefined, filename: string): FileCategory {
   // Check for docx first
   if (
     contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     filename.toLowerCase().endsWith('.docx')
   ) {
     return { type: 'docx', contentType };
+  }
+
+  // Check for PDF
+  if (contentType === 'application/pdf' || filename.toLowerCase().endsWith('.pdf')) {
+    return { type: 'pdf', contentType };
   }
 
   // Check for images (common image formats only)
@@ -59,7 +64,6 @@ export async function processAttachments(
 ): Promise<AttachmentProcessingResult> {
   const result: AttachmentProcessingResult = {
     savedFiles: [],
-    embeddedContent: [],
     unsupportedFiles: [],
   };
 
@@ -85,37 +89,53 @@ export async function processAttachments(
         continue;
       }
 
-      // Save supported files to working directory
-      const filePath = path.join(workingDir, attachment.name);
-      context.fileStore.writeFile(filePath, buffer);
-
       logger.info(`📎 Downloaded attachment: ${attachment.name} (${buffer.length} bytes)`);
-
-      // Add to saved files
-      result.savedFiles.push(attachment.name);
 
       // Handle based on category
       if (category.type === 'docx') {
-        // Convert docx to markdown for embedding in prompt
+        // Convert docx to markdown and save as .md file
         const markdown = await context.documentConverter.convertDocxToMarkdown(
           buffer,
           attachment.name
         );
 
         if (markdown) {
-          result.embeddedContent.push({
-            filename: attachment.name,
-            type: 'docx',
-            content: markdown,
-          });
-          logger.info(`📄 Converted ${attachment.name} to markdown`);
+          // Save as markdown file (replace .docx extension with .md)
+          const mdFilename = attachment.name.replace(/\.docx$/i, '.md');
+          const mdFilePath = path.join(workingDir, mdFilename);
+          context.fileStore.writeFile(mdFilePath, markdown);
+
+          result.savedFiles.push(mdFilename);
+          logger.info(`📄 Converted ${attachment.name} to markdown: ${mdFilename}`);
         } else {
           logger.warn(`⚠️  Failed to convert ${attachment.name} to markdown`);
-          // If conversion fails, still keep the file but note it couldn't be processed
           result.unsupportedFiles.push(attachment.name);
         }
+      } else if (category.type === 'pdf') {
+        // Convert PDF to markdown and save as .md file
+        const markdown = await context.documentConverter.convertPdfToMarkdown(
+          buffer,
+          attachment.name
+        );
+
+        if (markdown) {
+          // Save as markdown file (replace .pdf extension with .md)
+          const mdFilename = attachment.name.replace(/\.pdf$/i, '.md');
+          const mdFilePath = path.join(workingDir, mdFilename);
+          context.fileStore.writeFile(mdFilePath, markdown);
+
+          result.savedFiles.push(mdFilename);
+          logger.info(`📄 Converted ${attachment.name} to markdown: ${mdFilename}`);
+        } else {
+          logger.warn(`⚠️  Failed to convert ${attachment.name} to markdown`);
+          result.unsupportedFiles.push(attachment.name);
+        }
+      } else {
+        // Save other supported files as-is (images, text files, etc.)
+        const filePath = path.join(workingDir, attachment.name);
+        context.fileStore.writeFile(filePath, buffer);
+        result.savedFiles.push(attachment.name);
       }
-      // Note: unsupported files are already handled above (not saved, added to unsupportedFiles)
     } catch (error) {
       logger.error(`Failed to process attachment ${attachment.name}:`, error);
     }
@@ -139,24 +159,9 @@ export function formatAttachmentPrompt(result: AttachmentProcessingResult): stri
 
   const parts: string[] = ['\n\n[Files attached:'];
 
-  // List all saved files with their types
+  // List all saved files
   for (const filename of result.savedFiles) {
-    const isDocx = result.embeddedContent.some((doc) => doc.filename === filename);
-    const isFailedDocx = result.unsupportedFiles.includes(filename) && filename.toLowerCase().endsWith('.docx');
-
-    if (isDocx) {
-      parts.push(`- ${filename} (document, converted to markdown below)`);
-    } else if (isFailedDocx) {
-      parts.push(`- ${filename} (document conversion failed, saved as file)`);
-    } else {
-      // Image or text file
-      const ext = path.extname(filename).toLowerCase();
-      if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext)) {
-        parts.push(`- ${filename} (image, saved to working directory)`);
-      } else {
-        parts.push(`- ${filename} (saved to working directory)`);
-      }
-    }
+    parts.push(`- ${filename}`);
   }
 
   // List unsupported files that were NOT saved
@@ -169,15 +174,6 @@ export function formatAttachmentPrompt(result: AttachmentProcessingResult): stri
     for (const filename of unsavedFiles) {
       parts.push(`- ${filename}`);
     }
-  }
-
-  // Embed converted documents
-  for (const doc of result.embeddedContent) {
-    parts.push('');
-    parts.push(`Document: ${doc.filename}`);
-    parts.push('---markdown');
-    parts.push(doc.content);
-    parts.push('---');
   }
 
   parts.push(']');

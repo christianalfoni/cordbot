@@ -2,80 +2,9 @@ import yaml from 'js-yaml';
 import fs from 'fs';
 import type { CronV2Config, OneTimeJob, RecurringJob } from './v2-types.js';
 
-export interface CronJob {
-  name: string;
-  schedule: string;
-  task: string;
-  channelId: string; // Channel where this job should execute
-  oneTime?: boolean;
-  responseThreadId?: string; // Optional: send final message to this thread instead of channel
-}
-
-export interface CronConfig {
-  jobs: CronJob[];
-}
-
-export function parseCronFile(filePath: string): CronConfig {
-  if (!fs.existsSync(filePath)) {
-    return { jobs: [] };
-  }
-
-  const content = fs.readFileSync(filePath, 'utf-8');
-
-  // Handle empty file
-  if (!content.trim()) {
-    return { jobs: [] };
-  }
-
-  try {
-    const parsed = yaml.load(content) as any;
-
-    // Validate structure
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Invalid YAML structure');
-    }
-
-    if (!Array.isArray(parsed.jobs)) {
-      throw new Error('jobs must be an array');
-    }
-
-    // Validate each job
-    const jobs: CronJob[] = parsed.jobs.map((job: any, index: number) => {
-      if (!job.name || typeof job.name !== 'string') {
-        throw new Error(`Job at index ${index} is missing required field: name`);
-      }
-
-      if (!job.schedule || typeof job.schedule !== 'string') {
-        throw new Error(`Job at index ${index} is missing required field: schedule`);
-      }
-
-      if (!job.task || typeof job.task !== 'string') {
-        throw new Error(`Job at index ${index} is missing required field: task`);
-      }
-
-      if (!job.channelId || typeof job.channelId !== 'string') {
-        throw new Error(`Job at index ${index} is missing required field: channelId`);
-      }
-
-      return {
-        name: job.name,
-        schedule: job.schedule,
-        task: job.task,
-        channelId: job.channelId,
-        oneTime: job.oneTime === true, // Optional field, defaults to false
-        responseThreadId: job.responseThreadId || undefined, // Optional field
-      };
-    });
-
-    return { jobs };
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Failed to parse cron file: ${error.message}`);
-    }
-    throw new Error('Failed to parse cron file');
-  }
-}
-
+/**
+ * Validate a cron expression format (5-field cron syntax)
+ */
 export function validateCronSchedule(schedule: string): boolean {
   // Basic cron format validation: "* * * * *" (minute hour day month weekday)
   const parts = schedule.trim().split(/\s+/);

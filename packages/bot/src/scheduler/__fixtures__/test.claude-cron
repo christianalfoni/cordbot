@@ -1,7 +1,0 @@
-jobs:
-  - name: "Daily summary"
-    schedule: "0 9 * * *"
-    task: "Summarize recent changes"
-  - name: "Weekly report"
-    schedule: "0 9 * * 1"
-    task: "Generate weekly report"

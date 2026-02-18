@@ -4,7 +4,7 @@
   "private": true,
   "description": "Discord bot powered by Claude Code SDK - monorepo",
   "scripts": {
-    "dev:bot": "pnpm --filter bot dev",
+    "dev:bot": "cross-env BASE_URL=http://localhost:5174 pnpm --filter bot dev",
     "dev:web": "pnpm --filter @cordbot/web-service dev",
     "build": "pnpm -r build",
     "build:functions": "pnpm --filter @cordbot/functions build",

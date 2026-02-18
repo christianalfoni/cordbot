@@ -6,7 +6,7 @@ import type { ITokenProvider } from './token';
 import type { ILogger } from './logger';
 import type { IFileStore } from './file';
 import type { IDocumentConverter } from './document';
-import type { IFileShareManager } from './file-sharing';
+import type { IWorkspaceShareManager } from './workspace-sharing';
 
 /**
  * Bot context - central dependency injection container
@@ -74,9 +74,9 @@ export interface IBotContext {
   documentConverter: IDocumentConverter;
 
   /**
-   * File sharing with token-based access
+   * Workspace sharing with token-based access
    */
-  fileShareManager: IFileShareManager;
+  workspaceShareManager: IWorkspaceShareManager;
 }
 
 /**

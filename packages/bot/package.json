@@ -1,6 +1,6 @@
 {
   "name": "@cordbot/agent",
-  "version": "6.1.1",
+  "version": "6.4.0",
   "description": "Discord bot powered by Claude Agent SDK",
   "type": "module",
   "bin": {
@@ -48,6 +48,7 @@
     "nanoid": "^5.0.0",
     "node-cron": "^3.0.3",
     "turndown": "^7.2.2",
+    "unpdf": "^1.4.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {

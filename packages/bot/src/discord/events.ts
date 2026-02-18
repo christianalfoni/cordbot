@@ -7,7 +7,7 @@ import { trackMessage } from '../message-tracking/tracker.js';
 import { QueryLimitManager } from '../service/query-limit-manager.js';
 import { processAttachments, formatAttachmentPrompt } from './attachment-handler.js';
 import type { IBotContext } from '../interfaces/core.js';
-import type { IMessage, ITextChannel, IThreadChannel, IChannel } from '../interfaces/discord.js';
+import type { IMessage, ITextChannel, IThreadChannel, IChannel, IChatInputCommandInteraction } from '../interfaces/discord.js';
 import type { ILogger } from '../interfaces/logger.js';
 
 // Queue to prevent concurrent processing of messages in the same thread
@@ -30,6 +30,7 @@ export function setupEventHandlers(
   guildId: string,
   cronRunner: CronRunner,
   logger: ILogger,
+  baseUrl: string,
   botConfig?: BotConfig,
   queryLimitManager?: QueryLimitManager
 ): void {
@@ -173,6 +174,18 @@ export function setupEventHandlers(
       } catch (error) {
         logger.error(`❌ Error syncing server description:`, error);
       }
+    }
+  });
+
+  // Handle slash command interactions
+  context.discord.on('interactionCreate', async (interaction) => {
+    // Only handle chat input commands (slash commands)
+    if (!('commandName' in interaction)) {
+      return;
+    }
+
+    if (interaction.commandName === 'workspace') {
+      await handleWorkspaceCommand(interaction, context, workspaceRoot, logger, baseUrl);
     }
   });
 
@@ -566,22 +579,29 @@ async function handleMessage(
 
           // Read server description if it exists
           const serverDescPath = path.join(workspaceRoot, '.claude', 'SERVER_DESCRIPTION.md');
-          let serverDescContent = '';
+          let serverDescription: string | undefined;
           if (context.fileStore.exists(serverDescPath)) {
-            serverDescContent = context.fileStore.readFile(serverDescPath, 'utf-8');
+            const rawDesc = context.fileStore.readFile(serverDescPath, 'utf-8');
+            // Extract just the description content (skip the "# Server Description" header)
+            serverDescription = rawDesc.replace(/^# Server Description\s*\n+/, '').trim();
             logger.info(`📖 Read SERVER_DESCRIPTION.md`);
           }
 
-          // Read CLAUDE.md to use as system prompt
+          // Read channel topic from CLAUDE.md
           const claudeMdContent = context.fileStore.readFile(claudeMdPath, 'utf-8');
+          // Extract topic from "## Channel Topic" section
+          const topicMatch = claudeMdContent.match(/## Channel Topic\s*\n+([^\n#]+)/);
+          const channelTopic = topicMatch?.[1]?.trim();
 
-          // Inject server description at the top of the system prompt
-          if (serverDescContent) {
-            systemPrompt = `${serverDescContent}\n\n---\n\n${claudeMdContent}`;
-          } else {
-            systemPrompt = claudeMdContent;
-          }
-          logger.info(`📖 Read CLAUDE.md (${claudeMdContent.length} chars)`);
+          // Build system prompt from template
+          const { buildSystemPrompt } = await import('../prompts/base-system-prompt.js');
+          systemPrompt = buildSystemPrompt({
+            serverDescription,
+            channelName: mapping.channelName,
+            channelTopic: channelTopic && channelTopic !== '_No topic set_' ? channelTopic : undefined,
+          });
+
+          logger.info(`📖 Built system prompt from template (${systemPrompt.length} chars)`);
         } catch (memoryError) {
           logger.error('Failed to populate memory or read CLAUDE.md:', memoryError);
           // Continue anyway - memory is nice-to-have, not critical
@@ -705,6 +725,53 @@ function mentionsSomeoneElse(message: IMessage): boolean {
   const mentionsOthers = message.mentions.users.some(user => user.id !== botId && !user.bot);
 
   return mentionsOthers;
+}
+
+/**
+ * Handle /workspace slash command
+ */
+async function handleWorkspaceCommand(
+  interaction: IChatInputCommandInteraction,
+  context: IBotContext,
+  workspaceRoot: string,
+  logger: ILogger,
+  baseUrl: string
+): Promise<void> {
+  try {
+    // Get the cordbot directory path for this workspace
+    const cordbotPath = path.join(workspaceRoot, 'cordbot');
+
+    // Create workspace token
+    const token = context.workspaceShareManager.createWorkspaceToken(
+      cordbotPath,
+      interaction.channelId
+    );
+
+    // Generate URL: cordbot.io/workspace/{guildId}/{token}
+    const guildId = process.env.DISCORD_GUILD_ID || '';
+    const workspaceUrl = `${baseUrl}/workspace/${guildId}/${token}`;
+
+    // Reply to user
+    await interaction.reply({
+      content:
+        `📁 [**Open Cordbot Workspace**](${workspaceUrl})\n\n` +
+        `*Link expires in 1 hour (extends on activity)*`,
+      ephemeral: true,
+    });
+
+    logger.info(`✅ Created workspace link for channel ${interaction.channelId}`);
+  } catch (error) {
+    logger.error('Error handling /workspace command:', error);
+
+    try {
+      await interaction.reply({
+        content: '❌ Failed to create workspace link. Please try again.',
+        ephemeral: true,
+      });
+    } catch (replyError) {
+      logger.error('Failed to send error reply:', replyError);
+    }
+  }
 }
 
 /**

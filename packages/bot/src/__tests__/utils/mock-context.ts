@@ -39,7 +39,7 @@ import type {
   QueryEvent,
 } from '../../interfaces/index.js';
 import type { IDocumentConverter } from '../../interfaces/document.js';
-import type { IFileShareManager } from '../../interfaces/file-sharing.js';
+import type { IWorkspaceShareManager } from '../../interfaces/workspace-sharing.js';
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
 
 /**
@@ -878,38 +878,71 @@ export class MockDocumentConverter implements IDocumentConverter {
     return `# Mock Markdown\n\nConverted from ${filename}`;
   }
 
+  async convertPdfToMarkdown(buffer: Buffer, filename: string): Promise<string | null> {
+    return `# Mock Markdown\n\nConverted from ${filename}`;
+  }
+
   async convertMarkdownToDocx(markdown: string, filename: string): Promise<Buffer | null> {
     return Buffer.from(`Mock DOCX content for ${filename}`);
+  }
+
+  async convertMarkdownToPdf(markdown: string, filename: string): Promise<Buffer | null> {
+    return Buffer.from(`Mock PDF content for ${filename}`);
   }
 }
 
 /**
- * Mock File Share Manager for testing
+ * Mock Workspace Share Manager for testing
  */
-export class MockFileShareManager implements IFileShareManager {
-  private tokens = new Map<string, { filePath: string; expiresAt: Date }>();
+export class MockWorkspaceShareManager implements IWorkspaceShareManager {
+  private tokens = new Map<string, { workspaceRoot: string; expiresAt: Date }>();
+  private clients = new Map<string, Set<string>>();
 
-  createShareToken(filePath: string, channelId: string): string {
-    const token = 'mock-token-' + Date.now();
+  createWorkspaceToken(workspaceRoot: string, channelId: string): string {
+    const token = 'mock-workspace-token-' + Date.now();
     this.tokens.set(token, {
-      filePath,
+      workspaceRoot,
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     });
+    this.clients.set(token, new Set());
     return token;
   }
 
-  getFileFromToken(token: string): string | null {
+  getWorkspaceFromToken(token: string): string | null {
     const data = this.tokens.get(token);
     if (!data) return null;
     if (new Date() > data.expiresAt) {
       this.tokens.delete(token);
+      this.clients.delete(token);
       return null;
     }
-    return data.filePath;
+    // Extend expiry on access
+    data.expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    return data.workspaceRoot;
+  }
+
+  registerClient(token: string, clientId: string): void {
+    const clientSet = this.clients.get(token);
+    if (clientSet) {
+      clientSet.add(clientId);
+    }
+  }
+
+  unregisterClient(token: string, clientId: string): void {
+    const clientSet = this.clients.get(token);
+    if (clientSet) {
+      clientSet.delete(clientId);
+    }
+  }
+
+  getConnectedClients(token: string): string[] {
+    const clientSet = this.clients.get(token);
+    return clientSet ? Array.from(clientSet) : [];
   }
 
   revokeToken(token: string): void {
     this.tokens.delete(token);
+    this.clients.delete(token);
   }
 
   cleanupExpiredTokens(): void {
@@ -917,8 +950,14 @@ export class MockFileShareManager implements IFileShareManager {
     for (const [token, data] of this.tokens.entries()) {
       if (now > data.expiresAt) {
         this.tokens.delete(token);
+        this.clients.delete(token);
       }
     }
+  }
+
+  destroy(): void {
+    this.tokens.clear();
+    this.clients.clear();
   }
 }
 
@@ -936,7 +975,7 @@ export function createMockContext(guildId: string = 'test-guild-id'): IBotContex
   logger: MockLogger;
   fileStore: MockFileStore;
   documentConverter: MockDocumentConverter;
-  fileShareManager: MockFileShareManager;
+  workspaceShareManager: MockWorkspaceShareManager;
 } {
   return {
     guildId,
@@ -950,6 +989,6 @@ export function createMockContext(guildId: string = 'test-guild-id'): IBotContex
     logger: new MockLogger(),
     fileStore: new MockFileStore(),
     documentConverter: new MockDocumentConverter(),
-    fileShareManager: new MockFileShareManager(),
+    workspaceShareManager: new MockWorkspaceShareManager(),
   };
 }

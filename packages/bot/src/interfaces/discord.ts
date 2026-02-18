@@ -8,6 +8,7 @@ import type {
   Channel as DiscordChannel,
   Guild as DiscordGuild,
   ButtonInteraction as DiscordButtonInteraction,
+  ChatInputCommandInteraction as DiscordChatInputCommandInteraction,
   GuildScheduledEvent as DiscordGuildScheduledEvent,
   ForumChannel as DiscordForumChannel,
   AnyThreadChannel as DiscordAnyThreadChannel,
@@ -259,6 +260,19 @@ export interface IButtonInteraction {
   _raw?: DiscordButtonInteraction;
 }
 
+export interface IChatInputCommandInteraction {
+  commandName: string;
+  user: IUser;
+  channelId: string;
+  guildId?: string;
+
+  reply(content: string | { content?: string; ephemeral?: boolean }): Promise<void>;
+  deferReply(options?: { ephemeral?: boolean }): Promise<void>;
+  editReply(content: string | { content?: string }): Promise<void>;
+
+  _raw?: DiscordChatInputCommandInteraction;
+}
+
 // Message options
 export interface MessageOptions {
   embeds?: any[];
@@ -272,7 +286,7 @@ export type ChannelCreateHandler = (channel: IChannel) => void | Promise<void>;
 export type ChannelDeleteHandler = (channel: IChannel) => void | Promise<void>;
 export type ChannelUpdateHandler = (oldChannel: IChannel, newChannel: IChannel) => void | Promise<void>;
 export type GuildUpdateHandler = (oldGuild: IGuild, newGuild: IGuild) => void | Promise<void>;
-export type InteractionCreateHandler = (interaction: IButtonInteraction) => void | Promise<void>;
+export type InteractionCreateHandler = (interaction: IButtonInteraction | IChatInputCommandInteraction) => void | Promise<void>;
 export type ErrorHandler = (error: Error) => void | Promise<void>;
 export type WarnHandler = (warning: string) => void | Promise<void>;
 

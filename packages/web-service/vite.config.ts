@@ -6,5 +6,13 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5174,
+    proxy: {
+      // Strip guildId prefix before forwarding workspace API calls to the bot
+      '/api/workspace': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/workspace\/[^/]+/, '/api/workspace'),
+      },
+    },
   },
 })

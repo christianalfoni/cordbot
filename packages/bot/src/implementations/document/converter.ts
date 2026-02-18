@@ -1,5 +1,6 @@
 import mammoth from 'mammoth';
 import TurndownService from 'turndown';
+import { extractText, getDocumentProxy } from 'unpdf';
 import { execSync } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
@@ -32,6 +33,10 @@ export class DocumentConverter implements IDocumentConverter {
       return true;
     }
 
+    if (contentType === 'application/pdf' || filename?.toLowerCase().endsWith('.pdf')) {
+      return true;
+    }
+
     return false;
   }
 
@@ -43,6 +48,50 @@ export class DocumentConverter implements IDocumentConverter {
     } catch (error) {
       console.error(`Failed to convert ${filename} to markdown:`, error);
       return null;
+    }
+  }
+
+  async convertPdfToMarkdown(buffer: Buffer, filename: string): Promise<string | null> {
+    try {
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      const { text } = await extractText(pdf, { mergePages: true });
+      return text;
+    } catch (error) {
+      console.error(`Failed to convert ${filename} to markdown:`, error);
+      return null;
+    }
+  }
+
+  async convertMarkdownToPdf(markdown: string, filename: string): Promise<Buffer | null> {
+    // Pandoc converts Markdown → LaTeX, then pdflatex renders LaTeX → PDF
+    // Install locally with: brew install basictex (then: sudo tlmgr install collection-fontsrecommended)
+    // In Docker: texlive-latex-base + texlive-fonts-recommended are installed in the Dockerfile
+    const tempId = randomBytes(8).toString('hex');
+    const tempMdPath = join(tmpdir(), `${tempId}.md`);
+    const tempPdfPath = join(tmpdir(), `${tempId}.pdf`);
+
+    try {
+      writeFileSync(tempMdPath, markdown, 'utf-8');
+
+      // On Linux (Fly.io), pdflatex is at /usr/bin which is already in PATH.
+      // On macOS, basictex installs to /Library/TeX/texbin which Node child processes don't inherit.
+      execSync(`pandoc -f markdown --pdf-engine=xelatex "${tempMdPath}" -o "${tempPdfPath}"`, {
+        encoding: 'utf-8',
+        env: { ...process.env, PATH: `${process.env.PATH}:/Library/TeX/texbin` },
+      });
+
+      const buffer = readFileSync(tempPdfPath);
+      return buffer;
+    } catch (error) {
+      console.error(`Failed to convert ${filename} to pdf:`, error);
+      return null;
+    } finally {
+      try {
+        unlinkSync(tempMdPath);
+      } catch {}
+      try {
+        unlinkSync(tempPdfPath);
+      } catch {}
     }
   }
 
