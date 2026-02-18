@@ -10,7 +10,16 @@ import { FileViewer } from '../workspace/components/FileViewer';
 export function Workspace() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { guildId, token } = useParams<{ guildId: string; token: string }>();
-  const apiBase = `/api/workspace/${guildId}/${token}`;
+
+  // In dev, Vite proxies /api/workspace/{guildId}/{token} → bot on localhost:8080/api/workspace/{token}
+  // In prod, call the bot's Fly.io machine directly (same appName formula as provisioning)
+  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const apiBase = isDev
+    ? `/api/workspace/${guildId}/${token}`
+    : (() => {
+        const guildPrefix = (guildId ?? '').substring(0, 12).toLowerCase().replace(/[^a-z0-9]/g, '');
+        return `https://cordbot-guild-${guildPrefix}.fly.dev/api/workspace/${token}`;
+      })();
 
   const {
     files,

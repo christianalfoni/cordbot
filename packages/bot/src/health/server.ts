@@ -65,6 +65,22 @@ export class HealthServer {
       });
     });
 
+    // CORS for workspace API - browser calls this cross-origin from cordbot.io in production
+    const allowedOrigins = ['https://cordbot.io', 'https://www.cordbot.io', 'http://localhost:5174'];
+    this.app.use('/api/workspace', (req: Request, res: Response, next) => {
+      const origin = req.headers.origin;
+      if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+      }
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      if (req.method === 'OPTIONS') {
+        res.status(204).end();
+        return;
+      }
+      next();
+    });
+
     // Workspace sharing router
     const workspaceRouter = createWorkspaceRouter(
       this.config.context.workspaceShareManager,

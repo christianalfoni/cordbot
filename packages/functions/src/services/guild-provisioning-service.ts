@@ -962,7 +962,8 @@ export class GuildProvisioningService {
     guildId: string;
     version?: string;
   }): Promise<{ success: true; version: string }> {
-    const { guildId, version = DEFAULT_VERSION } = params;
+    const { guildId } = params;
+    const version = params.version ?? DEFAULT_VERSION;
 
     const deployment = await this.ctx.firestore.getGuildDeployment(guildId);
     if (!deployment) {
