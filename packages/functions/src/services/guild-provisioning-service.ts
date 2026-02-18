@@ -695,6 +695,7 @@ export class GuildProvisioningService {
               discordBotToken: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
               anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
               serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
+              baseUrl: 'https://cordbot.io',
             }),
             mounts,
             services: CORDBOT_HTTP_SERVICE_CONFIG,
@@ -793,6 +794,7 @@ export class GuildProvisioningService {
               discordBotToken: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
               anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
               serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
+              baseUrl: 'https://cordbot.io',
             }),
             mounts,
             init: {
@@ -909,6 +911,7 @@ export class GuildProvisioningService {
           discordBotToken: this.ctx.secrets.getSecret('SHARED_DISCORD_BOT_TOKEN'),
           anthropicApiKey: this.ctx.secrets.getSecret('SHARED_ANTHROPIC_API_KEY'),
           serviceUrl: 'https://us-central1-claudebot-34c42.cloudfunctions.net',
+          baseUrl: 'https://cordbot.io',
         }),
         mounts,
         init: {
