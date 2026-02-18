@@ -65,7 +65,11 @@ function AppContent() {
       <Route path="/docs" element={<Docs userData={userData} onSignOut={signOut} onSignIn={handleSignIn} loading={loading} />} />
       <Route path="/guilds/:guildId/setup" element={<OAuthSuccess />} />
       <Route path="/auth/callback/gmail" element={<GmailCallback />} />
-      <Route path="/workspace/:guildId" element={user ? <Workspace /> : <Login onSignIn={handleSignIn} />} />
+      <Route path="/workspace/:guildId" element={loading ? (
+          <div className="flex min-h-screen items-center justify-center bg-white dark:bg-gray-900">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400"></div>
+          </div>
+        ) : user ? <Workspace /> : <Login onSignIn={handleSignIn} />} />
       <Route path="*" element={user && userData ? <Navigate to="/" replace /> : <Login onSignIn={handleSignIn} />} />
     </Routes>
   );
