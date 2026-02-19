@@ -1,7 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   FolderIcon,
+  FolderOpenIcon,
   DocumentTextIcon,
+  DocumentPlusIcon,
+  FolderPlusIcon,
   ChevronRightIcon,
   ChevronDownIcon,
   ExclamationCircleIcon,
@@ -12,116 +15,164 @@ import { classNames } from '../utils';
 import type { FileTreeNode } from '../types';
 import type { UploadingFile } from '../hooks/useWorkspace';
 
+// Key used to identify internal drag-and-drop vs OS file drops
+const DRAG_KEY = 'application/x-cordbot-path';
+
 interface FileTreeProps {
   files: FileTreeNode[];
+  folderContents: Record<string, FileTreeNode[]>;
+  loading: boolean;
   selectedPath: string | null;
   onFileClick: (path: string) => void;
   onFolderExpand: (path: string) => Promise<FileTreeNode[]>;
   onFileDrop: (file: File, folder: string) => void;
   onFileDelete: (path: string) => void;
+  onFolderDelete: (path: string) => void;
+  onCreateFile: (folderPath: string, name: string) => Promise<void>;
+  onCreateFolder: (folderPath: string, name: string) => Promise<void>;
+  onMoveItem: (sourcePath: string, destinationFolder: string) => void;
   uploadingFiles: UploadingFile[];
   dismissUploadError: (id: string) => void;
+  refreshSignal: number;
 }
 
 export function FileTree({
   files,
+  folderContents,
+  loading,
   selectedPath,
   onFileClick,
   onFolderExpand,
   onFileDrop,
   onFileDelete,
+  onFolderDelete,
+  onCreateFile,
+  onCreateFolder,
+  onMoveItem,
   uploadingFiles,
   dismissUploadError,
+  refreshSignal,
 }: FileTreeProps) {
-  // null = not dragging, '' = over root, 'path' = over specific folder
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [draggingPath, setDraggingPath] = useState<string | null>(null);
+  const [rootAdding, setRootAdding] = useState<'idle' | 'file' | 'folder'>('idle');
+
+  const handleItemDragStart = useCallback((path: string | null) => {
+    setDraggingPath(path);
+    if (path === null) setDragOverFolder(null);
+  }, []);
 
   const rootUploadingFiles = uploadingFiles.filter((f) => f.folder === '');
 
-  if (files.length === 0 && uploadingFiles.length === 0) {
-    return (
+  return (
+    <div>
+      {/* Root "Workspace" header — always visible, always expanded */}
       <div
         className={classNames(
-          'flex flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 transition-colors',
-          dragOverFolder !== null
-            ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-900/20'
-            : 'border-gray-200 dark:border-gray-700'
+          dragOverFolder === ''
+            ? 'bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-400 dark:bg-indigo-900/30 dark:text-white dark:ring-indigo-500'
+            : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
+          'group flex items-center rounded-md text-sm font-semibold leading-6 mb-1'
         )}
         onDragOver={(e) => {
           e.preventDefault();
           setDragOverFolder('');
         }}
-        onDragLeave={() => setDragOverFolder(null)}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setDragOverFolder(null);
+          }
+        }}
         onDrop={(e) => {
           e.preventDefault();
-          const file = e.dataTransfer.files[0];
-          if (file) onFileDrop(file, '');
+          const internalPath = e.dataTransfer.getData(DRAG_KEY);
+          if (internalPath) {
+            const currentParent = internalPath.includes('/')
+              ? internalPath.substring(0, internalPath.lastIndexOf('/'))
+              : '';
+            if (currentParent !== '') {
+              onMoveItem(internalPath, '');
+            }
+          } else {
+            const file = e.dataTransfer.files[0];
+            if (file) onFileDrop(file, '');
+          }
           setDragOverFolder(null);
         }}
       >
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          {dragOverFolder !== null ? 'Drop to upload' : 'No files found'}
-        </p>
-        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Drag & drop files here</p>
+        <div className="flex min-w-0 flex-1 items-center gap-x-2 p-2">
+          <FolderOpenIcon
+            aria-hidden="true"
+            className="size-5 shrink-0 text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-white"
+          />
+          <span className="truncate flex-1 text-left">Workspace</span>
+        </div>
+        <button
+          onClick={() => setRootAdding('file')}
+          className="shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-indigo-600 dark:text-gray-600 dark:hover:text-indigo-400"
+          title="Add file"
+        >
+          <DocumentPlusIcon className="size-4" />
+        </button>
+        <button
+          onClick={() => setRootAdding('folder')}
+          className="mr-1 shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-indigo-600 dark:text-gray-600 dark:hover:text-indigo-400"
+          title="Add folder"
+        >
+          <FolderPlusIcon className="size-4" />
+        </button>
       </div>
-    );
-  }
 
-  return (
-    <ul
-      role="list"
-      className={classNames(
-        'flex flex-1 flex-col gap-y-1 rounded-lg border-2 transition-colors',
-        dragOverFolder === ''
-          ? 'border-indigo-400 dark:border-indigo-500'
-          : 'border-transparent'
-      )}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragOverFolder('');
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          setDragOverFolder(null);
-        }
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        const file = e.dataTransfer.files[0];
-        if (file) onFileDrop(file, dragOverFolder ?? '');
-        setDragOverFolder(null);
-      }}
-    >
-      {files.map((node) => (
-        <FileTreeItem
-          key={node.path}
-          node={node}
-          selectedPath={selectedPath}
-          onFileClick={onFileClick}
-          onFolderExpand={onFolderExpand}
-          level={0}
-          dragOverFolder={dragOverFolder}
-          setDragOverFolder={setDragOverFolder}
-          onFileDrop={onFileDrop}
-          onFileDelete={onFileDelete}
-          uploadingFiles={uploadingFiles}
-        />
-      ))}
+      <ul role="list" className="flex flex-1 flex-col gap-y-1">
+        {rootAdding !== 'idle' && (
+          <AddInputRow
+            folderPath=""
+            level={0}
+            mode={rootAdding}
+            onCreateFile={onCreateFile}
+            onCreateFolder={onCreateFolder}
+            onCancel={() => setRootAdding('idle')}
+          />
+        )}
 
-      {/* Upload placeholders for root folder */}
-      {rootUploadingFiles.map((f) => (
-        <UploadPlaceholder key={f.id} file={f} onDismiss={dismissUploadError} />
-      ))}
+        {loading && files.length === 0 ? (
+          <li className="flex justify-center py-6">
+            <div className="size-5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent dark:border-indigo-400" />
+          </li>
+        ) : files.length === 0 && uploadingFiles.length === 0 && rootAdding === 'idle' ? (
+          <li className="py-2 px-2 text-sm text-gray-400 dark:text-gray-600">No files found</li>
+        ) : null}
 
-      {/* Drop hint when dragging over root */}
-      {dragOverFolder === '' && (
-        <li className="pointer-events-none">
-          <div className="flex items-center gap-x-2 rounded-md border border-dashed border-indigo-400 p-2 text-xs text-indigo-500 dark:border-indigo-500 dark:text-indigo-400">
-            Drop here → root folder
-          </div>
-        </li>
-      )}
-    </ul>
+        {files.map((node) => (
+          <FileTreeItem
+            key={node.path}
+            node={node}
+            selectedPath={selectedPath}
+            onFileClick={onFileClick}
+            onFolderExpand={onFolderExpand}
+            level={0}
+            dragOverFolder={dragOverFolder}
+            setDragOverFolder={setDragOverFolder}
+            onFileDrop={onFileDrop}
+            onFileDelete={onFileDelete}
+            onFolderDelete={onFolderDelete}
+            onCreateFile={onCreateFile}
+            onCreateFolder={onCreateFolder}
+            onMoveItem={onMoveItem}
+            draggingPath={draggingPath}
+            onItemDragStart={handleItemDragStart}
+            uploadingFiles={uploadingFiles}
+            folderContents={folderContents}
+            refreshSignal={refreshSignal}
+          />
+        ))}
+
+        {/* Upload placeholders for root folder */}
+        {rootUploadingFiles.map((f) => (
+          <UploadPlaceholder key={f.id} file={f} onDismiss={dismissUploadError} />
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -135,7 +186,15 @@ interface FileTreeItemProps {
   setDragOverFolder: (folder: string | null) => void;
   onFileDrop: (file: File, folder: string) => void;
   onFileDelete: (path: string) => void;
+  onFolderDelete: (path: string) => void;
+  onCreateFile: (folderPath: string, name: string) => Promise<void>;
+  onCreateFolder: (folderPath: string, name: string) => Promise<void>;
+  onMoveItem: (sourcePath: string, destinationFolder: string) => void;
+  draggingPath: string | null;
+  onItemDragStart: (path: string | null) => void;
   uploadingFiles: UploadingFile[];
+  folderContents: Record<string, FileTreeNode[]>;
+  refreshSignal: number;
 }
 
 function FileTreeItem({
@@ -148,89 +207,180 @@ function FileTreeItem({
   setDragOverFolder,
   onFileDrop,
   onFileDelete,
+  onFolderDelete,
+  onCreateFile,
+  onCreateFolder,
+  onMoveItem,
+  draggingPath,
+  onItemDragStart,
   uploadingFiles,
+  folderContents,
+  refreshSignal,
 }: FileTreeItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [children, setChildren] = useState<FileTreeNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [addingMode, setAddingMode] = useState<'idle' | 'file' | 'folder'>('idle');
+
+  // Children come from the shared folderContents map (not local state)
+  const children = folderContents[node.path] ?? [];
+  const hasBeenFetched = folderContents[node.path] !== undefined;
 
   const isSelected = selectedPath === node.path;
   const isDirectory = node.type === 'directory';
   const isDragTarget = dragOverFolder === node.path;
 
+  const isInvalidDropTarget =
+    draggingPath !== null &&
+    (draggingPath === node.path || node.path.startsWith(draggingPath + '/'));
+
   const folderUploadingFiles = uploadingFiles.filter((f) => f.folder === node.path);
+
+  // Re-fetch children when the tree structure changes externally (SSE / other operations)
+  const isExpandedRef = useRef(false);
+  isExpandedRef.current = isExpanded;
+  useEffect(() => {
+    if (isExpandedRef.current && node.type === 'directory') {
+      onFolderExpand(node.path).catch(console.error);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshSignal]);
+
+  const handleFolderDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const internalPath = e.dataTransfer.getData(DRAG_KEY);
+    if (internalPath && !isInvalidDropTarget) {
+      const currentParent = internalPath.includes('/')
+        ? internalPath.substring(0, internalPath.lastIndexOf('/'))
+        : '';
+      if (currentParent !== node.path) {
+        onMoveItem(internalPath, node.path);
+      }
+    } else if (!internalPath) {
+      const file = e.dataTransfer.files[0];
+      if (file) onFileDrop(file, node.path);
+    }
+    setDragOverFolder(null);
+  }, [isInvalidDropTarget, node.path, onMoveItem, onFileDrop, setDragOverFolder]);
+
+  const handleFolderDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isInvalidDropTarget) {
+      setDragOverFolder(node.path);
+      e.dataTransfer.dropEffect = 'move';
+    } else {
+      e.dataTransfer.dropEffect = 'none';
+    }
+  }, [isInvalidDropTarget, node.path, setDragOverFolder]);
 
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`Delete "${node.name}"?`)) {
-      onFileDelete(node.path);
+    const message = isDirectory
+      ? `Delete folder "${node.name}" and all its contents?`
+      : `Delete "${node.name}"?`;
+    if (window.confirm(message)) {
+      if (isDirectory) {
+        onFolderDelete(node.path);
+      } else {
+        onFileDelete(node.path);
+      }
     }
-  }, [node.name, node.path, onFileDelete]);
+  }, [isDirectory, node.name, node.path, onFileDelete, onFolderDelete]);
+
+  const handleExpand = useCallback(async () => {
+    if (!isExpanded) {
+      if (!hasBeenFetched && !isLoading) {
+        setIsLoading(true);
+        try {
+          await onFolderExpand(node.path);
+          setIsExpanded(true);
+        } catch (error) {
+          console.error('Error loading folder contents:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        setIsExpanded(true);
+      }
+    }
+  }, [isExpanded, hasBeenFetched, isLoading, node.path, onFolderExpand]);
 
   const handleClick = useCallback(async () => {
     if (isDirectory) {
       if (!isExpanded) {
-        if (children.length === 0 && !isLoading) {
-          setIsLoading(true);
-          try {
-            const fetchedChildren = await onFolderExpand(node.path);
-            setChildren(fetchedChildren);
-            setIsExpanded(true);
-          } catch (error) {
-            console.error('Error loading folder contents:', error);
-          } finally {
-            setIsLoading(false);
-          }
-        } else {
-          setIsExpanded(true);
-        }
+        await handleExpand();
       } else {
         setIsExpanded(false);
       }
     } else {
       onFileClick(node.path);
     }
-  }, [isDirectory, isExpanded, children.length, isLoading, node.path, onFolderExpand, onFileClick]);
+  }, [isDirectory, isExpanded, handleExpand, onFileClick, node.path]);
+
+  const handleAddFile = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isExpanded) await handleExpand();
+    setAddingMode('file');
+  }, [isExpanded, handleExpand]);
+
+  const handleAddFolder = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isExpanded) await handleExpand();
+    setAddingMode('folder');
+  }, [isExpanded, handleExpand]);
 
   const Icon = isDirectory ? FolderIcon : DocumentTextIcon;
   const ChevronIcon = isExpanded ? ChevronDownIcon : ChevronRightIcon;
 
+  const sharedChildProps = {
+    selectedPath,
+    onFileClick,
+    onFolderExpand,
+    dragOverFolder,
+    setDragOverFolder,
+    onFileDrop,
+    onFileDelete,
+    onFolderDelete,
+    onCreateFile,
+    onCreateFolder,
+    onMoveItem,
+    draggingPath,
+    onItemDragStart,
+    uploadingFiles,
+    folderContents,
+    refreshSignal,
+  };
+
   return (
-    <li>
-      <div className="group flex items-center">
+    <li
+      draggable
+      onDragStart={(e) => {
+        e.stopPropagation();
+        e.dataTransfer.setData(DRAG_KEY, node.path);
+        e.dataTransfer.effectAllowed = 'move';
+        onItemDragStart(node.path);
+      }}
+      onDragEnd={() => onItemDragStart(null)}
+    >
+      <div
+        className={classNames(
+          isSelected
+            ? 'bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white'
+            : isDragTarget
+            ? 'bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-400 dark:bg-indigo-900/30 dark:text-white dark:ring-indigo-500'
+            : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
+          'group flex items-center rounded-md text-sm font-semibold leading-6'
+        )}
+      >
         <button
           onClick={handleClick}
-          onDragOver={
-            isDirectory
-              ? (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setDragOverFolder(node.path);
-                }
-              : undefined
-          }
-          onDrop={
-            isDirectory
-              ? (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const file = e.dataTransfer.files[0];
-                  if (file) onFileDrop(file, node.path);
-                  setDragOverFolder(null);
-                }
-              : undefined
-          }
-          className={classNames(
-            isSelected
-              ? 'bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white'
-              : isDragTarget
-              ? 'bg-indigo-50 text-indigo-600 ring-1 ring-inset ring-indigo-400 dark:bg-indigo-900/30 dark:text-white dark:ring-indigo-500'
-              : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
-            'flex min-w-0 flex-1 items-center gap-x-2 rounded-md p-2 text-sm font-semibold leading-6'
-          )}
+          onDragOver={isDirectory ? handleFolderDragOver : undefined}
+          onDrop={isDirectory ? handleFolderDrop : undefined}
+          className="flex min-w-0 flex-1 items-center gap-x-2 p-2"
           style={{ paddingLeft: `${level * 12 + 8}px` }}
         >
-          {isDirectory && (
+          {isDirectory ? (
             <ChevronIcon
               aria-hidden="true"
               className={classNames(
@@ -238,8 +388,7 @@ function FileTreeItem({
                 isLoading && 'animate-pulse'
               )}
             />
-          )}
-          {!isDirectory && <span className="w-4" />}
+          ) : null}
           <Icon
             aria-hidden="true"
             className={classNames(
@@ -254,36 +403,59 @@ function FileTreeItem({
           <span className="truncate flex-1 text-left" title={node.name}>
             {node.name}
           </span>
-          {isDragTarget && (
-            <span className="shrink-0 text-xs text-indigo-500 dark:text-indigo-400">Drop here</span>
-          )}
         </button>
-        {!isDirectory && (
-          <button
-            onClick={handleDelete}
-            className="mr-1 hidden shrink-0 rounded p-1 text-gray-400 hover:text-red-500 group-hover:block dark:text-gray-600 dark:hover:text-red-400"
-            title={`Delete ${node.name}`}
-          >
-            <TrashIcon className="size-4" />
-          </button>
+        {isDirectory && (
+          <>
+            <button
+              onClick={handleAddFile}
+              className="shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-indigo-600 dark:text-gray-600 dark:hover:text-indigo-400"
+              title="Add file"
+            >
+              <DocumentPlusIcon className="size-4" />
+            </button>
+            <button
+              onClick={handleAddFolder}
+              className="shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-indigo-600 dark:text-gray-600 dark:hover:text-indigo-400"
+              title="Add folder"
+            >
+              <FolderPlusIcon className="size-4" />
+            </button>
+          </>
         )}
+        <button
+          onClick={handleDelete}
+          className="mr-1 shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400"
+          title={`Delete ${node.name}`}
+        >
+          <TrashIcon className="size-4" />
+        </button>
       </div>
 
-      {isDirectory && isExpanded && (children.length > 0 || folderUploadingFiles.length > 0) && (
-        <ul role="list" className="mt-1 space-y-1">
+      {isDirectory && isExpanded && (
+        // The children <ul> is also a drop target for this folder, so dropping
+        // anywhere inside an expanded folder (e.g. onto a file) works correctly.
+        <ul
+          role="list"
+          className="mt-1 space-y-1"
+          onDragOver={handleFolderDragOver}
+          onDrop={handleFolderDrop}
+        >
+          {addingMode !== 'idle' && (
+            <AddInputRow
+              folderPath={node.path}
+              level={level + 1}
+              mode={addingMode}
+              onCreateFile={onCreateFile}
+              onCreateFolder={onCreateFolder}
+              onCancel={() => setAddingMode('idle')}
+            />
+          )}
           {children.map((child) => (
             <FileTreeItem
               key={child.path}
               node={child}
-              selectedPath={selectedPath}
-              onFileClick={onFileClick}
-              onFolderExpand={onFolderExpand}
               level={level + 1}
-              dragOverFolder={dragOverFolder}
-              setDragOverFolder={setDragOverFolder}
-              onFileDrop={onFileDrop}
-              onFileDelete={onFileDelete}
-              uploadingFiles={uploadingFiles}
+              {...sharedChildProps}
             />
           ))}
           {folderUploadingFiles.map((f) => (
@@ -291,6 +463,95 @@ function FileTreeItem({
           ))}
         </ul>
       )}
+    </li>
+  );
+}
+
+interface AddInputRowProps {
+  folderPath: string;
+  level: number;
+  mode: 'file' | 'folder';
+  onCreateFile: (folderPath: string, name: string) => Promise<void>;
+  onCreateFolder: (folderPath: string, name: string) => Promise<void>;
+  onCancel: () => void;
+}
+
+function AddInputRow({ folderPath, level, mode, onCreateFile, onCreateFolder, onCancel }: AddInputRowProps) {
+  const [value, setValue] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      onCancel();
+      return;
+    }
+    if (e.key === 'Enter') {
+      const name = value.trim();
+      if (!name) return;
+      setLoading(true);
+      setError(null);
+      try {
+        if (mode === 'folder') {
+          await onCreateFolder(folderPath, name);
+        } else {
+          await onCreateFile(folderPath, name);
+        }
+        onCancel();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create');
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [value, mode, folderPath, onCreateFile, onCreateFolder, onCancel]);
+
+  const paddingLeft = `${level * 12 + 8}px`;
+
+  return (
+    <li>
+      <div className="flex items-center rounded-md text-sm font-semibold leading-6 text-gray-700 dark:text-gray-400">
+        <div className="flex min-w-0 flex-1 items-center gap-x-2 p-2" style={{ paddingLeft }}>
+          {mode === 'folder'
+            ? <FolderIcon className="size-5 shrink-0 text-gray-400" />
+            : <DocumentTextIcon className="size-5 shrink-0 text-gray-400" />
+          }
+          {loading ? (
+            <div className="flex flex-1 items-center gap-x-1.5">
+              <div className="size-5 shrink-0 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent dark:border-indigo-400" />
+              <span className="truncate text-gray-400 dark:text-gray-500">
+                {value.trim()}{mode === 'file' ? '.md' : ''}
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-1 items-center gap-x-1">
+              <input
+                ref={inputRef}
+                value={value}
+                onChange={(e) => { setValue(e.target.value); setError(null); }}
+                onKeyDown={handleKeyDown}
+                onBlur={onCancel}
+                placeholder={mode === 'folder' ? 'Folder name' : 'File name'}
+                className={classNames(
+                  'min-w-0 flex-1 h-6 rounded border bg-white px-1.5 py-0 text-sm text-gray-900 outline-none dark:bg-gray-800 dark:text-white',
+                  error
+                    ? 'border-red-400 dark:border-red-500'
+                    : 'border-gray-300 focus:border-indigo-400 dark:border-gray-600 dark:focus:border-indigo-500'
+                )}
+                title={error ?? undefined}
+              />
+              {mode === 'file' && (
+                <span className="shrink-0 text-gray-400 dark:text-gray-500">.md</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </li>
   );
 }
@@ -310,7 +571,6 @@ function UploadPlaceholder({ file, onDismiss, level = 0 }: UploadPlaceholderProp
         className="flex w-full items-center gap-x-2 rounded-md p-2 text-sm leading-6"
         style={{ paddingLeft: `${level * 12 + 8}px` }}
       >
-        <span className="w-4" />
         {file.status === 'uploading' ? (
           <div className="size-5 shrink-0 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent dark:border-indigo-400" />
         ) : (

@@ -152,6 +152,31 @@ export interface IWorkspaceFileSystem {
   deleteFile?(cordbotPath: string, relativePath: string): Promise<void>;
 
   /**
+   * Delete a folder and all its contents (only within cordbot/ folder)
+   * @param cordbotPath - Absolute path to cordbot directory
+   * @param relativePath - Relative path to folder within cordbot directory
+   * @throws Error if path is invalid or folder doesn't exist
+   */
+  deleteFolder?(cordbotPath: string, relativePath: string): Promise<void>;
+
+  /**
+   * Create a new empty folder (only within cordbot/ folder)
+   * @param cordbotPath - Absolute path to cordbot directory
+   * @param relativePath - Relative path for the new folder within cordbot directory
+   * @throws Error if path is invalid or folder already exists
+   */
+  createFolder?(cordbotPath: string, relativePath: string): Promise<void>;
+
+  /**
+   * Move a file or folder to a different folder (only within cordbot/ folder)
+   * @param cordbotPath - Absolute path to cordbot directory
+   * @param sourcePath - Relative path of the item to move
+   * @param destinationFolder - Relative path of the destination folder (empty string = root)
+   * @throws Error if source not found, destination invalid, or move into self/descendant
+   */
+  move?(cordbotPath: string, sourcePath: string, destinationFolder: string): Promise<void>;
+
+  /**
    * Check if a relative path is allowed (security validation)
    * @param relativePath - Path to validate
    * @returns True if path is safe to access

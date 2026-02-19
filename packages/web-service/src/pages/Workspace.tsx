@@ -34,19 +34,26 @@ export function Workspace() {
     fetchWorkspaceToken().finally(() => setAuthLoading(false));
   }, [fetchWorkspaceToken]);
 
-  const apiBase = workspaceAuth ? `/api/workspace/${guildId}` : null;
+  const apiBase = workspaceAuth ? `${workspaceAuth.botUrl}/api/workspace/${guildId}` : null;
 
   const {
     files,
+    folderContents,
+    loading,
     content,
     selectedPath,
     error,
     uploadingFiles,
+    refreshSignal,
     fetchFile,
     fetchFolderContents,
     uploadFile,
     dismissUploadError,
+    createFile,
+    createFolder,
+    moveItem,
     deleteFile,
+    deleteFolder,
   } = useWorkspace(apiBase, workspaceAuth?.token ?? null, fetchWorkspaceToken);
 
   if (!guildId) {
@@ -121,19 +128,28 @@ export function Workspace() {
             </TransitionChild>
             <div className="relative flex grow flex-col gap-y-5 overflow-y-auto bg-white px-6 pb-2 dark:bg-gray-900 dark:ring dark:ring-white/10 dark:before:pointer-events-none dark:before:absolute dark:before:inset-0 dark:before:bg-black/10">
               <div className="flex h-16 shrink-0 items-center gap-x-3">
-                <img src={cordSmall} alt="Cordbot" className="h-8 w-8 rounded-full" />
+                <a href="https://www.cordbot.io/guilds">
+                  <img src={cordSmall} alt="Cordbot" className="h-8 w-8 rounded-full" />
+                </a>
                 <span className="text-lg font-semibold text-gray-900 dark:text-white">Cordbot Workspace</span>
               </div>
               <nav className="flex flex-1 flex-col">
                 <FileTree
                   files={files}
+                  folderContents={folderContents}
+                  loading={loading}
                   selectedPath={selectedPath}
                   onFileClick={(path) => { fetchFile(path); setSidebarOpen(false); }}
                   onFolderExpand={fetchFolderContents}
                   onFileDrop={uploadFile}
                   onFileDelete={deleteFile}
+                  onFolderDelete={deleteFolder}
+                  onCreateFile={createFile}
+                  onCreateFolder={createFolder}
+                  onMoveItem={moveItem}
                   uploadingFiles={uploadingFiles}
                   dismissUploadError={dismissUploadError}
+                  refreshSignal={refreshSignal}
                 />
               </nav>
             </div>
@@ -145,19 +161,28 @@ export function Workspace() {
       <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-96 lg:flex-col dark:bg-gray-900">
         <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r border-gray-200 bg-white px-6 dark:border-white/10 dark:bg-black/10">
           <div className="flex h-16 shrink-0 items-center gap-x-3">
-            <img src={cordSmall} alt="Cordbot" className="h-8 w-8 rounded-full" />
-            <span className="text-lg font-semibold text-gray-900 dark:text-white">Cordbot Workspace</span>
+            <a href="https://www.cordbot.io/guilds" className="flex items-center gap-x-3 hover:opacity-80">
+              <img src={cordSmall} alt="Cordbot" className="h-8 w-8 rounded-full" />
+              <span className="text-lg font-semibold text-gray-900 dark:text-white">Cordbot Workspace</span>
+            </a>
           </div>
           <nav className="flex flex-1 flex-col">
             <FileTree
               files={files}
+              folderContents={folderContents}
+              loading={loading}
               selectedPath={selectedPath}
               onFileClick={fetchFile}
               onFolderExpand={fetchFolderContents}
               onFileDrop={uploadFile}
               onFileDelete={deleteFile}
+              onFolderDelete={deleteFolder}
+              onCreateFile={createFile}
+              onCreateFolder={createFolder}
+              onMoveItem={moveItem}
               uploadingFiles={uploadingFiles}
               dismissUploadError={dismissUploadError}
+              refreshSignal={refreshSignal}
             />
           </nav>
         </div>

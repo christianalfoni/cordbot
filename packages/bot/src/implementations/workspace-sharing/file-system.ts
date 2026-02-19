@@ -177,6 +177,66 @@ export class WorkspaceFileSystem implements IWorkspaceFileSystem {
     }
   }
 
+  async createFolder(cordbotPath: string, relativePath: string): Promise<void> {
+    if (!relativePath) {
+      throw new Error('Cannot create folder at workspace root');
+    }
+
+    const targetPath = await this.resolveSafePath(cordbotPath, relativePath);
+
+    try {
+      await fs.mkdir(targetPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error(`Folder already exists: ${relativePath}`);
+      }
+      throw error;
+    }
+  }
+
+  async move(cordbotPath: string, sourcePath: string, destinationFolder: string): Promise<void> {
+    const sourceFull = await this.resolveSafePath(cordbotPath, sourcePath);
+    const destDirFull = await this.resolveSafePath(cordbotPath, destinationFolder);
+    const name = path.basename(sourceFull);
+    const destFull = path.join(destDirFull, name);
+
+    // Prevent moving into itself or a descendant
+    if (destFull === sourceFull || destFull.startsWith(sourceFull + path.sep)) {
+      throw new Error('Cannot move a folder into itself or its descendant');
+    }
+
+    // Skip no-op moves (already in destination)
+    if (path.dirname(sourceFull) === destDirFull) {
+      return;
+    }
+
+    try {
+      await fs.rename(sourceFull, destFull);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error(`Source not found: ${sourcePath}`);
+      }
+      throw error;
+    }
+  }
+
+  async deleteFolder(cordbotPath: string, relativePath: string): Promise<void> {
+    if (!relativePath) {
+      throw new Error('Cannot delete the workspace root directory');
+    }
+
+    const targetPath = await this.resolveSafePath(cordbotPath, relativePath);
+
+    try {
+      await fs.rm(targetPath, { recursive: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error(`Folder not found: ${relativePath}`);
+      }
+      throw error;
+    }
+  }
+
   watchWorkspace(
     cordbotPath: string,
     onChange: (change: WorkspaceFileChange) => void

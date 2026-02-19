@@ -195,6 +195,113 @@ export function createWorkspaceRouter(
   });
 
   /**
+   * API: Create a new empty folder in the workspace
+   * POST /api/workspace/:guildId/folder/*folderpath
+   */
+  router.post('/:guildId/folder/*folderpath', async (req: Request, res: Response) => {
+    const guildId = String(req.params.guildId);
+
+    if (!validateAuth(req, guildId)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const urlPath = req.path;
+    const folderPrefix = `/folder/`;
+    const folderIndex = urlPath.indexOf(folderPrefix);
+    const folderpath = folderIndex !== -1
+      ? decodeURIComponent(urlPath.substring(folderIndex + folderPrefix.length))
+      : '';
+
+    if (!folderpath) {
+      return res.status(400).json({ error: 'Missing folder path' });
+    }
+
+    try {
+      if (!fileSystem.createFolder) {
+        return res.status(501).json({ error: 'Create folder operation not implemented' });
+      }
+
+      await fileSystem.createFolder(cordbotPath, folderpath);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Error creating folder:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to create folder',
+      });
+    }
+  });
+
+  /**
+   * API: Move a file or folder to a different folder
+   * POST /api/workspace/:guildId/move
+   * Body: { sourcePath: string, destinationFolder: string }
+   */
+  router.post('/:guildId/move', async (req: Request, res: Response) => {
+    const guildId = String(req.params.guildId);
+
+    if (!validateAuth(req, guildId)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { sourcePath, destinationFolder } = req.body;
+
+    if (typeof sourcePath !== 'string' || typeof destinationFolder !== 'string') {
+      return res.status(400).json({ error: 'Missing sourcePath or destinationFolder' });
+    }
+
+    try {
+      if (!fileSystem.move) {
+        return res.status(501).json({ error: 'Move operation not implemented' });
+      }
+
+      await fileSystem.move(cordbotPath, sourcePath, destinationFolder);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Error moving item:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to move item',
+      });
+    }
+  });
+
+  /**
+   * API: Delete a folder and all its contents from the workspace
+   * DELETE /api/workspace/:guildId/folder/*folderpath
+   */
+  router.delete('/:guildId/folder/*folderpath', async (req: Request, res: Response) => {
+    const guildId = String(req.params.guildId);
+
+    if (!validateAuth(req, guildId)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const urlPath = req.path;
+    const folderPrefix = `/folder/`;
+    const folderIndex = urlPath.indexOf(folderPrefix);
+    const folderpath = folderIndex !== -1
+      ? decodeURIComponent(urlPath.substring(folderIndex + folderPrefix.length))
+      : '';
+
+    if (!folderpath) {
+      return res.status(400).json({ error: 'Missing folder path' });
+    }
+
+    try {
+      if (!fileSystem.deleteFolder) {
+        return res.status(501).json({ error: 'Delete folder operation not implemented' });
+      }
+
+      await fileSystem.deleteFolder(cordbotPath, folderpath);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Error deleting folder:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to delete folder',
+      });
+    }
+  });
+
+  /**
    * API: Upload a file to the workspace, converting docx/pdf to markdown
    * POST /api/workspace/:guildId/upload
    */

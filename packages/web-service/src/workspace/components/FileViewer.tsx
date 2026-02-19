@@ -140,7 +140,11 @@ export function FileViewer({ content, path, apiBase }: FileViewerProps) {
       <div className="relative mx-auto w-full max-w-7xl flex flex-col flex-1 min-h-0 rounded-xl bg-white shadow-sm ring-1 ring-gray-900/5 dark:bg-gray-900 dark:ring-white/10 overflow-hidden">
         {/* Canvas toolbar */}
         {isMarkdown && (
-          <div className="flex shrink-0 items-center justify-end gap-x-3 px-8 py-3 border-b border-gray-200 dark:border-white/10">
+          <div className="flex shrink-0 items-center justify-between px-8 py-3 border-b border-gray-200 dark:border-white/10">
+            <span className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">
+              {path.split('/').pop()}
+            </span>
+            <div className="flex items-center gap-x-3">
             {/* Copy button */}
             <button
               onClick={handleCopy}
@@ -212,6 +216,7 @@ export function FileViewer({ content, path, apiBase }: FileViewerProps) {
                 </MenuItems>
               </Menu>
             )}
+            </div>
           </div>
         )}
 
