@@ -29,7 +29,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const appName = getAppName(guildId);
-  const targetUrl = `http://${appName}.fly.dev/api/workspace/${restPath}${url.search}`;
+  const targetUrl = `http://${appName}.fly.dev/api/workspace/${guildId}/${restPath}${url.search}`;
 
   // Forward headers, set the correct host
   const headers = new Headers(req.headers);

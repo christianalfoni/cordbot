@@ -189,6 +189,7 @@ export interface GuildDeployment {
   machineId: string;
   volumeId: string;
   region: string;
+  botUrl?: string;
   // Denormalized subscription data (copied from subscription document)
   subscriptionId?: string | null;
   subscriptionStatus?: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'incomplete' | null;

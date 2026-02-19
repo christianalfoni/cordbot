@@ -750,6 +750,7 @@ async function handleWorkspaceCommand(
 
     await interaction.editReply({
       content: `📁 [**Open Cordbot Workspace**](${workspaceUrl})`,
+      flags: 4, // MessageFlags.SuppressEmbeds
     });
 
     logger.info(`✅ Created workspace link for channel ${interaction.channelId}`);

@@ -268,7 +268,7 @@ export interface IChatInputCommandInteraction {
 
   reply(content: string | { content?: string; ephemeral?: boolean }): Promise<void>;
   deferReply(options?: { ephemeral?: boolean }): Promise<void>;
-  editReply(content: string | { content?: string }): Promise<void>;
+  editReply(content: string | { content?: string; flags?: number }): Promise<void>;
 
   _raw?: DiscordChatInputCommandInteraction;
 }

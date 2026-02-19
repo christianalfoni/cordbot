@@ -34,12 +34,7 @@ export function Workspace() {
     fetchWorkspaceToken().finally(() => setAuthLoading(false));
   }, [fetchWorkspaceToken]);
 
-  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const apiBase = workspaceAuth
-    ? isDev
-      ? `/api/workspace/${guildId}`
-      : `${workspaceAuth.botUrl}/api/workspace/${guildId}`
-    : null;
+  const apiBase = workspaceAuth ? `/api/workspace/${guildId}` : null;
 
   const {
     files,

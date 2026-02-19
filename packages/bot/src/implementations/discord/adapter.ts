@@ -462,7 +462,7 @@ class DiscordChatInputCommandInteractionWrapper implements IChatInputCommandInte
     }
   }
 
-  async editReply(content: string | { content?: string }): Promise<void> {
+  async editReply(content: string | { content?: string; flags?: number }): Promise<void> {
     await this.interaction.editReply(content);
   }
 

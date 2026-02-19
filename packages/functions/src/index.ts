@@ -110,9 +110,10 @@ export const getWorkspaceToken = onCall(
         { expiresIn: '1h' }
       );
 
-      // Derive bot URL (same formula as provisioning)
+      // Get bot URL from stored deployment (fall back to derived URL for older guilds)
+      const deployment = await ctx.firestore.getGuildDeployment(guildId);
       const guildPrefix = guildId.substring(0, 12).toLowerCase().replace(/[^a-z0-9]/g, '');
-      const botUrl = `https://cordbot-guild-${guildPrefix}.fly.dev`;
+      const botUrl = deployment?.botUrl ?? `https://cordbot-guild-${guildPrefix}.fly.dev`;
 
       return { token, botUrl };
     } catch (error) {

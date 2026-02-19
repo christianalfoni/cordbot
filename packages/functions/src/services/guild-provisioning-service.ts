@@ -193,6 +193,71 @@ export class GuildProvisioningService {
     return data;
   }
 
+  private async flyGraphQLRequest(query: string, variables: Record<string, unknown>): Promise<any> {
+    const token = this.ctx.secrets.getSecret('FLY_API_TOKEN');
+
+    const response = await this.ctx.http.fetch('https://api.fly.io/graphql', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+
+    const responseText = await response.text();
+    let data;
+
+    try {
+      data = responseText ? JSON.parse(responseText) : null;
+    } catch (e) {
+      this.ctx.logger.error('Failed to parse Fly.io GraphQL response:', responseText);
+      throw new Error('Invalid response from Fly.io GraphQL API');
+    }
+
+    if (!response.ok) {
+      this.ctx.logger.error('Fly.io GraphQL API error:', { status: response.status, data });
+      throw new Error(`Fly.io GraphQL API error: ${response.status}`);
+    }
+
+    if (data?.errors?.length) {
+      this.ctx.logger.error('Fly.io GraphQL errors:', data.errors);
+      throw new Error(`Fly.io GraphQL errors: ${JSON.stringify(data.errors)}`);
+    }
+
+    return data?.data;
+  }
+
+  /**
+   * Ensure IPs are allocated for an app and botUrl is stored in Firestore.
+   * No-op if botUrl is already set. Safe to call on every deploy/repair.
+   */
+  private async ensureIpsAllocated(appName: string, guildId: string): Promise<void> {
+    const deployment = await this.ctx.firestore.getGuildDeployment(guildId);
+    if (deployment?.botUrl) {
+      return; // Already allocated
+    }
+
+    this.ctx.logger.info(`Allocating IPs for app: ${appName}`);
+    await this.flyGraphQLRequest(
+      `mutation($input: AllocateIPAddressInput!) {
+        allocateIpAddress(input: $input) { app { sharedIpAddress } }
+      }`,
+      { input: { appId: appName, type: 'shared_v4', region: '' } }
+    );
+    await this.flyGraphQLRequest(
+      `mutation($input: AllocateIPAddressInput!) {
+        allocateIpAddress(input: $input) { ipAddress { address } }
+      }`,
+      { input: { appId: appName, type: 'v6', region: '' } }
+    );
+
+    await this.ctx.firestore.updateGuildDeployment(guildId, {
+      botUrl: `https://${appName}.fly.dev`,
+    });
+    this.ctx.logger.info(`IPs allocated and botUrl stored for app: ${appName}`);
+  }
+
   /**
    * Provision a free tier guild (checks slots, reserves slot, creates deployment)
    */
@@ -336,7 +401,24 @@ export class GuildProvisioningService {
       }),
     });
 
-    // Step 2: Create volume
+    // Step 2: Allocate IPs so DNS resolves for the app
+    // (Fly.io does not auto-allocate IPs for apps created via the Machines API)
+    this.ctx.logger.info(`Allocating IPs for app: ${appName}`);
+    await this.flyGraphQLRequest(
+      `mutation($input: AllocateIPAddressInput!) {
+        allocateIpAddress(input: $input) { app { sharedIpAddress } }
+      }`,
+      { input: { appId: appName, type: 'shared_v4', region: '' } }
+    );
+    await this.flyGraphQLRequest(
+      `mutation($input: AllocateIPAddressInput!) {
+        allocateIpAddress(input: $input) { ipAddress { address } }
+      }`,
+      { input: { appId: appName, type: 'v6', region: '' } }
+    );
+    this.ctx.logger.info(`IPs allocated for app: ${appName}`);
+
+    // Step 3: Create volume
     const volumeName = `cordbot_vol_${guildId.substring(0, 8)}`;
     this.ctx.logger.info(`Creating volume: ${volumeName}`);
     const volumeResponse = await this.flyRequest(`/apps/${appName}/volumes`, {
@@ -433,6 +515,7 @@ export class GuildProvisioningService {
       machineId: machineResponse.id,
       volumeId: volumeResponse.id,
       region: 'sjc',
+      botUrl: `https://${appName}.fly.dev`,
     });
 
     this.ctx.logger.info(`Created guild deployment document for ${tier} tier guild ${guildId}`);
@@ -799,6 +882,9 @@ export class GuildProvisioningService {
         });
       }
 
+      // Ensure IPs are allocated (retroactively fixes guilds provisioned without IPs)
+      await this.ensureIpsAllocated(appName, guildId);
+
       // Restore environment variables and ensure mounts
       await this.flyRequest(`/apps/${appName}/machines/${machineId}`, {
         method: 'POST',
@@ -901,6 +987,9 @@ export class GuildProvisioningService {
         hasMounts: !!currentMachine.config?.mounts,
         mountsCount: currentMachine.config?.mounts?.length || 0,
       });
+
+      // Ensure IPs are allocated (retroactively fixes guilds provisioned without IPs)
+      await this.ensureIpsAllocated(appName, guildId);
 
       // Ensure mounts are present - if missing, add volume mount
       const mounts = currentMachine.config?.mounts || [];
