@@ -1041,10 +1041,13 @@ export class GuildProvisioningService {
         }),
       });
 
+      // Resolve actual version (e.g. 'latest' → real semver from config)
+      const resolvedVersion = await this.ctx.firestore.getBotVersion() ?? version;
+
       // Set status back to active and record deployed version
       await this.ctx.firestore.updateGuild(guildId, {
         status: 'active',
-        deployedVersion: version,
+        deployedVersion: resolvedVersion,
         updatedAt: this.ctx.getCurrentTime().toISOString(),
       });
 
@@ -1128,10 +1131,13 @@ export class GuildProvisioningService {
         }),
       });
 
+      // Resolve actual version (e.g. 'latest' → real semver from config)
+      const resolvedVersion = await this.ctx.firestore.getBotVersion() ?? version;
+
       await this.ctx.firestore.updateGuild(guildId, {
         status: 'active',
         lastDeployedAt: this.ctx.getCurrentTime().toISOString(),
-        deployedVersion: version,
+        deployedVersion: resolvedVersion,
         updatedAt: this.ctx.getCurrentTime().toISOString(),
       });
 

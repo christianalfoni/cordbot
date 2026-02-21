@@ -280,6 +280,11 @@ class FirestoreAdapter implements IFirestore {
       publishedAt,
     });
   }
+
+  async getBotVersion(): Promise<string | null> {
+    const doc = await this.db.collection('config').doc('botVersion').get();
+    return doc.exists ? (doc.data() as { latestVersion: string }).latestVersion : null;
+  }
 }
 
 /**

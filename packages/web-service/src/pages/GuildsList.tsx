@@ -199,25 +199,23 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3">
-                            <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                              {guild.guildName}
-                              {isPaidTier && subscription && (
-                                <span className="ml-2 text-sm font-medium text-indigo-600 dark:text-indigo-400">
-                                  - {subscription.tier === 'starter' ? 'Starter' : 'Pro'} Plan
-                                </span>
-                              )}
-                            </p>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${
-                              // Show subscription status if it exists and is not active
+                          <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                            {guild.guildName}
+                            {isPaidTier && subscription && (
+                              <span className="ml-2 text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                                - {subscription.tier === 'starter' ? 'Starter' : 'Pro'} Plan
+                              </span>
+                            )}
+                          </p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ring-1 ring-inset ${
                               isPaidTier && subscription && subscription.status !== 'active'
                                 ? subscription.status === 'past_due'
                                   ? 'bg-orange-50 text-orange-700 ring-orange-600/20 dark:bg-orange-500/10 dark:text-orange-400 dark:ring-orange-500/20'
                                   : subscription.status === 'canceled'
                                   ? 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400 dark:ring-red-500/20'
                                   : 'bg-gray-50 text-gray-700 ring-gray-600/20 dark:bg-gray-500/10 dark:text-gray-400 dark:ring-gray-500/20'
-                                : // Otherwise show guild deployment status
-                                guild.status === 'active'
+                                : guild.status === 'active'
                                 ? 'bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-500/10 dark:text-green-400 dark:ring-green-500/20'
                                 : guild.status === 'provisioning'
                                 ? 'bg-yellow-50 text-yellow-700 ring-yellow-600/20 dark:bg-yellow-500/10 dark:text-yellow-400 dark:ring-yellow-500/20'
@@ -232,6 +230,17 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
                                 : guild.status
                               }
                             </span>
+                            {guild.status === 'active' && (
+                              latestBotVersion && guild.deployedVersion !== latestBotVersion ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700 ring-1 ring-inset ring-yellow-600/20 dark:bg-yellow-500/10 dark:text-yellow-400 dark:ring-yellow-500/20">
+                                  out of date
+                                </span>
+                              ) : latestBotVersion ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-500/10 dark:text-green-400 dark:ring-green-500/20">
+                                  up to date
+                                </span>
+                              ) : null
+                            )}
                           </div>
                           <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                             Added {new Date(guild.createdAt).toLocaleDateString()}
@@ -242,20 +251,6 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
                               </>
                             )}
                           </p>
-                          {guild.status === 'active' && (
-                            <div className="mt-1 flex items-center gap-2">
-                              {guild.deployedVersion && (
-                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  v{guild.deployedVersion}
-                                </span>
-                              )}
-                              {latestBotVersion && guild.deployedVersion && guild.deployedVersion !== latestBotVersion && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-500/10 dark:text-blue-400 dark:ring-blue-500/20">
-                                  Update available
-                                </span>
-                              )}
-                            </div>
-                          )}
                         </div>
                         <div className="flex items-center gap-x-4">
                           {guild.status === 'active' && (
@@ -278,7 +273,7 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
                               className="absolute right-0 z-10 mt-2 w-40 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg outline-1 outline-black/5 transition data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in dark:divide-white/10 dark:bg-gray-800 dark:shadow-none dark:-outline-offset-1 dark:outline-white/10"
                             >
                               <div className="py-1">
-                                <MenuItem disabled={guild.status !== 'active'}>
+                                <MenuItem disabled={guild.status !== 'active' || (!!latestBotVersion && guild.deployedVersion === latestBotVersion)}>
                                   {({ focus, disabled }) => (
                                     <button
                                       onClick={() => !disabled && handleUpdate(guild.id)}

@@ -70,6 +70,7 @@ export interface IFirestore {
 
   // Bot version operations
   setBotVersion(version: string, publishedAt: string): Promise<void>;
+  getBotVersion(): Promise<string | null>;
 }
 
 /**
