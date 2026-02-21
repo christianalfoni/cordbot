@@ -1041,9 +1041,10 @@ export class GuildProvisioningService {
         }),
       });
 
-      // Set status back to active
+      // Set status back to active and record deployed version
       await this.ctx.firestore.updateGuild(guildId, {
         status: 'active',
+        deployedVersion: version,
         updatedAt: this.ctx.getCurrentTime().toISOString(),
       });
 
@@ -1130,6 +1131,7 @@ export class GuildProvisioningService {
       await this.ctx.firestore.updateGuild(guildId, {
         status: 'active',
         lastDeployedAt: this.ctx.getCurrentTime().toISOString(),
+        deployedVersion: version,
         updatedAt: this.ctx.getCurrentTime().toISOString(),
       });
 

@@ -232,6 +232,14 @@ export class FirebaseContext implements AppContext {
     return result.data as { token: string; botUrl: string };
   }
 
+  async getLatestBotVersion(): Promise<string | null> {
+    const versionDocRef = doc(this.db, 'config', 'botVersion');
+    const versionDoc = await getDoc(versionDocRef);
+    if (!versionDoc.exists()) return null;
+    const data = versionDoc.data() as { latestVersion: string };
+    return data.latestVersion ?? null;
+  }
+
   // ============ Subscriptions ============
 
   async getSubscription(subscriptionId: string): Promise<Subscription | null> {

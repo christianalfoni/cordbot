@@ -273,6 +273,13 @@ class FirestoreAdapter implements IFirestore {
       data: doc.data() as Payment,
     }));
   }
+
+  async setBotVersion(version: string, publishedAt: string): Promise<void> {
+    await this.db.collection('config').doc('botVersion').set({
+      latestVersion: version,
+      publishedAt,
+    });
+  }
 }
 
 /**

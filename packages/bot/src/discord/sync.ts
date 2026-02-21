@@ -254,7 +254,7 @@ export async function populateMemorySection(
   const memoryResult = await loadMemoriesForServer(
     channelId,
     channelName,
-    allChannels.map(c => c.channelName),
+    allChannels,
     memoryContextSize
   );
 

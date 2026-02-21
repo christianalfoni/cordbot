@@ -34,6 +34,12 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
   const { confirm } = useConfirmation();
   const [subscriptions, setSubscriptions] = useState<Record<string, Subscription>>({});
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [latestBotVersion, setLatestBotVersion] = useState<string | null>(null);
+
+  // Load latest bot version
+  useEffect(() => {
+    ctx.getLatestBotVersion().then(setLatestBotVersion).catch(console.error);
+  }, [ctx]);
 
   // Load subscriptions for guilds
   useEffect(() => {
@@ -236,6 +242,20 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
                               </>
                             )}
                           </p>
+                          {guild.status === 'active' && (
+                            <div className="mt-1 flex items-center gap-2">
+                              {guild.deployedVersion && (
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  v{guild.deployedVersion}
+                                </span>
+                              )}
+                              {latestBotVersion && guild.deployedVersion && guild.deployedVersion !== latestBotVersion && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-500/10 dark:text-blue-400 dark:ring-blue-500/20">
+                                  Update available
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-x-4">
                           {guild.status === 'active' && (

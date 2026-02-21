@@ -136,6 +136,12 @@ export interface AppContext {
    */
   getWorkspaceToken(guildId: string): Promise<{ token: string; botUrl: string }>;
 
+  /**
+   * Get the latest published bot version
+   * @returns Latest version string
+   */
+  getLatestBotVersion(): Promise<string | null>;
+
   // ============ Subscriptions ============
 
   /**

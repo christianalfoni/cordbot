@@ -31,6 +31,7 @@ const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
 const stripePriceIdStarter = defineSecret('STRIPE_PRICE_ID_STARTER');
 const stripePriceIdPro = defineSecret('STRIPE_PRICE_ID_PRO');
 const workspaceJwtSecret = defineSecret('WORKSPACE_JWT_SECRET');
+const deploySecret = defineSecret('DEPLOY_SECRET');
 
 /**
  * Exchange Google OAuth code for tokens and store in bot's profile
@@ -934,6 +935,43 @@ export const stripeWebhook = onRequest(
     } catch (error) {
       ctx.logger.error('Error handling Stripe webhook:', error);
       res.status(400).send('Webhook error');
+    }
+  }
+);
+
+/**
+ * Publish bot version - called by deploy script after Docker push
+ * Protected by DEPLOY_SECRET header
+ */
+export const publishBotVersion = onRequest(
+  { secrets: [deploySecret] },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Method not allowed' });
+      return;
+    }
+
+    const authHeader = req.headers['authorization'];
+    const expectedToken = `Bearer ${deploySecret.value().trim()}`;
+    if (!authHeader || authHeader !== expectedToken) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { version } = req.body;
+    if (!version || typeof version !== 'string') {
+      res.status(400).json({ error: 'version is required' });
+      return;
+    }
+
+    const ctx = new ProductionFunctionContext();
+    try {
+      await ctx.firestore.setBotVersion(version, ctx.getCurrentTime().toISOString());
+      ctx.logger.info('Bot version published', { version });
+      res.status(200).json({ success: true, version });
+    } catch (error) {
+      ctx.logger.error('Failed to publish bot version:', error);
+      res.status(500).json({ error: 'Failed to publish bot version' });
     }
   }
 );

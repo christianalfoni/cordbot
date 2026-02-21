@@ -43,6 +43,7 @@ export class MockContext implements AppContext {
   triggerPaidTierProvisioning: MockFn<(guildId: string) => Promise<void>> = vi.fn();
   adminDeployBot: MockFn<(guildId: string, version?: string) => Promise<{ success: boolean; version: string }>> = vi.fn();
   getWorkspaceToken: MockFn<(guildId: string) => Promise<{ token: string; botUrl: string }>> = vi.fn();
+  getLatestBotVersion: MockFn<() => Promise<string | null>> = vi.fn();
 
   // Subscriptions
   getSubscription: MockFn<(subscriptionId: string) => Promise<Subscription | null>> = vi.fn();

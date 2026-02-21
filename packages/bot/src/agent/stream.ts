@@ -6,6 +6,7 @@ import {
 import { SessionManager } from './manager.js';
 import { BotConfig } from '../discord/sync.js';
 // Memory capture happens in events.ts when Discord echoes messages back
+import { memoryManager } from '../memory/manager.js';
 import type { ILogger } from '../interfaces/logger.js';
 import type { IMessage, ITextChannel, IThreadChannel, IAttachment } from '../interfaces/discord.js';
 
@@ -229,6 +230,72 @@ async function handleSDKMessage(
   return channel;
 }
 
+const TRACKED_MUTATIONS = new Set([
+  'Write', 'Edit',
+  'schedule_one_time', 'schedule_recurring', 'schedule_remove',
+  'discord_create_channel', 'discord_delete_channel',
+  'discord_create_role', 'discord_assign_role', 'discord_remove_role',
+  'discord_kick_member', 'discord_ban_member',
+  'discord_create_event', 'discord_delete_event',
+  'discord_create_poll',
+  'discord_create_forum_post', 'discord_delete_forum_post',
+]);
+
+function buildActionDescription(toolName: string, input: string, workingDir: string): string | null {
+  if (!TRACKED_MUTATIONS.has(toolName)) return null;
+
+  try {
+    const params = JSON.parse(input);
+
+    switch (toolName) {
+      case 'Write': {
+        const filePath = params.file_path || '';
+        if (filePath.includes('.claude/') || filePath.includes('.claude-cron') || filePath.includes('CLAUDE.md')) return null;
+        return `file:write ${stripWorkingDirPrefix(filePath, workingDir)}`;
+      }
+      case 'Edit': {
+        const filePath = params.file_path || '';
+        if (filePath.includes('.claude/') || filePath.includes('.claude-cron') || filePath.includes('CLAUDE.md')) return null;
+        return `file:edit ${stripWorkingDirPrefix(filePath, workingDir)}`;
+      }
+      case 'schedule_one_time':
+        return `schedule: one-time task scheduled - "${params.task || ''}" at ${params.naturalTime || ''}`;
+      case 'schedule_recurring':
+        return `schedule: recurring task added - "${params.name || ''}" (${params.cronExpression || ''})`;
+      case 'schedule_remove':
+        return `schedule: task removed - "${params.identifier || ''}"`;
+      case 'discord_create_channel':
+        return `discord: created channel #${params.name || ''}`;
+      case 'discord_delete_channel':
+        return `discord: deleted channel ${params.channelId || ''}`;
+      case 'discord_create_role':
+        return `discord: created role @${params.name || ''}`;
+      case 'discord_assign_role':
+        return `discord: assigned role ${params.roleId || ''} to user ${params.userId || ''}`;
+      case 'discord_remove_role':
+        return `discord: removed role ${params.roleId || ''} from user ${params.userId || ''}`;
+      case 'discord_kick_member':
+        return `discord: kicked user ${params.userId || ''}${params.reason ? ` (${params.reason})` : ''}`;
+      case 'discord_ban_member':
+        return `discord: banned user ${params.userId || ''}${params.reason ? ` (${params.reason})` : ''}`;
+      case 'discord_create_event':
+        return `discord: created event "${params.name || ''}"`;
+      case 'discord_delete_event':
+        return `discord: deleted event ${params.eventId || ''}`;
+      case 'discord_create_poll':
+        return `discord: created poll "${params.question || ''}"`;
+      case 'discord_create_forum_post':
+        return `discord: created forum post "${params.title || ''}"`;
+      case 'discord_delete_forum_post':
+        return `discord: deleted forum post ${params.postId || ''}`;
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 async function handleStreamEvent(
   message: SDKPartialAssistantMessage,
   channel: ITextChannel | IThreadChannel,
@@ -302,6 +369,12 @@ async function handleStreamEvent(
 
           logger.info(`🔧 Tool: ${emoji} ${displayName}`);
           logger.info(`   Input: ${inputPreview}`);
+
+          // Track mutations in memory
+          const actionDescription = buildActionDescription(displayName, state.currentToolUse.input, state.workingDir);
+          if (actionDescription) {
+            memoryManager.addAction(state.channelId, actionDescription);
+          }
         }
         state.currentToolUse = null;
       }

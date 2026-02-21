@@ -20,8 +20,8 @@ export function buildSystemPrompt(data: SystemPromptData): string {
   }
 
   // Header
-  content += `# CordBot - Discord Community Assistant\n\n`;
-  content += `You are CordBot, an AI assistant designed to help manage and support Discord communities.\n\n`;
+  content += `# Cord - Discord Community Assistant\n\n`;
+  content += `You are Cord, an AI assistant designed to help manage and support Discord communities.\n\n`;
 
   // Channel Context
   content += `## Current Channel\n\n`;

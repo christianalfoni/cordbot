@@ -5,6 +5,7 @@ import { setupEventHandlers } from "./discord/events.js";
 import { registerCommands } from "./discord/commands.js";
 import { SessionManager } from "./agent/manager.js";
 import { CronRunner } from "./scheduler/runner.js";
+import { HeartbeatRunner } from "./heartbeat/runner.js";
 import { HealthServer } from "./health/server.js";
 import { QueryLimitManager } from "./service/query-limit-manager.js";
 import { installGlobalSkills } from "./tools/skill-loader.js";
@@ -155,6 +156,27 @@ export async function startBot(cwd: string): Promise<void> {
   cronRunner.start(channelMappings, cronPath);
   console.log("");
 
+  // Start heartbeat runner (if configured)
+  const heartbeatMinutes = parseInt(process.env.HEARTBEAT_MINUTES || '0');
+  let heartbeatRunner: HeartbeatRunner | undefined;
+
+  if (heartbeatMinutes > 0) {
+    heartbeatRunner = new HeartbeatRunner(
+      sessionManager,
+      cordbotWorkingDir,
+      cwd,
+      channelMappings,
+      memoryContextSize,
+      context.fileStore,
+      context.logger,
+      queryLimitManager
+    );
+    heartbeatRunner.start(heartbeatMinutes);
+    console.log(`💓 Heartbeat runner started (every ${heartbeatMinutes} minutes)\n`);
+  } else {
+    console.log('ℹ️  HEARTBEAT_MINUTES not set - heartbeat disabled\n');
+  }
+
   // Schedule daily memory compression (runs at midnight every day)
   cron.schedule('0 0 * * *', async () => {
     console.log('\n⏰ Running scheduled server-wide memory compression');
@@ -230,6 +252,11 @@ export async function startBot(cwd: string): Promise<void> {
 
     // Stop health server
     healthServer.stop();
+
+    // Stop heartbeat runner
+    if (heartbeatRunner) {
+      heartbeatRunner.stop();
+    }
 
     // Stop cron scheduler
     cronRunner.stop();

@@ -93,6 +93,23 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Publish bot version to Firebase
+echo -e "\n${CYAN}📡 Publishing bot version to Firebase...${NC}"
+if [ -z "${DEPLOY_SECRET}" ]; then
+    echo -e "${YELLOW}⚠️  DEPLOY_SECRET not set, skipping version publish${NC}"
+else
+    PUBLISH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+        https://us-central1-claudebot-34c42.cloudfunctions.net/publishBotVersion \
+        -H "Authorization: Bearer ${DEPLOY_SECRET}" \
+        -H "Content-Type: application/json" \
+        -d "{\"version\": \"${VERSION}\"}")
+    if [ "${PUBLISH_RESPONSE}" = "200" ]; then
+        echo -e "${GREEN}✓ Bot version ${VERSION} published${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Failed to publish bot version (HTTP ${PUBLISH_RESPONSE})${NC}"
+    fi
+fi
+
 # Success!
 echo -e "\n${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}✓ Docker image ${VERSION} deployed successfully!${NC}"

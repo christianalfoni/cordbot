@@ -297,7 +297,7 @@ async function handleMessage(
     if (message.type === 0 || message.type === 19) {
       try {
         const { memoryManager } = await import('../memory/manager.js');
-        const botName = message.author.username || 'claudebot';
+        const botName = message.author.username || 'Cord';
         const cleanContent = cleanMessageContent(message);
 
         if (message.channel.isThread()) {
@@ -306,7 +306,8 @@ async function handleMessage(
             parentChannelId,
             message.channel.id,
             botName,
-            cleanContent
+            cleanContent,
+            message.createdAt
           );
         } else {
           // Channel message
@@ -314,7 +315,8 @@ async function handleMessage(
             parentChannelId,
             message.id,
             botName,
-            cleanContent
+            cleanContent,
+            message.createdAt
           );
         }
 
@@ -351,7 +353,8 @@ async function handleMessage(
           parentChannelId,
           message.channel.id,
           displayName,
-          finalContent
+          finalContent,
+          message.createdAt
         );
       } else {
         // Channel message
@@ -359,7 +362,8 @@ async function handleMessage(
           parentChannelId,
           message.id,
           displayName,
-          finalContent
+          finalContent,
+          message.createdAt
         );
       }
 
@@ -527,6 +531,18 @@ async function handleMessage(
       if (message.attachments.size > 0) {
         const attachmentResult = await processAttachments(message, workingDir, context, logger);
         userMessage = `${message.content}${formatAttachmentPrompt(attachmentResult)}`;
+
+        // Track uploaded files in memory
+        if (attachmentResult.savedFiles.length > 0) {
+          try {
+            const { memoryManager } = await import('../memory/manager.js');
+            for (const filename of attachmentResult.savedFiles) {
+              memoryManager.addAction(parentChannelId, `file:upload ${filename}`);
+            }
+          } catch (error) {
+            logger.error('[Memory] Failed to track file uploads:', error);
+          }
+        }
       }
 
       // Prefix with username for multi-user context

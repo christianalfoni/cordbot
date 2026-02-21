@@ -308,9 +308,10 @@ function getRecentMonths(count: number): string[] {
 export async function loadMemoriesForServer(
   currentChannelId: string,
   currentChannelName: string,
-  allChannelNames: string[],
+  allChannels: Array<{ channelId: string; channelName: string }>,
   tokenBudget: number
 ): Promise<MemoryLoadResult> {
+  const channelNameById = new Map(allChannels.map(c => [c.channelId, c.channelName]));
   const memories: LoadedMemory[] = [];
   let totalTokens = 0;
 
@@ -355,8 +356,7 @@ export async function loadMemoriesForServer(
     if (markdown.trim()) {
       const tokenCount = countTokens(markdown);
 
-      // Find channel name if available
-      const channelName = channelId; // Use ID as fallback
+      const channelName = channelNameById.get(channelId) ?? channelId;
 
       if (!tryAddMemory({
         type: 'raw',
@@ -464,7 +464,8 @@ export function formatMemoriesForServerWideClaudeMd(
   for (const [key, memories] of byTypeAndDate) {
     const [type, identifier] = key.split(':');
 
-    output += `### ${identifier} (${type})\n\n`;
+    const heading = type === 'raw' ? 'Recent Messages' : `${identifier} (${type})`;
+    output += `### ${heading}\n\n`;
 
     // Current channel first
     const currentChannel = memories.find(m => m.channelName === currentChannelName);

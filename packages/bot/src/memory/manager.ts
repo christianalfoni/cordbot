@@ -3,17 +3,29 @@ import path from 'path';
 import { getServerMemoriesPath } from './storage.js';
 
 /**
+ * Format an ISO timestamp to a compact HH:MM UTC string
+ */
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  const hh = d.getUTCHours().toString().padStart(2, '0');
+  const mm = d.getUTCMinutes().toString().padStart(2, '0');
+  return `${hh}:${mm} UTC`;
+}
+
+/**
  * Raw message structure stored in memory
  */
 export interface RawMessage {
   messageId: string;
   username: string;
+  timestamp: string; // ISO 8601 UTC string
   text: string;
   thread?: ThreadReply[];
 }
 
 export interface ThreadReply {
   username: string;
+  timestamp: string; // ISO 8601 UTC string
   text: string;
 }
 
@@ -34,7 +46,8 @@ class MemoryManager {
     channelId: string,
     messageId: string,
     username: string,
-    text: string
+    text: string,
+    createdAt: Date = new Date()
   ): void {
     if (!this.memories.has(channelId)) {
       this.memories.set(channelId, []);
@@ -44,7 +57,31 @@ class MemoryManager {
     messages.push({
       messageId,
       username,
+      timestamp: createdAt.toISOString(),
       text,
+    });
+
+    this.scheduleThrottledWrite(channelId);
+  }
+
+  /**
+   * Add an action entry (tool use or file upload) to memory
+   */
+  addAction(
+    channelId: string,
+    description: string,
+    timestamp: Date = new Date()
+  ): void {
+    if (!this.memories.has(channelId)) {
+      this.memories.set(channelId, []);
+    }
+
+    const messages = this.memories.get(channelId)!;
+    messages.push({
+      messageId: `action-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      username: 'Cord',
+      timestamp: timestamp.toISOString(),
+      text: description,
     });
 
     this.scheduleThrottledWrite(channelId);
@@ -57,7 +94,8 @@ class MemoryManager {
     channelId: string,
     threadId: string,
     username: string,
-    text: string
+    text: string,
+    createdAt: Date = new Date()
   ): void {
     const messages = this.memories.get(channelId);
     if (!messages) {
@@ -73,13 +111,14 @@ class MemoryManager {
       if (!starterMessage.thread) {
         starterMessage.thread = [];
       }
-      starterMessage.thread.push({ username, text });
+      starterMessage.thread.push({ username, timestamp: createdAt.toISOString(), text });
     } else {
       console.warn(`[Memory] Thread starter ${threadId} not found in channel ${channelId}`);
       // Fallback: add as a regular message with a note
       messages.push({
         messageId: `thread-${threadId}-${Date.now()}`,
         username,
+        timestamp: createdAt.toISOString(),
         text: `[In thread] ${text}`,
       });
     }
@@ -209,13 +248,14 @@ class MemoryManager {
     let markdown = '';
 
     for (const message of messages) {
-      // Main message
-      markdown += `[${message.username}]: ${message.text}\n`;
+      const time = formatTime(message.timestamp);
+      markdown += `[${time}] ${message.username}: ${message.text}\n`;
 
       // Thread replies (indented)
       if (message.thread && message.thread.length > 0) {
         for (const reply of message.thread) {
-          markdown += `  [${reply.username}]: ${reply.text}\n`;
+          const replyTime = formatTime(reply.timestamp);
+          markdown += `  [${replyTime}] ${reply.username}: ${reply.text}\n`;
         }
       }
     }

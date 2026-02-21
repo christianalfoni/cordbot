@@ -67,6 +67,9 @@ export interface IFirestore {
   // Payment operations
   createPayment(subscriptionId: string, paymentId: string, data: Payment): Promise<void>;
   queryPayments(subscriptionId: string): Promise<Array<{ id: string; data: Payment }>>;
+
+  // Bot version operations
+  setBotVersion(version: string, publishedAt: string): Promise<void>;
 }
 
 /**
@@ -162,6 +165,7 @@ export interface Guild {
   periodEnd: string | null;
   // Deployment tracking
   lastDeployedAt: string;
+  deployedVersion?: string;
 }
 
 export interface User {

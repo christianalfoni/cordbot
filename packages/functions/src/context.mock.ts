@@ -48,6 +48,7 @@ export class MockFirestore implements IFirestore {
   getSubscriptionByGuild = vi.fn();
   createPayment = vi.fn();
   queryPayments = vi.fn();
+  setBotVersion = vi.fn();
 }
 
 /**

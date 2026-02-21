@@ -83,6 +83,7 @@ export interface Guild {
   updatedAt: string;
   provisionedAt?: string;
   memoryContextSize: number;
+  deployedVersion?: string;
 }
 
 export interface GuildStatus {
