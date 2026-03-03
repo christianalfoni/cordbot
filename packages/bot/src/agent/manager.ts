@@ -4,7 +4,6 @@ import { randomUUID } from "crypto";
 import { loadBuiltinTools } from "../tools/builtin-loader.js";
 import { loadDiscordTools } from "../tools/discord/loader.js";
 import { spawn } from "child_process";
-import { populateMemorySection } from "../discord/sync.js";
 import type { IBotContext } from "../interfaces/core.js";
 import type { ITextChannel, IThreadChannel } from "../interfaces/discord.js";
 import type { Client } from "discord.js";
@@ -38,6 +37,7 @@ export class SessionManager {
   private currentChannelIds = new Map<string, string>(); // sessionId -> channelId
   private filesToShare = new Map<string, string[]>(); // sessionId -> file paths
   private memoryContextSize: number;
+  private channelNames = new Map<string, string>();
 
   constructor(
     private context: IBotContext,
@@ -80,7 +80,9 @@ export class SessionManager {
         // Get cordbot working directory (where cordbot writes its files)
         return this.cordbotWorkingDir || this.workspaceRoot;
       },
-      this.context.documentConverter
+      this.context.documentConverter,
+      () => this.context.homeDirectory,
+      () => this.channelNames
     );
 
     // Load Discord tools if Discord client is provided
@@ -341,23 +343,10 @@ export class SessionManager {
   }
 
   /**
-   * Populate memory section in CLAUDE.md for a channel before query (server-wide)
+   * Set the channel names map for use in the retrieve_conversations tool
    */
-  async populateMemory(
-    claudeMdPath: string,
-    channelId: string,
-    channelName: string,
-    allChannels: Array<{ channelId: string; channelName: string }>,
-    sessionId: string
-  ): Promise<import('../memory/loader.js').MemoryLoadResult> {
-    return populateMemorySection(
-      claudeMdPath,
-      channelId,
-      channelName,
-      allChannels,
-      this.memoryContextSize,
-      sessionId
-    );
+  setChannelNames(names: Map<string, string>): void {
+    this.channelNames = names;
   }
 
   async archiveOldSessions(daysInactive: number): Promise<number> {

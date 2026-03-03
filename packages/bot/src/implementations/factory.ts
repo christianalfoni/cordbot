@@ -3,7 +3,6 @@ import type { IBotContext, BotContextConfig } from '../interfaces/core.js';
 import { DiscordJsAdapter } from './discord/adapter.js';
 import { ClaudeSDKQueryExecutor } from './query/claude-sdk.js';
 import { FileSystemSessionStore } from './storage/filesystem-session.js';
-import { FileSystemMemoryStore } from './storage/filesystem-memory.js';
 import { NodeCronScheduler } from './scheduler/node-cron.js';
 import { ServiceTokenProvider } from './token/service-token.js';
 import { ConsoleLogger } from './logger.js';
@@ -59,9 +58,6 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
   const storageDir = path.join(homeDirectory, '.claude', 'storage');
   const sessionStore = new FileSystemSessionStore(storageDir);
 
-  // Create memory store
-  const memoryStore = new FileSystemMemoryStore(homeDirectory);
-
   // Create scheduler
   const scheduler = new NodeCronScheduler();
 
@@ -85,7 +81,6 @@ export async function createProductionBotContext(config: BotContextConfig): Prom
     discord,
     queryExecutor,
     sessionStore,
-    memoryStore,
     scheduler,
     tokenProvider,
     logger,
@@ -111,7 +106,6 @@ export function isValidBotContext(context: any): context is IBotContext {
     'discord' in context &&
     'queryExecutor' in context &&
     'sessionStore' in context &&
-    'memoryStore' in context &&
     'scheduler' in context &&
     'tokenProvider' in context &&
     'logger' in context

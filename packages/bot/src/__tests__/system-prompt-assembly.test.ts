@@ -24,7 +24,7 @@ describe('System Prompt Assembly', () => {
       expect(systemPrompt).toContain(`**Channel Topic:** ${channelTopic}`);
 
       // Verify base instructions are included
-      expect(systemPrompt).toContain('# CordBot - Discord Community Assistant');
+      expect(systemPrompt).toContain('# Cord - Discord Community Assistant');
       expect(systemPrompt).toContain('## Your Core Capabilities');
       expect(systemPrompt).toContain('## Communication Style');
       expect(systemPrompt).toContain('## Discord Markdown Guidelines');
@@ -51,7 +51,7 @@ describe('System Prompt Assembly', () => {
       expect(systemPrompt).toContain(channelTopic);
 
       // Should have all base sections
-      expect(systemPrompt).toContain('# CordBot - Discord Community Assistant');
+      expect(systemPrompt).toContain('# Cord - Discord Community Assistant');
       expect(systemPrompt).toContain('## Discord Markdown Guidelines');
     });
 
@@ -81,7 +81,7 @@ describe('System Prompt Assembly', () => {
       });
 
       // Should have basic structure
-      expect(systemPrompt).toContain('# CordBot - Discord Community Assistant');
+      expect(systemPrompt).toContain('# Cord - Discord Community Assistant');
       expect(systemPrompt).toContain(`**#${channelName}**`);
       expect(systemPrompt).toContain('## Your Core Capabilities');
       expect(systemPrompt).toContain('## Discord Markdown Guidelines');

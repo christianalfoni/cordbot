@@ -672,3 +672,31 @@ class DiscordJsAdapter implements IDiscordAdapter {
 - **No Escape Hatches** = Interfaces must be complete - add methods rather than exposing raw clients
 
 This pattern gives you complete control over testing while keeping your application code clean, focused, and portable.
+
+## Workspace Structure
+
+The bot operates within a workspace directory with the following layout:
+
+```
+{workspaceRoot}/
+├── cron.yaml              # Legacy cron config
+├── cron_v2.yaml          # V2 scheduled jobs (all server jobs)
+├── cordbot/              # Bot working directory (user-visible files)
+│   └── (uploaded files, artifacts, etc.)
+└── .claude/              # Internal bot state (not for direct user access)
+    ├── HEARTBEAT.md      # Heartbeat run log
+    ├── SERVER_DESCRIPTION.md
+    ├── channels/         # Per-channel config only
+    │   └── {channelId}/
+    │       └── CLAUDE.md
+    ├── schedules/        # Recurring job scratchpads
+    │   └── {jobname}.md
+    ├── config.json
+    ├── storage/          # Session mappings
+    └── sessions/         # Active sessions
+```
+
+**Notes:**
+- All channels share the same `cordbotWorkingDir` — there is no per-channel working directory.
+- `.claude/` contains internal bot state and should not be directly accessed by users.
+- `cordbot/` is the user-visible working directory for uploaded files and artifacts.

@@ -60,12 +60,14 @@ vi.mock('../agent/stream.js', () => ({
   streamToDiscord: vi.fn(async (query, target, sessionMgr, sessionId, workDir, logger, botConfig, prefix, channelId, isCron) => {}),
 }));
 
-vi.mock('../memory/storage.js', () => ({
-  appendRawMemory: vi.fn(async () => {}),
-}));
-
-vi.mock('../memory/logger.js', () => ({
-  logRawMemoryCaptured: vi.fn(async () => {}),
+vi.mock('../memory/manager.js', () => ({
+  memoryManager: {
+    addChannelMessage: vi.fn(),
+    addThreadReply: vi.fn(),
+    addAction: vi.fn(),
+    getChannelIds: vi.fn(() => []),
+    convertToMarkdown: vi.fn(() => ''),
+  },
 }));
 
 vi.mock('../message-tracking/tracker.js', () => ({
@@ -110,7 +112,7 @@ describe('Message Handling Integration', () => {
     await sessionManager.initialize('test-bot-token');
 
     // Create real CronRunner
-    cronRunner = new CronRunner(core.discord, sessionManager, core.logger);
+    cronRunner = new CronRunner(core.discord, sessionManager, core.logger, core.scheduler, core.fileStore);
 
     // Setup channel mappings
     channelMappings = [
@@ -133,6 +135,7 @@ describe('Message Handling Integration', () => {
       'guild-1',
       cronRunner,
       core.logger,
+      'http://localhost:5174',
       { mode: 'personal', id: 'test-bot', username: 'TestBot' }
     );
   });
@@ -385,7 +388,7 @@ describe('Message Handling Integration', () => {
       );
       await sessionManager.initialize('test-bot-token');
 
-      cronRunner = new CronRunner(core.discord, sessionManager, core.logger);
+      cronRunner = new CronRunner(core.discord, sessionManager, core.logger, core.scheduler, core.fileStore);
 
       setupEventHandlers(
         core,
@@ -396,6 +399,7 @@ describe('Message Handling Integration', () => {
         'guild-1',
         cronRunner,
         core.logger,
+        'http://localhost:5174',
         { mode: 'shared', id: 'test-bot', username: 'TestBot' }
       );
     });

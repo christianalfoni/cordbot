@@ -3,7 +3,6 @@ import type {
   IDiscordAdapter,
   IQueryExecutor,
   ISessionStore,
-  IMemoryStore,
   IScheduler,
   ITokenProvider,
   ILogger,
@@ -28,8 +27,6 @@ import type {
   WarnHandler,
   SessionMapping,
   NewSessionMapping,
-  RawMemoryEntry,
-  MemoryLoadResult,
   ScheduledTask,
   TaskFunction,
   Token,
@@ -547,77 +544,6 @@ export class MockSessionStore implements ISessionStore {
 }
 
 /**
- * Mock Memory Store
- */
-export class MockMemoryStore implements IMemoryStore {
-  private memories = new Map<string, any>();
-
-  async saveRawMemory(channelId: string, entries: RawMemoryEntry[]): Promise<void> {
-    this.memories.set(`raw-${channelId}`, entries);
-  }
-
-  async loadRawMemories(channelId: string, date: string): Promise<RawMemoryEntry[]> {
-    return this.memories.get(`raw-${channelId}`) || [];
-  }
-
-  async saveDailyMemory(channelId: string, date: string, content: string): Promise<void> {
-    this.memories.set(`daily-${channelId}-${date}`, content);
-  }
-
-  async loadDailyMemory(channelId: string, date: string): Promise<string | null> {
-    return this.memories.get(`daily-${channelId}-${date}`) || null;
-  }
-
-  async saveWeeklyMemory(channelId: string, weekStart: string, content: string): Promise<void> {
-    this.memories.set(`weekly-${channelId}-${weekStart}`, content);
-  }
-
-  async loadWeeklyMemory(channelId: string, weekStart: string): Promise<string | null> {
-    return this.memories.get(`weekly-${channelId}-${weekStart}`) || null;
-  }
-
-  async saveMonthlyMemory(channelId: string, month: string, content: string): Promise<void> {
-    this.memories.set(`monthly-${channelId}-${month}`, content);
-  }
-
-  async loadMonthlyMemory(channelId: string, month: string): Promise<string | null> {
-    return this.memories.get(`monthly-${channelId}-${month}`) || null;
-  }
-
-  async saveYearlyMemory(channelId: string, year: string, content: string): Promise<void> {
-    this.memories.set(`yearly-${channelId}-${year}`, content);
-  }
-
-  async loadYearlyMemory(channelId: string, year: string): Promise<string | null> {
-    return this.memories.get(`yearly-${channelId}-${year}`) || null;
-  }
-
-  async loadMemoriesForChannel(channelId: string, tokenBudget: number): Promise<MemoryLoadResult> {
-    return {
-      content: '',
-      tokensUsed: 0,
-      sources: {},
-    };
-  }
-
-  async loadMemoriesForServer(
-    currentChannelId: string,
-    allChannelIds: string[],
-    tokenBudget: number
-  ): Promise<MemoryLoadResult> {
-    return {
-      content: '',
-      tokensUsed: 0,
-      sources: {},
-    };
-  }
-
-  getChannelMemoryPath(channelId: string): string {
-    return `/mock/memory/${channelId}`;
-  }
-}
-
-/**
  * Mock Scheduler
  */
 export class MockScheduler implements IScheduler {
@@ -898,7 +824,6 @@ export function createMockContext(guildId: string = 'test-guild-id'): IBotContex
   discord: MockDiscordAdapter;
   queryExecutor: MockQueryExecutor;
   sessionStore: MockSessionStore;
-  memoryStore: MockMemoryStore;
   scheduler: MockScheduler;
   tokenProvider: MockTokenProvider;
   logger: MockLogger;
@@ -911,7 +836,6 @@ export function createMockContext(guildId: string = 'test-guild-id'): IBotContex
     discord: new MockDiscordAdapter(),
     queryExecutor: new MockQueryExecutor(),
     sessionStore: new MockSessionStore(),
-    memoryStore: new MockMemoryStore(),
     scheduler: new MockScheduler(),
     tokenProvider: new MockTokenProvider(),
     logger: new MockLogger(),

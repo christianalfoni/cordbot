@@ -377,21 +377,6 @@ describe('Session Manager', () => {
     });
   });
 
-  describe('memory population', () => {
-    it('should populate memory section in CLAUDE.md', async () => {
-      const claudeMdPath = '/mock/channels/CLAUDE.md';
-      const channelId = 'channel-123';
-      const channelName = 'test-channel';
-      const allChannels = [{ channelId: 'channel-123', channelName: 'test-channel' }];
-      const sessionId = 'session-456';
-
-      await sessionManager.populateMemory(claudeMdPath, channelId, channelName, allChannels, sessionId);
-
-      const { populateMemorySection } = await import('../discord/sync.js');
-      expect(populateMemorySection).toHaveBeenCalledWith(claudeMdPath, channelId, channelName, allChannels, 10000, sessionId);
-    });
-  });
-
   describe('cron sessions', () => {
     it('should set pending cron session', () => {
       const channelId = 'channel-123';

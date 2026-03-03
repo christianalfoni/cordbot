@@ -1,6 +1,5 @@
 import path from 'path';
 import { promises as fs } from 'fs';
-import { loadMemoriesForServer, formatMemoriesForServerWideClaudeMd } from '../memory/loader.js';
 import type { SessionManager } from '../agent/manager.js';
 import type { ChannelMapping } from '../discord/sync.js';
 import type { ILogger } from '../interfaces/logger.js';
@@ -35,7 +34,6 @@ Based on the community memory in your context, decide if there is something genu
 function buildSystemPrompt(
   now: Date,
   serverDescription: string,
-  memoryContent: string,
   channelNames: string[]
 ): string {
   const timestamp = now.toUTCString();
@@ -59,18 +57,12 @@ This is a proactive, autonomous check. You are NOT responding to a user message 
 
 **Critical principles:**
 - **Silence is better than noise.** Only act when there is real, clear value to the community.
-- **Consider timezone.** Infer the community's likely timezone from memory context. Avoid sending messages when members are likely asleep or inactive.
+- **Consider timezone.** Use the \`retrieve_conversations\` tool to check recent activity and infer the community's likely timezone. Avoid sending messages when members are likely asleep or inactive.
 - **Don't repeat yourself.** Your previous heartbeat log is included in the prompt - do not redo something you recently did.
 - **No announcements.** Never tell the community you ran a heartbeat check.
 - **Be specific.** Actions should be meaningful: answer an unanswered question, share a relevant resource, follow up on something important, welcome a new member, etc.
 
-`;
-
-  if (memoryContent) {
-    prompt += `## Community Memory\n\n${memoryContent}`;
-  } else {
-    prompt += `## Community Memory\n\n_No memory available yet - the community may be new or quiet._`;
-  }
+Use the \`retrieve_conversations\` tool to check what has been discussed recently before deciding whether to act.`;
 
   return prompt;
 }
@@ -131,7 +123,7 @@ export class HeartbeatRunner {
     }
 
     // Read HEARTBEAT.md (create from template if it doesn't exist yet)
-    const heartbeatPath = path.join(this.cordbotWorkingDir, 'HEARTBEAT.md');
+    const heartbeatPath = path.join(this.workspaceRoot, '.claude', 'HEARTBEAT.md');
     let heartbeatLog: string;
     try {
       heartbeatLog = await fs.readFile(heartbeatPath, 'utf-8');
@@ -141,20 +133,10 @@ export class HeartbeatRunner {
       this.logger.info('[Heartbeat] Created HEARTBEAT.md');
     }
 
-    // Load server-wide memory across all channels
     const allChannels = this.channelMappings.map(m => ({
       channelId: m.channelId,
       channelName: m.channelName,
     }));
-
-    const memoryResult = await loadMemoriesForServer(
-      '', // no specific current channel - load all equally
-      'heartbeat',
-      allChannels,
-      this.memoryContextSize
-    );
-
-    const memoryContent = formatMemoriesForServerWideClaudeMd(memoryResult, 'heartbeat');
 
     // Read server description
     let serverDescription = '';
@@ -168,7 +150,6 @@ export class HeartbeatRunner {
     const systemPrompt = buildSystemPrompt(
       now,
       serverDescription,
-      memoryContent,
       allChannels.map(c => c.channelName)
     );
 
@@ -187,10 +168,14 @@ export class HeartbeatRunner {
       );
 
       // Drain the stream - the agent uses Discord tools to take action internally
+      let lastText = '';
       for await (const event of query as any) {
         if (event.type === 'text' && event.text) {
-          this.logger.info(`[Heartbeat] ${event.text.trim()}`);
+          lastText = event.text.trim();
         }
+      }
+      if (lastText) {
+        this.logger.info(`[Heartbeat] ${lastText}`);
       }
 
       success = true;

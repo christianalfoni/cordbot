@@ -1,6 +1,6 @@
 import type { IDiscordAdapter } from './discord';
 import type { IQueryExecutor } from './query';
-import type { ISessionStore, IMemoryStore } from './storage';
+import type { ISessionStore } from './storage';
 import type { IScheduler } from './scheduler';
 import type { ITokenProvider } from './token';
 import type { ILogger } from './logger';
@@ -41,11 +41,6 @@ export interface IBotContext {
    * Session storage
    */
   sessionStore: ISessionStore;
-
-  /**
-   * Memory storage
-   */
-  memoryStore: IMemoryStore;
 
   /**
    * Task scheduler

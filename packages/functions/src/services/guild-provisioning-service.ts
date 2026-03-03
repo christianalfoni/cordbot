@@ -10,6 +10,7 @@ import type { FunctionContext } from '../context.js';
 
 // Fly.io configuration
 const FLY_API_BASE = 'https://api.machines.dev/v1';
+const FLY_LOGS_API_BASE = 'https://api.fly.io/api/v1';
 const FLY_ORG = 'cordbot';
 const DEFAULT_IMAGE = 'registry-1.docker.io/christianalfoni/cordbot-agent';
 const DEFAULT_VERSION = 'latest';
@@ -804,10 +805,11 @@ export class GuildProvisioningService {
         }),
       });
 
-      // Now restart the machine with updated config
-      await this.flyRequest(`/apps/${appName}/machines/${machineId}/restart`, {
-        method: 'POST',
-      });
+      // Use /start for failed machines, /restart for started/stopped machines
+      const machineEndpoint = currentMachine.state === 'started' || currentMachine.state === 'stopped'
+        ? `/apps/${appName}/machines/${machineId}/restart`
+        : `/apps/${appName}/machines/${machineId}/start`;
+      await this.flyRequest(machineEndpoint, { method: 'POST' });
 
       // Set status back to active
       await this.ctx.firestore.updateGuild(guildId, {
@@ -1194,8 +1196,17 @@ export class GuildProvisioningService {
   /**
    * Get guild machine logs
    */
-  async getGuildLogs(params: { userId: string; guildId: string }): Promise<{ logs: string }> {
+  async getGuildLogs(params: { userId: string; guildId: string }): Promise<{ logs: Array<{
+    timestamp: string;
+    level: string;
+    message: string;
+    instance_id?: string;
+    region?: string;
+  }> }> {
     const { userId, guildId } = params;
+    const diagNow = () => new Date().toISOString();
+    const diagLogs: Array<{ timestamp: string; level: string; message: string }> = [];
+    const diag = (msg: string) => diagLogs.push({ timestamp: diagNow(), level: 'warn', message: `[DIAG] ${msg}` });
 
     // Verify ownership
     await this.verifyGuildOwnership(userId, guildId);
@@ -1206,15 +1217,89 @@ export class GuildProvisioningService {
       throw new HttpsError('not-found', 'Guild deployment not found');
     }
 
-    const { appName, machineId } = deployment;
+    const { appName } = deployment;
+    diag(`appName=${appName}`);
 
-    // Note: Fly.io API doesn't have a direct logs endpoint for machines
-    // You would typically use `flyctl logs` CLI command
-    // For now, return a placeholder
-    this.ctx.logger.info(`Fetching logs for guild ${guildId}`, { appName, machineId });
+    const token = this.ctx.secrets.getSecret('FLY_API_TOKEN');
+    diag(`token length=${token?.length ?? 0}`);
 
-    return {
-      logs: `Use 'flyctl logs -a ${appName}' to view logs`,
-    };
+    const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const url = `${FLY_LOGS_API_BASE}/apps/${appName}/logs?start_time=${encodeURIComponent(startTime)}`;
+    diag(`url=${url}`);
+
+    let response: Response;
+    try {
+      const controller = new AbortController();
+      response = await this.ctx.http.fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
+      diag(`response status=${response.status} ok=${response.ok} hasBody=${!!response.body}`);
+
+      if (!response.ok) {
+        const errBody = await response.text();
+        diag(`error body=${errBody.slice(0, 200)}`);
+        return { logs: diagLogs };
+      }
+
+      let text = '';
+      const timeoutId = setTimeout(() => {
+        diag('5s timeout reached, aborting stream');
+        controller.abort();
+      }, 5000);
+
+      if (response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let chunkCount = 0;
+        try {
+          while (true) {
+            const result = await reader.read();
+            if (result.done) {
+              diag(`stream ended naturally after ${chunkCount} chunks`);
+              break;
+            }
+            chunkCount++;
+            text += decoder.decode(result.value, { stream: true });
+          }
+        } catch (err: any) {
+          diag(`stream stopped: reason=${err?.name} chunks=${chunkCount} bytes=${text.length}`);
+        } finally {
+          clearTimeout(timeoutId);
+          reader.cancel().catch(() => {});
+        }
+      } else {
+        clearTimeout(timeoutId);
+        text = await response.text();
+        diag(`read via text() bytes=${text.length}`);
+      }
+
+      diag(`total bytes=${text.length} first200=${text.slice(0, 200)}`);
+
+      const rawLines = text.trim().split('\n').filter(Boolean);
+      diag(`rawLines=${rawLines.length}`);
+
+      const parsed = rawLines
+        .map(line => { try { return JSON.parse(line); } catch { return null; } })
+        .filter(Boolean);
+
+      diag(`parsed=${parsed.length}`);
+
+      const logs = parsed
+        .slice(-50)
+        .map((entry: any) => ({
+          timestamp: entry.timestamp,
+          level: entry.level ?? 'info',
+          message: entry.message,
+          instance_id: entry.instance_id,
+          region: entry.region,
+        }));
+
+      diag(`returning ${logs.length} real log entries`);
+      return { logs: [...diagLogs, ...logs] };
+    } catch (err: any) {
+      diag(`fetch threw: ${err?.name}: ${err?.message}`);
+      return { logs: diagLogs };
+    }
   }
 }

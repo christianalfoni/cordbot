@@ -10,7 +10,6 @@ import { HealthServer } from "./health/server.js";
 import { QueryLimitManager } from "./service/query-limit-manager.js";
 import { installGlobalSkills } from "./tools/skill-loader.js";
 import cron from 'node-cron';
-import { runDailyMemoryCompression } from "./memory/compress.js";
 import { readFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -122,6 +121,10 @@ export async function startBot(cwd: string): Promise<void> {
   const { mappings: channelMappings, cronPath } = await syncChannelsOnStartup(context.discord, guildId, cwd, cordbotWorkingDir, botConfig);
   console.log("");
 
+  // Provide channel names to the retrieve_conversations tool
+  const channelNamesMap = new Map(channelMappings.map(m => [m.channelId, m.channelName]));
+  sessionManager.setChannelNames(channelNamesMap);
+
   // Load memories from disk (for crash recovery)
   console.log("💾 Loading memories from disk...");
   const { memoryManager } = await import("./memory/manager.js");
@@ -177,24 +180,6 @@ export async function startBot(cwd: string): Promise<void> {
     console.log('ℹ️  HEARTBEAT_MINUTES not set - heartbeat disabled\n');
   }
 
-  // Schedule daily memory compression (runs at midnight every day)
-  cron.schedule('0 0 * * *', async () => {
-    console.log('\n⏰ Running scheduled server-wide memory compression');
-
-    // Build channel list with names
-    const channels = channelMappings.map(m => ({
-      channelId: m.channelId,
-      channelName: m.channelName,
-    }));
-
-    try {
-      await runDailyMemoryCompression(channels, guildId, queryLimitManager);
-    } catch (error) {
-      console.error('Memory compression failed:', error);
-    }
-  });
-  console.log('📅 Scheduled daily memory compression (midnight)');
-  console.log("");
 
   // Setup event handlers (after cron runner is initialized)
   setupEventHandlers(

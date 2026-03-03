@@ -333,7 +333,6 @@ async function handleMessage(
   if (message.type === 0 || message.type === 19) {
     try {
       const { memoryManager } = await import('../memory/manager.js');
-      const { logRawMemoryCaptured } = await import('../memory/logger.js');
 
       const displayName = message.member?.displayName || message.author.username;
       const cleanedContent = cleanMessageContent(message);
@@ -366,12 +365,6 @@ async function handleMessage(
           message.createdAt
         );
       }
-
-      await logRawMemoryCaptured(
-        parentChannelId,
-        finalContent.length,
-        'pre-filter'
-      );
 
       logger.info(`[Memory] Captured user message (${finalContent.length} chars)`);
     } catch (error) {
@@ -579,25 +572,8 @@ async function handleMessage(
       const claudeMdPath = channelMapping.claudeMdPath;
       let systemPrompt: string | undefined;
 
-      let memoryTokens = 0;
       if (context.fileStore.exists(claudeMdPath)) {
         try {
-          // Get all channel info
-          const allChannels = channelMappings.map(m => ({
-            channelId: m.channelId,
-            channelName: m.channelName,
-          }));
-
-          const memoryResult = await sessionManager.populateMemory(
-            claudeMdPath,
-            parentChannelId,
-            mapping.channelName,
-            allChannels,
-            sessionId
-          );
-          memoryTokens = memoryResult.totalTokens;
-          logger.info(`💾 Memory loaded: ${memoryTokens} tokens`);
-
           // Read server description if it exists
           const serverDescPath = path.join(workspaceRoot, '.claude', 'SERVER_DESCRIPTION.md');
           let serverDescription: string | undefined;
@@ -706,7 +682,7 @@ async function handleMessage(
       } finally {
         // Track query usage
         if (queryLimitManager) {
-          await queryLimitManager.trackQuery('discord_message', cost, success, memoryTokens);
+          await queryLimitManager.trackQuery('discord_message', cost, success);
         }
       }
     } finally {

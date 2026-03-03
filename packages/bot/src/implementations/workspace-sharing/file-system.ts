@@ -69,8 +69,13 @@ export class WorkspaceFileSystem implements IWorkspaceFileSystem {
         if (!realParentPath.startsWith(realCordbotPath)) {
           throw new Error('Invalid path: outside cordbot directory');
         }
-      } catch {
-        throw new Error('Invalid path: parent directory does not exist');
+      } catch (parentError) {
+        if ((parentError as NodeJS.ErrnoException).code === 'ENOENT') {
+          // Parent directory doesn't exist yet - will be created by caller
+          // isPathAllowed() already verified no '..' traversal, so path is safe
+        } else {
+          throw parentError;
+        }
       }
       return fullPath;
     }
@@ -246,8 +251,8 @@ export class WorkspaceFileSystem implements IWorkspaceFileSystem {
       persistent: true,
       ignoreInitial: true, // Don't emit events for existing files
       awaitWriteFinish: {
-        stabilityThreshold: 100,
-        pollInterval: 50,
+        stabilityThreshold: 50,
+        pollInterval: 25,
       },
     });
 

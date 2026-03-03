@@ -2,8 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { loadMemoriesForChannel, formatMemoriesForClaudeMd, loadMemoriesForServer, formatMemoriesForServerWideClaudeMd } from '../memory/loader.js';
-import { logMemoryLoaded } from '../memory/logger.js';
 import type { IDiscordAdapter, ITextChannel } from '../interfaces/discord.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -238,87 +236,3 @@ export async function syncNewChannel(
   };
 }
 
-/**
- * Populate the memory section in CLAUDE.md for a channel (server-wide)
- * This should be called before each query to ensure memory is up-to-date
- */
-export async function populateMemorySection(
-  claudeMdPath: string,
-  channelId: string,
-  channelName: string,
-  allChannels: Array<{ channelId: string; channelName: string }>,
-  memoryContextSize: number,
-  sessionId?: string
-): Promise<import('../memory/loader.js').MemoryLoadResult> {
-  // Load server-wide memories with current channel priority
-  const memoryResult = await loadMemoriesForServer(
-    channelId,
-    channelName,
-    allChannels,
-    memoryContextSize
-  );
-
-  // Format memories with channel grouping
-  const memoryContent = formatMemoriesForServerWideClaudeMd(
-    memoryResult,
-    channelName
-  );
-
-  // Read current CLAUDE.md
-  let content = fs.readFileSync(claudeMdPath, 'utf-8');
-
-  // Check if memory sections already exist and remove them
-  const hasRecentMemory = content.includes('## Recent Memory');
-  const hasLongTermMemory = content.includes('## Long Term Memory');
-
-  if (hasRecentMemory || hasLongTermMemory) {
-    // Remove existing memory sections
-    const lines = content.split('\n');
-    const filteredLines: string[] = [];
-    let skipUntilNextSection = false;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      // Start skipping when we hit a memory section
-      if (line.trim() === '## Recent Memory' || line.trim() === '## Long Term Memory') {
-        skipUntilNextSection = true;
-        continue;
-      }
-
-      // Stop skipping when we hit another ## section (but not ###)
-      if (skipUntilNextSection && line.trim().startsWith('## ') && !line.trim().startsWith('### ')) {
-        skipUntilNextSection = false;
-      }
-
-      if (!skipUntilNextSection) {
-        filteredLines.push(line);
-      }
-    }
-
-    content = filteredLines.join('\n').trimEnd();
-  }
-
-  // Append new memory content at the end if there is any
-  if (memoryContent) {
-    content = content.trimEnd() + '\n\n' + memoryContent;
-  }
-
-  // Write updated content
-  fs.writeFileSync(claudeMdPath, content, 'utf-8');
-
-  // Log memory operation
-  await logMemoryLoaded(
-    channelId,
-    sessionId || 'unknown',
-    memoryResult.memories.map(m => ({
-      type: m.type,
-      identifier: m.identifier,
-      tokenCount: m.tokenCount,
-    })),
-    memoryResult.totalTokens,
-    memoryResult.budgetUsed
-  );
-
-  return memoryResult;
-}

@@ -5,6 +5,7 @@ import { createTool as createListSchedules } from './scheduling/list_schedules.j
 import { createTool as createRemoveSchedule } from './scheduling/remove_schedule.js';
 import { createTool as createShareFile } from './share_file.js';
 import { createTool as createGenerateDocx } from './document/generate_docx.js';
+import { createTool as createRetrieveConversations } from './retrieve_conversations.js';
 import type { IDocumentConverter } from '../interfaces/document.js';
 
 /**
@@ -17,7 +18,9 @@ export function loadBuiltinTools(
   getCurrentChannel: (() => any) | undefined,
   getWorkspaceRoot: () => string,
   getCordbotWorkingDir: () => string,
-  documentConverter: IDocumentConverter
+  documentConverter: IDocumentConverter,
+  getHomeDirectory: () => string,
+  getChannelNames: () => Map<string, string>
 ): SdkMcpToolDefinition<any>[] {
   const tools: SdkMcpToolDefinition<any>[] = [];
 
@@ -38,6 +41,9 @@ export function loadBuiltinTools(
       (markdown: string, filename: string) => documentConverter.convertMarkdownToDocx(markdown, filename)
     )
   );
+
+  // Load memory retrieval tool
+  tools.push(createRetrieveConversations(getHomeDirectory, getChannelNames));
 
   console.log(`  ✓ Loaded ${tools.length} built-in tools`);
 

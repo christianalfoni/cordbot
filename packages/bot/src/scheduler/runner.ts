@@ -1,5 +1,6 @@
 import chokidar from 'chokidar';
 import path from 'path';
+import fs from 'fs';
 import { SessionManager } from '../agent/manager.js';
 import { ChannelMapping } from '../discord/sync.js';
 import { parseCronFileV2, writeCronV2File } from './parser.js';
@@ -14,6 +15,7 @@ import type { IFileStore } from '../interfaces/file.js';
 export class CronRunner {
   private channelMappings: Map<string, ChannelMapping> = new Map();
   private cronV2Path: string = '';
+  private workspaceRoot: string = '';
   private watcherV2: chokidar.FSWatcher | null = null;
   private oneTimeCheckerTaskId: string | null = null;
   private recurringJobTaskIds: Map<string, string> = new Map(); // jobKey -> taskId
@@ -36,6 +38,10 @@ export class CronRunner {
     // Calculate V2 path (parallel to cron.yaml)
     const dir = path.dirname(cronPath);
     this.cronV2Path = path.join(dir, 'cron_v2.yaml');
+    this.workspaceRoot = dir;
+
+    // Ensure .claude/schedules/ directory exists for recurring job scratchpads
+    fs.mkdirSync(path.join(this.workspaceRoot, '.claude', 'schedules'), { recursive: true });
 
     for (const mapping of channelMappings) {
       this.channelMappings.set(mapping.channelId, mapping);
@@ -325,19 +331,6 @@ export class CronRunner {
 
         if (this.fileStore.exists(claudeMdPath)) {
           try {
-            const allChannels = Array.from(this.channelMappings.values()).map(m => ({
-              channelId: m.channelId,
-              channelName: m.channelName,
-            }));
-
-            await this.sessionManager.populateMemory(
-              claudeMdPath,
-              job.channelId,
-              mapping.channelName,
-              allChannels,
-              sessionId
-            );
-
             // Read server description if it exists
             const workspaceRoot = path.dirname(path.dirname(claudeMdPath)); // Go up from .claude/channels/{id} to workspace root
             const serverDescPath = path.join(workspaceRoot, '.claude', 'SERVER_DESCRIPTION.md');
@@ -366,9 +359,33 @@ export class CronRunner {
         }
 
         // Create query prompt
-        const cronTaskPrompt = `Execute this scheduled task. Perform the actions using available tools, then report what was done.
+        let cronTaskPrompt: string;
+
+        if (type === 'recurring') {
+          const recurringJob = job as RecurringJob;
+          const sanitizedName = recurringJob.name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+          const scratchpadPath = path.join(this.workspaceRoot, '.claude', 'schedules', `${sanitizedName}.md`);
+          let scratchpadContent: string;
+          try {
+            scratchpadContent = fs.readFileSync(scratchpadPath, 'utf-8');
+          } catch {
+            scratchpadContent = `# Schedule: ${recurringJob.name}\n\nCord reads and updates this file on each run to track notes and context.\n\n## Notes\n\n_No runs yet_\n`;
+            fs.writeFileSync(scratchpadPath, scratchpadContent, 'utf-8');
+          }
+          cronTaskPrompt = `Here is your scratchpad from previous runs of this task:
+
+<schedule_scratchpad>
+${scratchpadContent}
+</schedule_scratchpad>
+
+Execute this scheduled task. Perform the actions using available tools, update your scratchpad with a timestamped note about what was done, then report what was done.
 
 Task: ${job.task}`;
+        } else {
+          cronTaskPrompt = `Execute this scheduled task. Perform the actions using available tools, then report what was done.
+
+Task: ${job.task}`;
+        }
 
         const queryResult = this.sessionManager.createQuery(
           cronTaskPrompt,

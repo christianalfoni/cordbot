@@ -524,7 +524,7 @@ export const deleteUserAccount = onCall({ secrets: [flyApiToken, stripeApiKey] }
 /**
  * Restart a guild's machine (called by web UI)
  */
-export const restartGuild = onCall({ secrets: [flyApiToken] }, async (request) => {
+export const restartGuild = onCall({ secrets: [flyApiToken, sharedDiscordBotToken, sharedAnthropicApiKey, workspaceJwtSecret] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
@@ -537,6 +537,9 @@ export const restartGuild = onCall({ secrets: [flyApiToken] }, async (request) =
 
   const ctx = new ProductionFunctionContext({
     FLY_API_TOKEN: flyApiToken,
+    SHARED_DISCORD_BOT_TOKEN: sharedDiscordBotToken,
+    SHARED_ANTHROPIC_API_KEY: sharedAnthropicApiKey,
+    WORKSPACE_JWT_SECRET: workspaceJwtSecret,
   });
 
   try {

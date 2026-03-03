@@ -10,7 +10,7 @@ const schema = z.object({
 export function createSendMessageTool(client: Client) {
   return tool(
     'discord_send_message',
-    'Send a message to a Discord channel or thread',
+    'Send a message to a Discord channel or thread. Always write the message content in the language appropriate for this server (as defined in the server context/description), or match the language of the current conversation if no server language is specified.',
     schema.shape,
     async ({ channelId, content }) => {
       try {

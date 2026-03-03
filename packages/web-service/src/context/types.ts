@@ -99,10 +99,16 @@ export interface GuildStatus {
   }>;
 }
 
-export interface GuildLogs {
+export interface LogEntry {
+  timestamp: string;
+  level: string;
   message: string;
-  cliCommand: string;
-  machineCommand: string;
+  instance_id?: string;
+  region?: string;
+}
+
+export interface GuildLogs {
+  logs: LogEntry[];
 }
 
 export interface Subscription {

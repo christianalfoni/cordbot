@@ -7,7 +7,7 @@ describe('buildSystemPrompt', () => {
       channelName: 'general',
     });
 
-    expect(prompt).toContain('# CordBot - Discord Community Assistant');
+    expect(prompt).toContain('# Cord - Discord Community Assistant');
     expect(prompt).toContain('You are currently in the **#general** channel');
     expect(prompt).toContain('Your Core Capabilities');
     expect(prompt).toContain('Communication Style');
@@ -111,7 +111,7 @@ describe('buildSystemPrompt', () => {
 
     const sections = [
       '# Server Context',
-      '# CordBot - Discord Community Assistant',
+      '# Cord - Discord Community Assistant',
       '## Current Channel',
       '## Your Core Capabilities',
       '### 1. Community Understanding',

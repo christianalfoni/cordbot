@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { UserData } from '../hooks/useAuth';
 import { useGuilds } from '../hooks/useGuilds';
+import type { GuildLogs } from '../hooks/useGuilds';
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
-import { EllipsisHorizontalIcon, ArrowPathIcon, ArrowUpCircleIcon, TrashIcon, CreditCardIcon, FolderOpenIcon } from '@heroicons/react/20/solid';
+import { EllipsisHorizontalIcon, ArrowPathIcon, ArrowUpCircleIcon, TrashIcon, CreditCardIcon, FolderOpenIcon, QueueListIcon } from '@heroicons/react/20/solid';
 import { Header } from '../components/Header';
 import { db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -29,12 +30,14 @@ interface Subscription {
 
 export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsListProps) {
   const ctx = useAppContext();
-  const { guilds, isListening, restartGuild, deployUpdate, deprovisionGuild } = useGuilds(userData?.id ?? '');
+  const { guilds, isListening, restartGuild, deployUpdate, deprovisionGuild, getLogs } = useGuilds(userData?.id ?? '');
   const { showNotification } = useNotification();
   const { confirm } = useConfirmation();
   const [subscriptions, setSubscriptions] = useState<Record<string, Subscription>>({});
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [latestBotVersion, setLatestBotVersion] = useState<string | null>(null);
+  const [expandedLogs, setExpandedLogs] = useState<Record<string, GuildLogs | null>>({});
+  const [loadingLogs, setLoadingLogs] = useState<Record<string, boolean>>({});
 
   // Load latest bot version
   useEffect(() => {
@@ -120,6 +123,27 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
     }
   };
 
+  const handleToggleLogs = async (guildId: string) => {
+    if (guildId in expandedLogs) {
+      setExpandedLogs(prev => {
+        const next = { ...prev };
+        delete next[guildId];
+        return next;
+      });
+      return;
+    }
+    setLoadingLogs(prev => ({ ...prev, [guildId]: true }));
+    try {
+      const result = await getLogs(guildId);
+      setExpandedLogs(prev => ({ ...prev, [guildId]: result }));
+    } catch (error) {
+      console.error('Failed to fetch logs:', error);
+      showNotification('error', 'Failed to fetch logs');
+    } finally {
+      setLoadingLogs(prev => ({ ...prev, [guildId]: false }));
+    }
+  };
+
   const handleManageBilling = async () => {
     setLoadingAction('billing');
     try {
@@ -184,7 +208,8 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
 
                   return (
                     <li key={guild.id} className="py-6">
-                      <div className="flex items-start gap-x-6 p-4">
+                      <div className="flex items-center gap-x-6 p-4">
+
                         {guild.guildIcon ? (
                           <img
                             src={`https://cdn.discordapp.com/icons/${guild.id}/${guild.guildIcon}.png`}
@@ -273,6 +298,28 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
                               className="absolute right-0 z-10 mt-2 w-40 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg outline-1 outline-black/5 transition data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in dark:divide-white/10 dark:bg-gray-800 dark:shadow-none dark:-outline-offset-1 dark:outline-white/10"
                             >
                               <div className="py-1">
+                                <MenuItem disabled={guild.status !== 'active'}>
+                                  {({ focus, disabled }) => (
+                                    <button
+                                      onClick={() => !disabled && handleToggleLogs(guild.id)}
+                                      className={`group flex w-full items-center px-4 py-2 text-sm ${
+                                        focus
+                                          ? 'bg-gray-100 text-gray-900 dark:bg-white/5 dark:text-white'
+                                          : 'text-gray-700 dark:text-gray-300'
+                                      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
+                                      <QueueListIcon
+                                        aria-hidden="true"
+                                        className={`mr-3 size-5 ${
+                                          focus
+                                            ? 'text-gray-500 dark:text-white'
+                                            : 'text-gray-400 dark:text-gray-500'
+                                        }`}
+                                      />
+                                      {loadingLogs[guild.id] ? 'Loading...' : guild.id in expandedLogs ? 'Hide Logs' : 'Show Logs'}
+                                    </button>
+                                  )}
+                                </MenuItem>
                                 <MenuItem disabled={guild.status !== 'active' || (!!latestBotVersion && guild.deployedVersion === latestBotVersion)}>
                                   {({ focus, disabled }) => (
                                     <button
@@ -295,7 +342,7 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
                                     </button>
                                   )}
                                 </MenuItem>
-                                <MenuItem disabled={guild.status !== 'active'}>
+                                <MenuItem disabled={guild.status !== 'active' && guild.status !== 'error'}>
                                   {({ focus, disabled }) => (
                                     <button
                                       onClick={() => !disabled && handleRestart(guild.id)}
@@ -373,6 +420,30 @@ export function GuildsList({ userData, onSignOut, onSignIn, loading }: GuildsLis
                           </Menu>
                         </div>
                       </div>
+                      {(loadingLogs[guild.id] || guild.id in expandedLogs) && (
+                        <div className="px-4 pb-4">
+                          <pre className="bg-gray-900 rounded-lg p-4 overflow-x-auto text-xs font-mono max-h-80 overflow-y-auto">
+                            {loadingLogs[guild.id] ? (
+                              <span className="flex items-center gap-2 text-gray-400">
+                                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-500 border-t-gray-200" />
+                                Fetching logs...
+                              </span>
+                            ) : expandedLogs[guild.id]?.logs.length === 0 ? (
+                              <span className="text-gray-400">No logs available</span>
+                            ) : (
+                              expandedLogs[guild.id]?.logs.map((entry, i) => (
+                                <div key={i} className={
+                                  entry.level === 'error' ? 'text-red-400' :
+                                  entry.level === 'warn' ? 'text-yellow-400' :
+                                  'text-gray-200'
+                                }>
+                                  [{entry.timestamp}] [{entry.level.toUpperCase()}] {entry.message}
+                                </div>
+                              ))
+                            )}
+                          </pre>
+                        </div>
+                      )}
                     </li>
                   );
                 })}

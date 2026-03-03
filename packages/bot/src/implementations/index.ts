@@ -9,7 +9,6 @@ export * from './query/claude-sdk.js';
 
 // Storage
 export * from './storage/filesystem-session.js';
-export * from './storage/filesystem-memory.js';
 
 // Scheduler
 export * from './scheduler/node-cron.js';

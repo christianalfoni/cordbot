@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { getServerMemoriesPath } from './storage.js';
+import os from 'os';
 
 /**
  * Format an ISO timestamp to a compact HH:MM UTC string
@@ -38,6 +38,17 @@ class MemoryManager {
   private writeTimers = new Map<string, NodeJS.Timeout>();
   private lastWriteTimes = new Map<string, number>();
   private readonly THROTTLE_MS = 30000; // 30 seconds
+  private readonly RETENTION_DAYS = 7;
+
+  private getMemoryV2Path(): string {
+    const home = process.env.HOME || os.homedir();
+    return path.join(home, '.claude', 'memory_v2');
+  }
+
+  private getTodayFilePath(): string {
+    const today = new Date().toISOString().split('T')[0];
+    return path.join(this.getMemoryV2Path(), `${today}.json`);
+  }
 
   /**
    * Add a channel message
@@ -104,7 +115,6 @@ class MemoryManager {
     }
 
     // Find the message that started this thread
-    // In Discord, the threadId is often the same as the starter message ID
     const starterMessage = messages.find(m => m.messageId === threadId);
 
     if (starterMessage) {
@@ -128,29 +138,25 @@ class MemoryManager {
 
   /**
    * Schedule throttled write to disk
-   * Ensures writes happen at most once every THROTTLE_MS
    */
   private scheduleThrottledWrite(channelId: string): void {
     const now = Date.now();
     const lastWrite = this.lastWriteTimes.get(channelId) || 0;
     const timeSinceLastWrite = now - lastWrite;
 
-    // If we already have a timer scheduled, don't schedule another
     if (this.writeTimers.has(channelId)) {
       return;
     }
 
-    // If enough time has passed, write immediately
     if (timeSinceLastWrite >= this.THROTTLE_MS) {
-      this.writeToDisk(channelId);
+      this.writeToDisk();
       this.lastWriteTimes.set(channelId, now);
       return;
     }
 
-    // Otherwise, schedule a write for when the throttle period expires
     const delay = this.THROTTLE_MS - timeSinceLastWrite;
     const timer = setTimeout(() => {
-      this.writeToDisk(channelId);
+      this.writeToDisk();
       this.lastWriteTimes.set(channelId, Date.now());
       this.writeTimers.delete(channelId);
     }, delay);
@@ -159,79 +165,88 @@ class MemoryManager {
   }
 
   /**
-   * Write all channel memories to disk (single file)
+   * Write all channel memories to today's date file
    */
-  private async writeToDisk(channelId: string): Promise<void> {
-    // Write entire memory map to single file
-    const memoriesPath = getServerMemoriesPath();
-    await fs.mkdir(memoriesPath, { recursive: true });
+  private async writeToDisk(): Promise<void> {
+    const dirPath = this.getMemoryV2Path();
+    await fs.mkdir(dirPath, { recursive: true });
 
-    const filePath = path.join(memoriesPath, 'raw.json');
+    const filePath = this.getTodayFilePath();
 
-    // Convert Map to object for JSON serialization
     const data: Record<string, RawMessage[]> = {};
     for (const [chId, messages] of this.memories.entries()) {
       data[chId] = messages;
     }
 
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
-
-    console.log(`[Memory] Wrote memories for ${this.memories.size} channels to raw.json`);
+    console.log(`[Memory] Wrote memories for ${this.memories.size} channels to ${path.basename(filePath)}`);
   }
 
   /**
    * Force write all channels to disk (for shutdown)
    */
   async flushAll(): Promise<void> {
-    // Clear all timers
     for (const timer of this.writeTimers.values()) {
       clearTimeout(timer);
     }
     this.writeTimers.clear();
 
-    // Write entire memory map to single file
     if (this.memories.size > 0) {
-      const memoriesPath = getServerMemoriesPath();
-      await fs.mkdir(memoriesPath, { recursive: true });
-
-      const filePath = path.join(memoriesPath, 'raw.json');
-
-      // Convert Map to object for JSON serialization
-      const data: Record<string, RawMessage[]> = {};
-      for (const [chId, messages] of this.memories.entries()) {
-        data[chId] = messages;
-      }
-
-      await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
-
-      console.log(`[Memory] Flushed ${this.memories.size} channels to raw.json`);
+      await this.writeToDisk();
+      console.log(`[Memory] Flushed ${this.memories.size} channels`);
     }
   }
 
   /**
-   * Load memories from disk on startup
+   * Load today's memories from disk on startup, and prune old files
    */
   async loadFromDisk(): Promise<void> {
-    const memoriesPath = getServerMemoriesPath();
-    const filePath = path.join(memoriesPath, 'raw.json');
+    await this.pruneOldFiles();
 
+    const filePath = this.getTodayFilePath();
     try {
       const content = await fs.readFile(filePath, 'utf-8');
       const data: Record<string, RawMessage[]> = JSON.parse(content);
 
-      // Load data into memory Map
       let totalMessages = 0;
       for (const [channelId, messages] of Object.entries(data)) {
         this.memories.set(channelId, messages);
         totalMessages += messages.length;
       }
 
-      console.log(`[Memory] Loaded ${totalMessages} messages across ${Object.keys(data).length} channels from raw.json`);
+      console.log(`[Memory] Loaded ${totalMessages} messages across ${Object.keys(data).length} channels from today's file`);
     } catch (error: any) {
       if (error.code === 'ENOENT') {
-        console.log('[Memory] No existing raw.json found - starting fresh');
+        console.log('[Memory] No existing file for today - starting fresh');
         return;
       }
+      throw error;
+    }
+  }
+
+  /**
+   * Delete memory files older than RETENTION_DAYS
+   */
+  private async pruneOldFiles(): Promise<void> {
+    const dirPath = this.getMemoryV2Path();
+    try {
+      await fs.mkdir(dirPath, { recursive: true });
+      const files = await fs.readdir(dirPath);
+
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - this.RETENTION_DAYS);
+      const cutoffStr = cutoff.toISOString().split('T')[0];
+
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        const date = file.replace('.json', '');
+        if (date < cutoffStr) {
+          await fs.unlink(path.join(dirPath, file));
+          console.log(`[Memory] Pruned old file: ${file}`);
+        }
+      }
+    } catch (error: any) {
+      if (error.code === 'ENOENT') return;
       throw error;
     }
   }
@@ -251,7 +266,6 @@ class MemoryManager {
       const time = formatTime(message.timestamp);
       markdown += `[${time}] ${message.username}: ${message.text}\n`;
 
-      // Thread replies (indented)
       if (message.thread && message.thread.length > 0) {
         for (const reply of message.thread) {
           const replyTime = formatTime(reply.timestamp);
@@ -268,22 +282,6 @@ class MemoryManager {
    */
   getChannelIds(): string[] {
     return Array.from(this.memories.keys());
-  }
-
-  /**
-   * Clear all memories (after compression)
-   */
-  clearAll(): void {
-    this.memories.clear();
-    console.log('[Memory] Cleared all in-memory messages');
-  }
-
-  /**
-   * Clear memories for a specific channel
-   */
-  clearChannel(channelId: string): void {
-    this.memories.delete(channelId);
-    console.log(`[Memory] Cleared messages for channel ${channelId}`);
   }
 }
 

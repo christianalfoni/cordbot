@@ -77,9 +77,9 @@ describe('useGuilds', () => {
 
   it('should get guild logs', async () => {
     const mockLogs: GuildLogs = {
-      message: 'Bot started',
-      cliCommand: 'fly logs',
-      machineCommand: 'fly machine logs',
+      logs: [
+        { timestamp: '2024-01-01T00:00:00Z', level: 'info', message: 'Bot started' }
+      ]
     };
 
     mockContext.getGuildLogs.mockResolvedValue(mockLogs);
