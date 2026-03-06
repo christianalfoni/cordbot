@@ -220,6 +220,10 @@ class MemoryManager {
         console.log('[Memory] No existing file for today - starting fresh');
         return;
       }
+      if (error instanceof SyntaxError) {
+        console.warn('[Memory] Today\'s file is corrupted, starting fresh');
+        return;
+      }
       throw error;
     }
   }

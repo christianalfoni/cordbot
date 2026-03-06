@@ -112,6 +112,12 @@ export interface AppContext {
   adminDeployBot(guildId: string, version?: string): Promise<{ success: boolean; version: string }>;
 
   /**
+   * Admin: Restart a guild's bot without ownership check (admin only)
+   * @param guildId The guild ID
+   */
+  adminRestartGuild(guildId: string): Promise<{ success: boolean; message: string }>;
+
+  /**
    * Deprovision a guild's bot instance
    * @param guildId The guild ID
    */
