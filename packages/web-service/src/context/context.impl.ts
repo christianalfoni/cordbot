@@ -340,6 +340,12 @@ export class FirebaseContext implements AppContext {
     return result.data as { success: boolean; version: string };
   }
 
+  async adminRestartGuild(guildId: string): Promise<{ success: boolean; message: string }> {
+    const adminRestartGuildFunc = httpsCallable(this.functions, 'adminRestartGuild');
+    const result = await adminRestartGuildFunc({ guildId });
+    return result.data as { success: boolean; message: string };
+  }
+
   // ============ Utilities ============
 
   logger: Logger = {

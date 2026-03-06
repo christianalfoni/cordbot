@@ -30,8 +30,9 @@ function AppContent() {
     if (user?.id === ADMIN_UID) {
       (window as any).admin = {
         deployBot: (guildId: string, version?: string) => ctx.adminDeployBot(guildId, version),
+        restartGuild: (guildId: string) => ctx.adminRestartGuild(guildId),
       };
-      console.log('[Admin] Tools available. Usage: admin.deployBot("guild_id")');
+      console.log('[Admin] Tools available. Usage: admin.deployBot("guild_id") | admin.restartGuild("guild_id")');
     }
   }, [user, ctx]);
 

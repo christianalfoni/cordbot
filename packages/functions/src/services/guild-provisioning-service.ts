@@ -783,7 +783,10 @@ export class GuildProvisioningService {
         });
       }
 
-      // Update machine config with refreshed environment variables
+      const machineIsStarted = currentMachine.state === 'started';
+
+      // For non-running machines use skip_launch to prevent Fly.io from auto-starting
+      // (which fails for failed/stopped machines). For running machines the update auto-reboots.
       await this.flyRequest(`/apps/${appName}/machines/${machineId}`, {
         method: 'POST',
         body: JSON.stringify({
@@ -802,14 +805,20 @@ export class GuildProvisioningService {
             mounts,
             services: CORDBOT_HTTP_SERVICE_CONFIG,
           },
+          skip_launch: !machineIsStarted,
         }),
       });
 
-      // Use /start for failed machines, /restart for started/stopped machines
-      const machineEndpoint = currentMachine.state === 'started' || currentMachine.state === 'stopped'
-        ? `/apps/${appName}/machines/${machineId}/restart`
-        : `/apps/${appName}/machines/${machineId}/start`;
-      await this.flyRequest(machineEndpoint, { method: 'POST' });
+      if (!machineIsStarted) {
+        // Wait for the config update (replacing state) to settle before starting
+        const instanceId = currentMachine.instance_id;
+        const waitParams = instanceId ? `?instance_id=${instanceId}&state=stopped&timeout=30` : `?state=stopped&timeout=30`;
+        await this.flyRequest(
+          `/apps/${appName}/machines/${machineId}/wait${waitParams}`,
+          { method: 'GET' }
+        );
+        await this.flyRequest(`/apps/${appName}/machines/${machineId}/start`, { method: 'POST' });
+      }
 
       // Set status back to active
       await this.ctx.firestore.updateGuild(guildId, {
@@ -1073,6 +1082,19 @@ export class GuildProvisioningService {
   /**
    * Admin-only: Deploy a bot for any guild without ownership verification
    */
+  async adminRestartGuild(params: { guildId: string }): Promise<{ success: true; message: string }> {
+    // Reuse restartGuild logic but bypass ownership check
+    return this.restartGuild({ userId: await this.getGuildOwnerId(params.guildId), guildId: params.guildId });
+  }
+
+  private async getGuildOwnerId(guildId: string): Promise<string> {
+    const guild = await this.ctx.firestore.getGuild(guildId);
+    if (!guild) {
+      throw new HttpsError('not-found', 'Guild not found');
+    }
+    return guild.userId;
+  }
+
   async adminDeployGuildBot(params: {
     guildId: string;
     version?: string;
